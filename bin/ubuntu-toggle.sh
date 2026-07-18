@@ -1,8 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Start/Stop-Toggle für die proot-distro Ubuntu-Umgebung (persistent via tmux)
 
-SESSION="ubuntu"
-DISTRO="ubuntu"
+source "$(dirname "$0")/bridge-lib.sh"
+
+SESSION="$BRIDGE_SESSION"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "Ubuntu läuft – wird gestoppt..."
@@ -10,9 +11,8 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "Ubuntu gestoppt."
 else
     echo "Ubuntu wird gestartet..."
-    tmux new-session -d -s "$SESSION" "proot-distro login $DISTRO"
-    tmux new-window -t "$SESSION" -n bridge "$HOME/bin/root-bridge-watch.sh"
-    tmux select-window -t "$SESSION:0"
+    ensure_bridge
+    tmux select-window -t "$SESSION:0" 2>/dev/null
     # Direkt anhängen, wenn wir ein echtes Terminal haben (normaler Termux-Aufruf).
     # Vom Widget aus (kein tty) schlägt das harmlos fehl - Session läuft trotzdem weiter im Hintergrund.
     tmux attach -t "$SESSION" 2>/dev/null || echo "Läuft im Hintergrund. Verbinden mit: tmux attach -t $SESSION"
