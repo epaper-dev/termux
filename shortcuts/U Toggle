@@ -1,3 +1,0 @@
-#!/data/data/com.termux/files/usr/bin/bash
-# Dünner Wrapper - einzige Logik-Quelle ist ~/bin/ubuntu-toggle.sh (+ bridge-lib.sh).
-exec "$HOME/bin/ubuntu-toggle.sh"

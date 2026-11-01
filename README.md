@@ -1,124 +1,139 @@
 # termux-root-bridge
 
-Ermöglicht einer persistenten Ubuntu-Umgebung (proot-distro, läuft in Termux auf
-einem Hisense A9 / Android 14 GSI) echten Android-Root anzufragen — mit
-manueller Bestätigung pro Befehl. Direkte `su`-Aufrufe *innerhalb* von
-proot-distro scheitern, weil sich proots Syscall-Interception und Magisks
-Daemon-Kommunikation gegenseitig blockieren ("zwei ptrace-artige Schichten
-kollidieren"). Diese Bridge umgeht das, indem sie den Root-Aufruf in einen
-zweiten, echten Termux-Kontext auslagert.
+**Run Claude Code on Android (Termux + proot-distro) with every real-root action confirmed inside Claude Code — and with logins that just work.**
 
-## Architektur
+[Deutsch](README.de.md) · [Comparison with other projects](docs/COMPARISON.md) · [Login & MCP details](docs/LOGIN.md) · [Security](SECURITY.md)
 
-Zwei getrennte Kontexte:
+> **Status: v2.0.0-dev.** Unit and integration tests pass (guard hook, login hook, daemon, installers).
+> Not yet verified on a device: the clipboard hand-off (OSC 52 through tmux into Android), opening
+> the browser from the guest, and the exact `tool_response` format of MCP login tools.
+> See [what is verified](#what-is-verified).
 
-- **Innerhalb proot (Ubuntu):** `androidsu <befehl>` schreibt eine Anfrage
-  nach `~/.rootbridge/req-<id>.txt` und wartet bis zu 70 Sekunden auf eine
-  Antwort (`res-<id>.txt`). Führt selbst nie etwas Privilegiertes aus.
-- **Außerhalb proot (normales Termux):** `root-bridge-watch.sh` läuft als
-  Hintergrund-Dauerschleife in einem eigenen tmux-Fenster (`bridge`),
-  entdeckt neue Requests und öffnet pro Anfrage ein `tmux display-popup`
-  mit `root-bridge-confirm.sh <id>`. Das Popup zeigt den Befehl und verlangt
-  `y` + Enter innerhalb von 10 Sekunden. Nur bei explizitem `y` wird
-  `su -c "<befehl>"` ausgeführt; alles andere (Enter, Timeout, andere
-  Eingabe) ist eine Ablehnung.
+## What problem does it solve?
+
+If you run Claude Code inside an Ubuntu guest (proot-distro) in Termux, three things get in the way:
+
+1. **Real Android root is out of reach.** `su` inside proot collides with Magisk. This project runs a small
+   daemon *outside* proot that executes `su -c` for the guest — but only for commands you confirmed.
+2. **You want Claude to work autonomously** (no question for every `ls`) **but never touch the phone's system
+   unasked.** A hook turns every root-capable command (`androidsu`, `adb`, `fastboot`, `su`, `magisk`, ...)
+   into an ordinary permission prompt *inside Claude Code* — also in bypass-permissions mode.
+3. **Logins are painful on a phone.** The OAuth/MCP link is hundreds of characters long, wraps over many lines
+   and picks up spaces when you copy it. The login link is now opened in the Android browser for you, or copied
+   cleanly with one key.
+
+There is no second terminal window and no popup any more (v1 needed one).
+
+## How it works
 
 ```
-proot Ubuntu                      Termux (außerhalb proot)
-─────────────                     ─────────────────────────
-androidsu "id"                    root-bridge-watch.sh (Dauerschleife)
-   │  schreibt req-<id>.txt   ───▶   │  entdeckt req-*.txt
-   │                                  │  öffnet Popup:
-   │                                  ▼
-   │                           root-bridge-confirm.sh <id>
-   │                                  │  zeigt Befehl, read -t 10 auf 'y'
-   │                                  │  bei 'y': su -c "id"
-   │                                  │  schreibt res-<id>.txt (atomar)
-   │  liest res-<id>.txt      ◀───────┘  loggt Entscheidung in audit.log
-   ▼
-Ausgabe + Exitcode
+Claude Code (Ubuntu guest, root)                  Termux (outside proot)
+────────────────────────────────                  ──────────────────────
+Bash: androidsu 'id'
+ └─ PreToolUse hook (android-root-guard.py)
+     • literal command?  → single-use ticket bound to sha256("id")
+     • asks: "⚠ ANDROID-ROOT: id"   ← you answer Yes / No in Claude Code
+androidsu ── request + ticket ─────────────────▶  rootbridge-daemon (headless)
+                                                  valid ticket? → su -c 'id'
+                         ◀──────── result ─────  no ticket?    → refused (exit 99)
 ```
 
-## Dateien
+* **No ticket, no root.** A denied prompt means the command never runs. There is no popup fallback.
+* **Autonomy elsewhere.** Anything that is not root-related (including `/sdcard`) runs without questions.
+* **Login links.** `/login`, `/mcp`, `claude mcp login <server>` open the browser through `BROWSER`/`xdg-open`;
+  `mcp__*__authenticate` results are intercepted so the long link is opened and copied instead of printed.
 
-| Datei | Kontext | Zweck |
-|---|---|---|
-| `bin/androidsu` | proot | Client: Request schreiben, auf Antwort warten |
-| `bin/root-bridge-watch.sh` | Termux | Wächter-Dauerschleife, öffnet Popups |
-| `bin/root-bridge-confirm.sh` | Termux | Popup-Inhalt: Bestätigung + `su -c` + Audit-Log |
-| `bin/bridge-lib.sh` | Termux | gemeinsame Helper (Konfig, Locking, `ensure_bridge`, Audit) |
-| `bin/ubuntu-switch.sh` | Termux | in die Ubuntu-Session wechseln/erstellen, Wächter sicherstellen |
-| `bin/ubuntu-toggle.sh` | Termux | Ubuntu-Session starten/stoppen (Alias `ubuntu`) |
-| `.termux/boot/10-ubuntu-bridge.sh` | Termux | optionaler Autostart beim Geräteboot |
-| `~/.rootbridge/audit.log` | Termux | Protokoll aller Root-Anfragen und Entscheidungen |
+## Requirements
 
-## Installation
+* Android with Termux (F-Droid/GitHub build), `proot-distro` with an Ubuntu guest, Claude Code installed in the guest
+  (`curl -fsSL https://claude.ai/install.sh | bash`)
+* A working `su` (Magisk, KernelSU, ...) — without it, only the login features work
+* Termux packages: `tmux proot-distro python coreutils util-linux`; optional `termux-api` (+ the Termux:API app)
+  for the clipboard
+* Guest packages: `python3` (hooks), coreutils with `sha256sum`, `od`, `timeout`
+* Claude Code ≥ 2.1.295 (`onFailure: "block"` for hooks)
 
-1. Alle Dateien aus `bin/` nach `~/bin/` (Termux-Home, **nicht** proot) legen,
-   ausführbar machen: `chmod 700 ~/bin/*.sh ~/bin/androidsu`.
-2. `androidsu` zusätzlich innerhalb der proot-Ubuntu-Umgebung im PATH
-   verfügbar machen (z. B. gleiche Datei dort ablegen oder Bind-Mount —
-   je nach proot-distro-Konfiguration).
-3. In `~/.bashrc` (Termux) existiert bereits: `alias ubuntu=~/bin/ubuntu-toggle.sh`.
+## Install
 
-## Nutzung
+In a **Termux** shell (not inside proot):
 
-Aus der proot-Ubuntu-Umgebung heraus:
-
-```sh
-androidsu id
-androidsu "pm list packages | grep magisk"
+```bash
+pkg install git tmux proot-distro python coreutils util-linux termux-api
+git clone https://github.com/hisense-a9/termux-root-bridge
+cd termux-root-bridge
+bash install.sh            # asks one question about autonomous mode
 ```
 
-Ein Popup erscheint im Termux/tmux-Fenster. Mit `y` + Enter bestätigen (10s
-Zeitfenster) — danach liefert `androidsu` Ausgabe und Exitcode des über `su`
-ausgeführten Befehls zurück. Alles außer `y` (auch reines Enter oder
-Timeout) lehnt ab.
+Then open a new Termux session. It starts the daemon, counts down 3 s (press a key to stay in plain Termux),
+runs `claude update` and starts Claude Code. Claude still **starts in plan mode** (from your `settings.json`);
+press **Shift+Tab** to switch to *bypass permissions*.
 
-Ubuntu-Session wechseln/starten: `ubuntu` (Toggle) oder `~/bin/ubuntu-switch.sh`
-(wechselt hinein, killt nie eine laufende Session). Beide stellen bei jedem
-Aufruf sicher, dass der Wächter läuft (`ensure_bridge` in `bridge-lib.sh`) —
-auch wenn die Session schon vorher bestand.
+Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--autonomous yes|no|ask`. The installer is idempotent,
+backs up what it changes, and migrates the old v1 popup bridge if it finds one.
 
-## Autostart
+## Daily use
 
-- **Ohne Geräteboot-Integration:** reicht bereits, weil `ubuntu-switch.sh`
-  und `ubuntu-toggle.sh` den Wächter bei jedem Aufruf selbst heilen, falls er
-  fehlt (z. B. nach Absturz oder manuellem Kill des `bridge`-Fensters).
-- **Mit Geräteboot-Autostart:** erfordert die App **Termux:Boot** (separat aus
-  F-Droid/Play installieren — das kann dieses Setup nicht automatisieren).
-  Ist sie installiert, führt Termux beim Geräteboot automatisch alle Skripte
-  in `~/.termux/boot/` aus, darunter `10-ubuntu-bridge.sh`, welches Session
-  und Wächter startet.
+| Command (Termux) | What it does |
+|---|---|
+| `rootbridge start` | daemon + session (runs automatically when Termux opens) |
+| `rootbridge attach` / alias `ubuntu` | attach to the Claude Code session |
+| `rootbridge shell` | extra window with a plain Ubuntu shell |
+| `rootbridge status` | daemon, session, guest install, last audit lines |
+| `rootbridge login <server>` | `claude mcp login <server>` with browser hand-off |
+| `rootbridge stop` | stop session and daemon |
+| `rootbridge guard-off` / `guard-on` | emergency switch for the hooks |
 
-## Sicherheitsmodell
+Inside Claude Code, nothing changes: ask for what you want. When Claude needs root it runs
+`androidsu '<command>'` and you get a prompt showing exactly that command. Every decision lands in
+`~/.rootbridge/audit.log`.
 
-- Jede Root-Anfrage verlangt eine **explizite, manuelle** Bestätigung (`y` +
-  Enter) innerhalb von 10 Sekunden. Kein Eingreifen = Ablehnung.
-- Anfragen, die älter als das Client-Timeout (70s) sind, werden ohne Popup
-  automatisch abgelehnt (`STALE`) — der anfragende Client hat ohnehin
-  längst aufgegeben.
-- Jede Entscheidung wird in `~/.rootbridge/audit.log` protokolliert:
-  Zeitstempel, Entscheidung (`ALLOW`/`DENY`/`STALE`/`NO-SU`/`EMPTY`),
-  Exitcode, Befehl.
-- **Grenze:** Wer innerhalb der proot-Umgebung (oder sonstwo mit
-  Schreibzugriff auf `~/.rootbridge/`) eine `req-*.txt` anlegen kann, kann
-  eine Root-Anfrage stellen. Die Bridge schützt nicht vor einem bereits
-  kompromittierten proot-Kontext — sie stellt sicher, dass *keine* Anfrage
-  ohne manuelle Zustimmung ausgeführt wird. Wer physischen/interaktiven
-  Zugriff auf das Gerät hat, um `y` zu bestätigen, autorisiert den Befehl.
-- Nur eine Wächter-Instanz läuft gleichzeitig (Lock in
-  `~/.rootbridge/.lock`) — verhindert doppelte Popups pro Anfrage.
+## Logins and MCP links
 
-## Troubleshooting
+Short version (details and troubleshooting: [docs/LOGIN.md](docs/LOGIN.md)):
 
-- **`androidsu` hängt ~70s und bricht dann mit „keine Antwort vom
-  Root-Bridge-Wächter (Timeout, läuft er?)“ ab:** Der Wächter läuft nicht.
-  `~/bin/ubuntu-switch.sh` (oder `ubuntu`) erneut aufrufen — startet ihn via
-  `ensure_bridge` neu, ohne die laufende Session zu killen.
-- **Popup erscheint nicht:** prüfen, ob die tmux-Session `ubuntu` existiert
-  (`tmux has-session -t ubuntu`) und ob ein `root-bridge-watch.sh`-Prozess
-  läuft (`pgrep -f root-bridge-watch.sh`).
-- **`su nicht gefunden` in der Antwort:** Magisk/Root auf dem Gerät prüfen;
-  die Bridge selbst benötigt kein Root, nur der Zielbefehl.
-- **Audit-Log einsehen:** `tail -f ~/.rootbridge/audit.log`.
+* In a login dialog press **`c`** — Claude Code copies the link to the Android clipboard (needs the tmux
+  settings the installer adds).
+* `/login`, `/mcp` and `claude mcp login` **open the browser by themselves**.
+* For claude.ai connectors (`authenticate` tools) a hook opens the link and Claude prints a one-line note
+  instead of the long URL. `AUTH_OPEN=copy` only copies, `AUTH_OPEN=off` disables it.
+
+## Configuration
+
+Termux: `~/.config/termux-root-bridge/config` (parsed as data, never executed): `DISTRO`, `WORKDIR`, `SESSION`,
+`TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `CLAUDE_ARGS`.
+Guest: `/etc/termux-root-bridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
+`TTY_CONFIRM`, `PROTECTED_PATHS`.
+
+## What is verified
+
+| Verified by automated tests | Needs a check on a real device |
+|---|---|
+| Guard decisions (43 tests): ticket binding, indirect calls, tamper protection, fail-closed | Hook `ask` also in bypass mode (`tests/headless-proof.sh`) |
+| Daemon: ticket single-use/expiry/hash, long commands, URL validation (49 checks) | OSC 52 clipboard through tmux into Android |
+| Login hook (19 tests: response shapes, URL rules, modes) | Browser opening from the guest, `localhost` redirect |
+| Installers: staging root, idempotence, v1 migration, uninstall | `tool_response` shape of MCP login tools; `updatedToolOutput` |
+
+Run the tests: `python3 -I -m unittest discover -s tests && bash tests/test_daemon.sh`.
+
+## Limits
+
+This protects against **unintended** actions, not against a hostile agent: root in the guest shares the Termux
+home with the daemon. See [SECURITY.md](SECURITY.md) for the honest list.
+
+## Uninstall
+
+```bash
+bash uninstall.sh      # keeps ~/.rootbridge (audit log, backups) and the config
+```
+
+## Related projects and credits
+
+Other ways to get Claude Code onto Android — they solve *installation*, this project solves *root confirmation,
+autostart and logins* on top of it: [bd-loser/claude-code-termux](https://github.com/bd-loser/claude-code-termux),
+[ferrumclaudepilgrim/claude-code-android](https://github.com/ferrumclaudepilgrim/claude-code-android),
+[Crypt0Shmipt0/root-aicli](https://github.com/Crypt0Shmipt0/root-aicli). Details in
+[docs/COMPARISON.md](docs/COMPARISON.md). Not affiliated with Anthropic.
+
+## License
+
+Not chosen yet — the maintainer adds a `LICENSE` file before the first release.

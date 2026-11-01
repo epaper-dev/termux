@@ -1,0 +1,19 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests (guard + login hook)
+        run: python3 -I -m unittest discover -s tests -p 'test_*.py'
+      - name: Integration test (daemon, client, installers' helpers)
+        run: bash tests/test_daemon.sh
+      - name: ShellCheck
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck -x -S warning \
+            install.sh uninstall.sh \
+            termux/bin/rootbridge termux/bin/rootbridge-daemon termux/lib/rootbridge-lib.sh \
+            guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude \
+            guest/install-guest.sh tests/test_daemon.sh tests/headless-proof.sh
