@@ -4,10 +4,14 @@
 # springt nur hinein (oder erstellt sie, falls sie fehlt).
 # Stellt bei jedem Aufruf über ensure_bridge() sicher, dass der Root-Bridge-
 # Wächter läuft - auch wenn die Session schon vorher bestand.
+#
+# Optionales erstes Argument: Zielfenster (Name oder Index), Default "0".
+# Beispiel: ubuntu-switch.sh ubuntu2
 
 source "$(dirname "$0")/bridge-lib.sh"
 
 SESSION="$BRIDGE_SESSION"
+TARGET_WINDOW="${1:-0}"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "Ubuntu läuft bereits – wechsle hinein..."
@@ -16,7 +20,7 @@ else
 fi
 
 ensure_bridge
-tmux select-window -t "$SESSION:0" 2>/dev/null
+tmux select-window -t "$SESSION:$TARGET_WINDOW" 2>/dev/null
 
 if [ -n "$TMUX" ]; then
     tmux switch-client -t "$SESSION"

@@ -6,6 +6,7 @@
 BRIDGE_DIR="${BRIDGE_DIR:-$HOME/.rootbridge}"
 BRIDGE_SESSION="${BRIDGE_SESSION:-ubuntu}"
 BRIDGE_WINDOW="${BRIDGE_WINDOW:-bridge}"
+BRIDGE_WINDOW2="${BRIDGE_WINDOW2:-ubuntu2}"
 BRIDGE_DISTRO="${BRIDGE_DISTRO:-ubuntu}"
 
 # Muss zum Poll-Timeout in androidsu passen (70 * 1s). Requests, die älter sind,
@@ -32,6 +33,22 @@ bridge_watcher_alive() {
 ensure_bridge() {
     if ! tmux has-session -t "$BRIDGE_SESSION" 2>/dev/null; then
         tmux new-session -d -s "$BRIDGE_SESSION" "proot-distro login $BRIDGE_DISTRO"
+    fi
+
+    # Zweites Ubuntu-Fenster, falls noch nicht vorhanden - genauso idempotent
+    # wie die Bridge-Fenster-Logik unten. Explizit direkt hinter Fenster 0
+    # eingefügt (-a -t session:0), damit die Index-Vergabe nicht mit der
+    # nachfolgenden Bridge-Fenster-Erstellung kollidiert.
+    #
+    # Die kurze Pause davor ist unabhängig davon nötig, ob *dieser* Aufruf
+    # Fenster 0 gerade erst angelegt hat oder ob es schon vorher existierte
+    # (z.B. durch das Boot-Skript, das vor ensure_bridge selbst schon eine
+    # Session anlegen kann) - zwei praktisch gleichzeitige
+    # "proot-distro login"-Aufrufe lassen sonst mindestens einen davon
+    # sofort wieder in die Termux-Shell zurückfallen.
+    if ! tmux list-windows -t "$BRIDGE_SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$BRIDGE_WINDOW2"; then
+        sleep 2
+        tmux new-window -a -t "$BRIDGE_SESSION:0" -n "$BRIDGE_WINDOW2" "proot-distro login $BRIDGE_DISTRO"
     fi
 
     if bridge_watcher_alive; then
