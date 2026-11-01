@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Termux:Widget shortcut: extra window with a plain Ubuntu shell.
+exec rootbridge shell

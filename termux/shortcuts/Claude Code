@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Termux:Widget shortcut: open the Claude Code session.
+exec rootbridge attach
