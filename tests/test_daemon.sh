@@ -178,6 +178,22 @@ bash "$DAEMON" --once; sleep 0.3
 check "Daemon prüft URL selbst nochmal" 2 "$(head -n 1 "$BRIDGE_DIR/open-res-evil_1")"
 check "Opener weiter unberührt" "$before" "$(wc -l < "$T/open.log" | tr -d ' ')"
 
+# copy-only: clipboard yes, browser no
+before="$(wc -l < "$T/open.log" | tr -d ' ')"
+open_url_copy() {
+    ( bash "$OPENER" --copy-only "$1" > "$T/out" 2> "$T/err"; echo $? > "$T/code" ) &
+    local pid=$!
+    sleep 0.7
+    bash "$DAEMON" --once
+    wait "$pid"
+    CODE="$(cat "$T/code")"
+}
+: > "$T/clip.txt"
+open_url_copy 'https://login.example.org/a?b=c'
+check "copy-only: Exitcode 0" 0 "$CODE"
+check "copy-only: Zwischenablage" 'https://login.example.org/a?b=c' "$(cat "$T/clip.txt")"
+check "copy-only: Browser nicht geöffnet" "$before" "$(wc -l < "$T/open.log" | tr -d ' ')"
+
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
 [ "$FAIL" -eq 0 ]

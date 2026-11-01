@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rootbridge-open <https-url> - open a login/OAuth link in the Android browser
+# rootbridge-open [--copy-only] <https-url> - open a login/OAuth link in the Android browser
 # and put it into the Android clipboard. Installed as BROWSER and as xdg-open
 # in the guest so that Claude Code's /login, /mcp and `claude mcp login` open
 # the browser by themselves.
@@ -19,6 +19,8 @@ BRIDGE_DIR="${BRIDGE_DIR:-/data/data/com.termux/files/home/.rootbridge}"
 WAIT="${ROOTBRIDGE_OPEN_WAIT:-12}"
 TERMUX_BIN="${TERMUX_BIN:-/data/data/com.termux/files/usr/bin}"
 
+copy_only=0
+if [ "${1:-}" = "--copy-only" ]; then copy_only=1; shift; fi
 url="${1:-}"
 RE='^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?([/?#][^[:space:][:cntrl:]"'"'"'<>`\\]*)?$'
 if [ "${#url}" -gt 8192 ] || ! [[ "$url" =~ $RE ]]; then
@@ -33,7 +35,8 @@ alive="$BRIDGE_DIR/.alive"
 if [ -d "$BRIDGE_DIR" ] && [ -e "$alive" ] \
         && [ $(( $(date +%s) - $(stat -c %Y "$alive" 2>/dev/null || echo 0) )) -lt 10 ]; then
     id="$$_$(date +%s%N)"
-    printf '%s\n' "$url" > "$BRIDGE_DIR/open-$id.url"
+    if [ "$copy_only" = 1 ]; then printf 'COPY %s\n' "$url"; else printf '%s\n' "$url"; fi \
+        > "$BRIDGE_DIR/open-$id.url"
     res="$BRIDGE_DIR/open-res-$id"
     n=0
     until [ -e "$res" ]; do
@@ -52,8 +55,8 @@ fi
 
 # 2. direct (best effort)
 opener="$TERMUX_BIN/termux-open-url"
-if [ -x "$opener" ]; then
-    if timeout 15 "$opener" "$url" >/dev/null 2>&1; then
+if [ -x "$opener" ] || [ "$copy_only" = 1 ]; then
+    if [ "$copy_only" = 1 ] || timeout 15 "$opener" "$url" >/dev/null 2>&1; then
         [ -x "$TERMUX_BIN/termux-clipboard-set" ] \
             && printf '%s' "$url" | timeout 5 "$TERMUX_BIN/termux-clipboard-set" >/dev/null 2>&1
         exit 0

@@ -101,12 +101,13 @@ open_rate_ok() {                      # at most 10 openings per minute
 }
 
 handle_open() {
-    local id="$1" file work url host rc=0 note=""
+    local id="$1" file work url host rc=0 note="" copy_only=0
     file="$BRIDGE_DIR/open-$id.url"
     work="$file.work"
     mv "$file" "$work" 2>/dev/null || return 0
     IFS= read -r url < "$work"
     rm -f "$work"
+    case "$url" in "COPY "*) copy_only=1; url="${url#COPY }" ;; esac
     if ! rb_valid_url "$url"; then
         open_result "$id" 2 "URL abgelehnt (nur https, keine Sonderzeichen, höchstens 8 KiB)."
         rb_audit "OPEN-DENY" 2 "ungültige URL"
@@ -118,7 +119,9 @@ handle_open() {
         rb_audit "OPEN-DENY" 3 "$host (Ratenbegrenzung)"
         return 0
     fi
-    timeout 15 "$RB_OPEN_CMD" "$url" >/dev/null 2>&1 || rc=$?
+    if [ "$copy_only" = 0 ]; then
+        timeout 15 "$RB_OPEN_CMD" "$url" >/dev/null 2>&1 || rc=$?
+    fi
     if command -v "$RB_CLIP_CMD" >/dev/null 2>&1; then
         printf '%s' "$url" | timeout 5 "$RB_CLIP_CMD" >/dev/null 2>&1 \
             && note="in Zwischenablage kopiert" || note="Zwischenablage nicht verfügbar"
