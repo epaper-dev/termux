@@ -36,6 +36,7 @@ chmod +x "$T/bin/androidsu"
 
 export HOME="$T/home" BRIDGE_DIR="$T/bridge" ROOTBRIDGE_DIR="$T/bridge"
 export RB_SU="$T/fake-su" RB_OPEN_CMD="$T/fake-open" RB_CLIP_CMD="$T/fake-clip"
+export TERMUX_BIN="$T/no-termux-bin"
 export ROOTBRIDGE_TTY_CONFIRM=0 ROOTBRIDGE_CONF="$T/none.conf" ROOTBRIDGE_CONFIG="$T/none.cfg"
 unset CLAUDECODE ROOTBRIDGE_TICKET
 
@@ -180,6 +181,7 @@ check "Opener weiter unberührt" "$before" "$(wc -l < "$T/open.log" | tr -d ' ')
 
 # copy-only: clipboard yes, browser no
 before="$(wc -l < "$T/open.log" | tr -d ' ')"
+: > "$BRIDGE_DIR/.alive"
 open_url_copy() {
     ( bash "$OPENER" --copy-only "$1" > "$T/out" 2> "$T/err"; echo $? > "$T/code" ) &
     local pid=$!
@@ -193,6 +195,13 @@ open_url_copy 'https://login.example.org/a?b=c'
 check "copy-only: Exitcode 0" 0 "$CODE"
 check "copy-only: Zwischenablage" 'https://login.example.org/a?b=c' "$(cat "$T/clip.txt")"
 check "copy-only: Browser nicht geöffnet" "$before" "$(wc -l < "$T/open.log" | tr -d ' ')"
+
+rm -f "$BRIDGE_DIR/.alive"
+( bash "$OPENER" --copy-only 'https://login.example.org/x' > /dev/null 2> "$T/err"; echo $? > "$T/code" )
+check "ohne Daemon und ohne Termux-Tool: copy-only schlägt fehl" 1 "$(cat "$T/code")"
+( bash "$OPENER" 'https://login.example.org/x' > /dev/null 2> "$T/err"; echo $? > "$T/code" )
+check "ohne Daemon und ohne Termux-Tool: open schlägt fehl" 1 "$(cat "$T/code")"
+contains "Fehlermeldung nennt die URL" "https://login.example.org/x" "$(cat "$T/err")"
 
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"

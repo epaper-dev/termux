@@ -55,10 +55,16 @@ fi
 
 # 2. direct (best effort)
 opener="$TERMUX_BIN/termux-open-url"
-if [ -x "$opener" ] || [ "$copy_only" = 1 ]; then
-    if [ "$copy_only" = 1 ] || timeout 15 "$opener" "$url" >/dev/null 2>&1; then
-        [ -x "$TERMUX_BIN/termux-clipboard-set" ] \
-            && printf '%s' "$url" | timeout 5 "$TERMUX_BIN/termux-clipboard-set" >/dev/null 2>&1
+clip="$TERMUX_BIN/termux-clipboard-set"
+copy_url() { [ -x "$clip" ] && printf '%s' "$url" | timeout 5 "$clip" >/dev/null 2>&1; }
+
+if [ "$copy_only" = 1 ]; then
+    copy_url && exit 0
+    fail "Zwischenablage nicht erreichbar (Daemon nicht aktiv: rootbridge start)"
+fi
+if [ -x "$opener" ]; then
+    if timeout 15 "$opener" "$url" >/dev/null 2>&1; then
+        copy_url
         exit 0
     fi
     fail "termux-open-url schlug fehl (Daemon nicht aktiv: rootbridge start)"
