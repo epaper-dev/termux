@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# rootbridge-claude - guest entry point (started by `rootbridge start`):
+#   1. claude update   2. Claude Code with autonomous mode available
+#
+# Plan mode stays the start mode (settings.json); Shift+Tab switches to
+# "bypass permissions" because --allow-dangerously-skip-permissions is set.
+# Root-related commands are still confirmed by the android-root-guard hook.
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
+
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-root-bridge.conf}"
+conf_get() {
+    [ -r "$CONF" ] || return 1
+    local v
+    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    [ -n "$v" ] && printf '%s' "$v"
+}
+
+workdir="$(conf_get WORKDIR || echo /root/workspace)"
+cd "$workdir" 2>/dev/null || cd /root || exit 1
+
+export BROWSER=/usr/local/bin/rootbridge-open
+export IS_SANDBOX=1          # Claude Code refuses bypass mode as root otherwise
+
+claude_bin=/root/.local/bin/claude
+[ -x "$claude_bin" ] || claude_bin="$(command -v claude || true)"
+if [ -z "$claude_bin" ]; then
+    echo "rootbridge-claude: claude nicht gefunden. Installation: curl -fsSL https://claude.ai/install.sh | bash" >&2
+    exec bash -l
+fi
+
+echo "== claude update"
+if ! timeout 180 "$claude_bin" update; then
+    echo "Update fehlgeschlagen oder abgebrochen - starte die vorhandene Version."
+fi
+
+read -r -a extra <<< "$(conf_get CLAUDE_ARGS || true)"
+"$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}"
+
+echo
+echo "Claude Code beendet. Neu starten mit: claude   (Shell bleibt offen)"
+exec bash -l
