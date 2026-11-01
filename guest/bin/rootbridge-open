@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# rootbridge-open <https-url> - open a login/OAuth link in the Android browser
+# and put it into the Android clipboard. Installed as BROWSER and as xdg-open
+# in the guest so that Claude Code's /login, /mcp and `claude mcp login` open
+# the browser by themselves.
+#
+# 1. bridge daemon (Termux, reliable): writes open-<id>.url
+# 2. direct termux-open-url (works only if Termux's `am` runs under proot)
+# Only plain https URLs are accepted.
+#
+# Environment: ROOTBRIDGE_DIR, ROOTBRIDGE_OPEN_WAIT (seconds, default 12)
+
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-root-bridge.conf}"
+BRIDGE_DIR="${ROOTBRIDGE_DIR:-}"
+if [ -z "$BRIDGE_DIR" ] && [ -r "$CONF" ]; then
+    BRIDGE_DIR="$(sed -n 's/^BRIDGE_DIR=//p' "$CONF" | tail -n 1 | tr -d "\"'")"
+fi
+BRIDGE_DIR="${BRIDGE_DIR:-/data/data/com.termux/files/home/.rootbridge}"
+WAIT="${ROOTBRIDGE_OPEN_WAIT:-12}"
+TERMUX_BIN="${TERMUX_BIN:-/data/data/com.termux/files/usr/bin}"
+
+url="${1:-}"
+RE='^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?([/?#][^[:space:][:cntrl:]"'"'"'<>`\\]*)?$'
+if [ "${#url}" -gt 8192 ] || ! [[ "$url" =~ $RE ]]; then
+    echo "rootbridge-open: nur https-URLs ohne Sonderzeichen (max. 8 KiB) werden geöffnet." >&2
+    exit 2
+fi
+
+fail() { echo "rootbridge-open: Browser konnte nicht geöffnet werden: $1" >&2; echo "$url" >&2; exit 1; }
+
+# 1. bridge daemon, if its heartbeat is fresh (< 10 s)
+alive="$BRIDGE_DIR/.alive"
+if [ -d "$BRIDGE_DIR" ] && [ -e "$alive" ] \
+        && [ $(( $(date +%s) - $(stat -c %Y "$alive" 2>/dev/null || echo 0) )) -lt 10 ]; then
+    id="$$_$(date +%s%N)"
+    printf '%s\n' "$url" > "$BRIDGE_DIR/open-$id.url"
+    res="$BRIDGE_DIR/open-res-$id"
+    n=0
+    until [ -e "$res" ]; do
+        sleep 0.3
+        n=$(( n + 3 ))
+        if [ "$n" -ge $(( WAIT * 10 )) ]; then
+            rm -f "$BRIDGE_DIR/open-$id.url"
+            fail "keine Antwort vom Daemon"
+        fi
+    done
+    code="$(head -n 1 "$res")"
+    rm -f "$res"
+    [ "${code:-1}" = 0 ] && exit 0
+    fail "Daemon meldet Fehler $code"
+fi
+
+# 2. direct (best effort)
+opener="$TERMUX_BIN/termux-open-url"
+if [ -x "$opener" ]; then
+    if timeout 15 "$opener" "$url" >/dev/null 2>&1; then
+        [ -x "$TERMUX_BIN/termux-clipboard-set" ] \
+            && printf '%s' "$url" | timeout 5 "$TERMUX_BIN/termux-clipboard-set" >/dev/null 2>&1
+        exit 0
+    fi
+    fail "termux-open-url schlug fehl (Daemon nicht aktiv: rootbridge start)"
+fi
+fail "weder Daemon noch termux-open-url verfügbar"
