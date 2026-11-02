@@ -71,9 +71,11 @@ press **Shift+Tab** to switch to *bypass permissions*.
 Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--autonomous yes|no|ask`, `--remote-name NAME`. The installer
 is idempotent, backs up what it changes, and migrates the old v1 popup bridge if it finds one.
 
-**Fixed name in the Remote Control view** (claude.ai/code): `bash install.sh --remote-name android`. The name is stored
-in the Termux config (`REMOTE_NAME`), so every later install reuses it — also with a fresh guest or after
-`uninstall.sh` — and the guest installer writes `CLAUDE_ARGS="--remote-control android --continue"`. The name belongs
+**Fixed name in the Remote Control view** (claude.ai/code): `bash install.sh --remote-name android`. **On a new
+device** (or after wiping Termux) pass the option on the first install, because there is no Termux config yet that
+could remember the name. It is then stored there (`REMOTE_NAME`), so every later install reuses it without the option
+— also with a fresh guest or after `uninstall.sh` — and the guest installer writes
+`CLAUDE_ARGS="--remote-control android --continue"`. The name belongs
 to the *session*: a new session gets it from the flag, `--continue` keeps that session (and its name) across
 restarts. A session that already exists with another name is not renamed by the flag; rename it once with
 `/rename android`.

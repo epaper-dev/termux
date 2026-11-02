@@ -67,9 +67,11 @@ führt `claude update` aus und startet Claude Code. Claude **startet weiter im P
 Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--autonomous yes|no|ask`, `--remote-name NAME`. Der Installer
 ist idempotent, sichert Geändertes und migriert die alte v1-Popup-Bridge.
 
-**Fester Name in der Remote-Control-Ansicht** (claude.ai/code): `bash install.sh --remote-name android`. Der Name steht
-danach in der Termux-Konfig (`REMOTE_NAME`) und wird bei jeder späteren Installation wiederverwendet, auch bei frischem
-Gast oder nach `uninstall.sh`; der Gast-Installer schreibt `CLAUDE_ARGS="--remote-control android --continue"`.
+**Fester Name in der Remote-Control-Ansicht** (claude.ai/code): `bash install.sh --remote-name android`. **Auf einem
+neuen Gerät** (oder nach einem Zurücksetzen von Termux) die Option bei der ersten Installation angeben, denn es gibt
+noch keine Termux-Konfig, die sich den Namen merken könnte. Danach steht er dort (`REMOTE_NAME`) und wird bei jeder
+späteren Installation ohne Option wiederverwendet, auch bei frischem Gast oder nach `uninstall.sh`; der Gast-Installer
+schreibt `CLAUDE_ARGS="--remote-control android --continue"`.
 Der Name gehört zur *Sitzung*: eine neue Sitzung bekommt ihn über das Flag, `--continue` behält Sitzung und Namen beim
 Neustart. Eine bestehende Sitzung mit anderem Namen benennt das Flag nicht um; einmal `/rename android` eingeben.
 
