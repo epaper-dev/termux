@@ -68,8 +68,15 @@ Then open a new Termux session. It starts the daemon, counts down 3 s (press a k
 runs `claude update` and starts Claude Code. Claude still **starts in plan mode** (from your `settings.json`);
 press **Shift+Tab** to switch to *bypass permissions*.
 
-Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--autonomous yes|no|ask`. The installer is idempotent,
-backs up what it changes, and migrates the old v1 popup bridge if it finds one.
+Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--autonomous yes|no|ask`, `--remote-name NAME`. The installer
+is idempotent, backs up what it changes, and migrates the old v1 popup bridge if it finds one.
+
+**Fixed name in the Remote Control view** (claude.ai/code): `bash install.sh --remote-name android`. The name is stored
+in the Termux config (`REMOTE_NAME`), so every later install reuses it — also with a fresh guest or after
+`uninstall.sh` — and the guest installer writes `CLAUDE_ARGS="--remote-control android --continue"`. The name belongs
+to the *session*: a new session gets it from the flag, `--continue` keeps that session (and its name) across
+restarts. A session that already exists with another name is not renamed by the flag; rename it once with
+`/rename android`.
 
 ## Daily use
 
@@ -100,14 +107,15 @@ Short version (details and troubleshooting: [docs/LOGIN.md](docs/LOGIN.md)):
 ## Configuration
 
 Termux: `~/.config/termux-root-bridge/config` (parsed as data, never executed): `DISTRO`, `WORKDIR`, `SESSION`,
-`TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `CLAUDE_ARGS`.
+`TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME` (read by `install.sh`).
 Guest: `/etc/termux-root-bridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`.
 
 `CLAUDE_ARGS` in the guest file holds extra arguments for the autostart (`rootbridge-claude`), e.g.
 `CLAUDE_ARGS="--remote-control android --continue"` to show the session as "android" in the Remote Control
-view and resume the last session. The `claude()` shell function reads only the Remote Control name from it
-(never `--continue`) and leaves it out for `-p`, `--version` and `--help`.
+view and resume the last session (`install.sh --remote-name` writes and updates this line; other arguments in it
+stay). The `claude()` shell function reads only the Remote Control name from it (never `--continue`) and leaves it
+out for `-p`, `--version` and `--help`.
 
 ## What is verified
 

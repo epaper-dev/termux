@@ -20,8 +20,14 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   it, so manual starts show up under the same name as the autostart. `tests/test_claude_wrapper.sh` (22 checks, stubbed
   `claude`, staging root).
 
+* `install.sh --remote-name NAME` (and `install-guest.sh --remote-name`): the Remote Control name is stored in the Termux
+  config (`REMOTE_NAME`), reused by every later install (fresh guest, after `uninstall.sh`) and written to the guest
+  `CLAUDE_ARGS` (`--remote-control NAME`, other arguments stay, a new line also gets `--continue`).
+  `tests/test_remote_name.sh` (51 checks, stubbed `proot-distro`, fake HOME/PREFIX).
+
 ### Fixed
 * `install-guest.sh --root DIR` failed when the guest home did not exist below `DIR`.
+* README listed `CLAUDE_ARGS` in the Termux config, but only the guest config is used for it.
 
 ### Removed
 * `root-bridge-watch.sh`, `root-bridge-confirm.sh` (tmux popup), `ubuntu-toggle.sh`, `ubuntu-switch.sh`, v1 widgets.

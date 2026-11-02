@@ -2,11 +2,14 @@
 # install-guest.sh - guest (proot-distro Ubuntu) part of termux-root-bridge.
 # Normally started by ../install.sh; can also be run by hand as root in the guest.
 #
-#   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--uninstall]
+#   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME] [--uninstall]
 #
 #   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
 #   --autonomous      write skipDangerousModePermissionPrompt into ~/.claude/settings.json
+#   --remote-name N   name shown in the Remote Control view (claude.ai/code): sets
+#                     `--remote-control N` in CLAUDE_ARGS of /etc/termux-root-bridge.conf
+#                     (other arguments stay; a new line also gets --continue)
 #   --uninstall       remove everything this script installed
 #
 # Idempotent. Existing files are backed up as *.bak-<timestamp>.
@@ -16,16 +19,25 @@ set -eu
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT=""
 AUTONOMOUS=ask
+REMOTE_NAME=""; REMOTE_NAME_SET=0
 UNINSTALL=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --src) SRC="$2"; shift 2 ;;
         --root) ROOT="${2%/}"; shift 2 ;;
         --autonomous) AUTONOMOUS="$2"; shift 2 ;;
+        --remote-name)
+            [ $# -ge 2 ] || { echo "--remote-name braucht einen Namen" >&2; exit 2; }
+            REMOTE_NAME="$2"; REMOTE_NAME_SET=1; shift 2 ;;
         --uninstall) UNINSTALL=1; shift ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
 done
+
+if [ "$REMOTE_NAME_SET" = 1 ] && ! [[ "$REMOTE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+    echo "--remote-name: ungültiger Name '$REMOTE_NAME' (erlaubt: Buchstaben, Ziffern, . _ -; max. 64 Zeichen; nicht mit - beginnen)" >&2
+    exit 2
+fi
 
 STAMP="$(date +%Y%m%d%H%M%S)"
 LIBDIR=/usr/local/lib/termux-root-bridge
@@ -186,6 +198,47 @@ for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/workspace" \
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"
 done
+# Remote Control name -> CLAUDE_ARGS (other arguments stay; a new line also gets --continue,
+# because the name belongs to the session and --continue keeps that session)
+if [ -n "$REMOTE_NAME" ]; then
+    python3 -I - "$ROOT$CONF" "$ROOT$CONF.new.$$" "$REMOTE_NAME" <<'PY'
+import sys
+path, out, name = sys.argv[1:4]
+lines = open(path, encoding="utf-8").read().split("\n")
+last = max((i for i, l in enumerate(lines) if l.startswith("CLAUDE_ARGS=")), default=None)
+if last is None:
+    rest = ["--continue"]
+else:
+    val = lines[last].split("=", 1)[1].strip()
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+        val = val[1:-1]
+    toks, rest, i = val.split(), [], 0
+    while i < len(toks):
+        t = toks[i]
+        if t == "--remote-control":
+            if i + 1 < len(toks) and not toks[i + 1].startswith("-"):
+                i += 1                      # skip the old name too
+        elif not t.startswith("--remote-control="):
+            rest.append(t)
+        i += 1
+new = 'CLAUDE_ARGS="' + " ".join(["--remote-control", name] + rest) + '"'
+res = []
+for i, l in enumerate(lines):
+    if l.startswith("CLAUDE_ARGS="):
+        if i == last:
+            res.append(new)
+    else:
+        res.append(l)
+if last is None:
+    while res and res[-1] == "":
+        res.pop()
+    res.append(new)
+with open(out, "w", encoding="utf-8") as fh:
+    fh.write("\n".join(res).rstrip("\n") + "\n")
+PY
+    commit_file "$ROOT$CONF.new.$$" "$ROOT$CONF"
+    say "  Remote-Control-Name: $REMOTE_NAME (CLAUDE_ARGS)"
+fi
 chmod 644 "$ROOT$CONF"
 say "  Konfiguration: $CONF"
 

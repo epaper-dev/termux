@@ -11,6 +11,8 @@ jobs:
         run: bash tests/test_daemon.sh
       - name: claude() wrapper in the generated .bashrc (stubbed claude)
         run: bash tests/test_claude_wrapper.sh
+      - name: Remote Control name (install.sh / install-guest.sh, stubbed proot-distro)
+        run: bash tests/test_remote_name.sh
       - name: ShellCheck
         run: |
           sudo apt-get install -y shellcheck
@@ -18,4 +20,4 @@ jobs:
             install.sh uninstall.sh \
             termux/bin/rootbridge termux/bin/rootbridge-daemon termux/lib/rootbridge-lib.sh \
             guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude \
-            guest/install-guest.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/headless-proof.sh
+            guest/install-guest.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/test_remote_name.sh tests/headless-proof.sh

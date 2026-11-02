@@ -3,11 +3,12 @@
 # (not inside proot): the daemon needs real `su` outside proot.
 #
 #   bash install.sh [--no-guest] [--no-boot] [--no-migrate]
-#                   [--autonomous yes|no|ask] [--no-deps-check]
+#                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME]
 #
 # What it does (idempotent, with backups):
 #   1. installs rootbridge + rootbridge-daemon into $PREFIX/bin
-#   2. config ~/.config/termux-root-bridge/config, tmux clipboard settings
+#   2. config ~/.config/termux-root-bridge/config (--remote-name NAME is stored there as
+#      REMOTE_NAME and reused by every later install), tmux clipboard settings
 #   3. autostart block in ~/.bashrc, Termux:Widget shortcuts, optional boot script
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings) via proot-distro
@@ -22,6 +23,8 @@ BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
 DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DEPS=1; AUTONOMOUS=ask
+REMOTE_NAME=""; REMOTE_NAME_SET=0
+NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-guest) DO_GUEST=0 ;;
@@ -29,11 +32,19 @@ while [ $# -gt 0 ]; do
         --no-migrate) DO_MIGRATE=0 ;;
         --no-deps-check) DEPS=0 ;;
         --autonomous) AUTONOMOUS="$2"; shift ;;
-        -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --remote-name)
+            [ $# -ge 2 ] || { echo "--remote-name braucht einen Namen" >&2; exit 2; }
+            REMOTE_NAME="$2"; REMOTE_NAME_SET=1; shift ;;
+        -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
 done
+
+if [ "$REMOTE_NAME_SET" = 1 ] && ! [[ "$REMOTE_NAME" =~ $NAME_RE ]]; then
+    echo "--remote-name: ungültiger Name '$REMOTE_NAME' (erlaubt: Buchstaben, Ziffern, . _ -; max. 64 Zeichen; nicht mit - beginnen)" >&2
+    exit 2
+fi
 
 say() { printf '%s\n' "$*"; }
 die() { echo "install.sh: $*" >&2; exit 1; }
@@ -141,8 +152,26 @@ SESSION=ubuntu
 TICKET_TTL=1800
 # SU_ARGS=-mm -c      # global mount namespace (Magisk), if paths look empty
 AUTOSTART_DELAY=3
+# REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); set with install.sh --remote-name
 EOF
     say "  neu: $CFG"
+fi
+if [ "$REMOTE_NAME_SET" = 1 ]; then
+    # store the name in the Termux config: it survives a reinstall of the guest
+    tmp="$CFG.new.$$"
+    cp "$CFG" "$tmp"
+    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
+    if grep -q '^REMOTE_NAME=' "$tmp"; then
+        sed -i "s|^REMOTE_NAME=.*|REMOTE_NAME=$REMOTE_NAME|" "$tmp"
+    else
+        printf 'REMOTE_NAME=%s\n' "$REMOTE_NAME" >> "$tmp"
+    fi
+    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  Remote-Control-Name gespeichert: $REMOTE_NAME"; fi
+else
+    # no option given: reuse the name stored by an earlier install
+    v="$(sed -n 's/^REMOTE_NAME=//p' "$CFG" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; say "  Remote-Control-Name aus der Konfig: $REMOTE_NAME"; fi
 fi
 TMP_SNIP="$(mktemp)"; cp "$REPO/termux/tmux.conf.snippet" "$TMP_SNIP"
 set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
@@ -211,8 +240,9 @@ if [ "$DO_GUEST" = 1 ]; then
     STAGE="$GROOT/var/tmp/termux-root-bridge-install"
     rm -rf "$STAGE"; mkdir -p "$STAGE"
     cp -r "$REPO/guest/." "$STAGE/"
-    proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/install-guest.sh \
-        --src /var/tmp/termux-root-bridge-install --autonomous "$AUTONOMOUS"
+    GUEST_ARGS=(--src /var/tmp/termux-root-bridge-install --autonomous "$AUTONOMOUS")
+    if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
+    proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/install-guest.sh "${GUEST_ARGS[@]}"
     rm -rf "$STAGE"
 else
     say "  übersprungen (--no-guest)"
