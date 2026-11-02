@@ -16,6 +16,12 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   optional Termux:Boot script.
 * Idempotent installers/uninstaller with change-only backups and a staging root; migration of the v1 bridge.
 * `tests/headless-proof.sh` — run yourself to prove that the hook's `ask` holds in bypass-permissions mode.
+* Guest `CLAUDE_ARGS` (`/etc/termux-root-bridge.conf`): the `claude()` function takes a `--remote-control <name>` from
+  it, so manual starts show up under the same name as the autostart. `tests/test_claude_wrapper.sh` (22 checks, stubbed
+  `claude`, staging root).
+
+### Fixed
+* `install-guest.sh --root DIR` failed when the guest home did not exist below `DIR`.
 
 ### Removed
 * `root-bridge-watch.sh`, `root-bridge-confirm.sh` (tmux popup), `ubuntu-toggle.sh`, `ubuntu-switch.sh`, v1 widgets.

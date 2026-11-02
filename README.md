@@ -102,7 +102,12 @@ Short version (details and troubleshooting: [docs/LOGIN.md](docs/LOGIN.md)):
 Termux: `~/.config/termux-root-bridge/config` (parsed as data, never executed): `DISTRO`, `WORKDIR`, `SESSION`,
 `TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `CLAUDE_ARGS`.
 Guest: `/etc/termux-root-bridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
-`TTY_CONFIRM`, `PROTECTED_PATHS`.
+`TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`.
+
+`CLAUDE_ARGS` in the guest file holds extra arguments for the autostart (`rootbridge-claude`), e.g.
+`CLAUDE_ARGS="--remote-control android --continue"` to show the session as "android" in the Remote Control
+view and resume the last session. The `claude()` shell function reads only the Remote Control name from it
+(never `--continue`) and leaves it out for `-p`, `--version` and `--help`.
 
 ## What is verified
 

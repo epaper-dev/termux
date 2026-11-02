@@ -230,6 +230,7 @@ fi
 
 # guest ~/.bashrc: claude() wrapper with browser hand-off and bypass availability
 B="$ROOT$HOME_DIR/.bashrc"
+mkdir -p "$(dirname "$B")"
 touch "$B"
 cp "$B" "$B.new.$$"
 strip_block "$B.new.$$"
@@ -238,9 +239,18 @@ cat >> "$B.new.$$" <<EOF
 
 $BEGIN
 # Browser hand-off for logins (/login, /mcp) and bypass mode selectable with Shift+Tab.
+# A Remote Control name set in CLAUDE_ARGS ($CONF) is applied here too (the name only, no other flags).
 claude() {
+    local conf="\${ROOTBRIDGE_CONF:-$CONF}" name="" rc=()
+    if [ -r "\$conf" ]; then
+        name="\$(sed -n 's/^CLAUDE_ARGS=.*--remote-control[ =]\([A-Za-z0-9._][A-Za-z0-9._-]*\).*/\1/p' "\$conf" | tail -n 1)"
+    fi
+    [ -n "\$name" ] && rc=(--remote-control "\$name")
+    case " \$* " in
+        *" -p "*|*" --print "*|*" --remote-control"*|*" -v "*|*" --version "*|*" -h "*|*" --help "*) rc=() ;;
+    esac
     case "\${1:-}" in
-        ""|-*) IS_SANDBOX=1 BROWSER=$BINDIR/rootbridge-open command claude --allow-dangerously-skip-permissions "\$@" ;;
+        ""|-*) IS_SANDBOX=1 BROWSER=$BINDIR/rootbridge-open command claude --allow-dangerously-skip-permissions "\${rc[@]}" "\$@" ;;
         *)     BROWSER=$BINDIR/rootbridge-open command claude "\$@" ;;
     esac
 }

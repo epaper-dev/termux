@@ -9,6 +9,8 @@ jobs:
         run: python3 -I -m unittest discover -s tests -p 'test_*.py'
       - name: Integration test (daemon, client, installers' helpers)
         run: bash tests/test_daemon.sh
+      - name: claude() wrapper in the generated .bashrc (stubbed claude)
+        run: bash tests/test_claude_wrapper.sh
       - name: ShellCheck
         run: |
           sudo apt-get install -y shellcheck
@@ -16,4 +18,4 @@ jobs:
             install.sh uninstall.sh \
             termux/bin/rootbridge termux/bin/rootbridge-daemon termux/lib/rootbridge-lib.sh \
             guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude \
-            guest/install-guest.sh tests/test_daemon.sh tests/headless-proof.sh
+            guest/install-guest.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/headless-proof.sh
