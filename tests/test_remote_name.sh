@@ -112,7 +112,9 @@ while [ $# -gt 0 ]; do
 done
 exec bash "$script" --root "$STUB_GUEST_ROOT" "${args[@]}"
 EOF
-chmod +x "$T/stubs/proot-distro"
+# install.sh reloads the Termux settings after writing colors.properties: never the real one
+printf '#!/bin/bash\nexit 0\n' > "$T/stubs/termux-reload-settings"
+chmod +x "$T/stubs/proot-distro" "$T/stubs/termux-reload-settings"
 export STUB_LOG="$T/proot.log" STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$GUEST_ROOT"
 : > "$STUB_LOG"
 [ -x "$T/stubs/proot-distro" ] && [ -d "$P/bin" ] || { echo "ABBRUCH: Testumgebung unvollständig" >&2; exit 1; }

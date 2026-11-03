@@ -25,6 +25,17 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `CLAUDE_ARGS` (`--remote-control NAME`, other arguments stay, a new line also gets `--continue`).
   `tests/test_remote_name.sh` (51 checks, stubbed `proot-distro`, fake HOME/PREFIX).
 
+* Light colour scheme: `install.sh` writes `~/.termux/colors.properties` (`termux/colors.properties`; the previous file
+  is kept as `*.bak-<timestamp>`, a changed file triggers `termux-reload-settings` at once). The autostart block in
+  `~/.bashrc` runs `termux-reload-settings` at every start of an interactive Termux shell **before** `rootbridge start`
+  (so before `claude update`), also with `ROOTBRIDGE_NO_AUTOSTART`, but not inside tmux; the Termux:Widget shortcuts do
+  the same. `install.sh --no-colors` skips the colours and the theme.
+* Claude Code theme: `install.sh` passes `--theme light` to `install-guest.sh`, which sets `"theme": "light"` in
+  `~/.claude/settings.json` (new `settings_set` helper: other keys stay, nothing is written or backed up when the value
+  is already there, a file that is not valid JSON is left alone). `install-guest.sh --theme NAME` accepts `dark`, `light`,
+  `light-daltonized`, `dark-daltonized`, `light-ansi`, `dark-ansi`. `tests/test_colors_theme.sh` (82 checks, stubbed
+  `proot-distro`, `termux-reload-settings` and `rootbridge`).
+
 ### Fixed
 * `install-guest.sh --root DIR` failed when the guest home did not exist below `DIR`.
 * README listed `CLAUDE_ARGS` in the Termux config, but only the guest config is used for it.

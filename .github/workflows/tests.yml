@@ -13,6 +13,8 @@ jobs:
         run: bash tests/test_claude_wrapper.sh
       - name: Remote Control name (install.sh / install-guest.sh, stubbed proot-distro)
         run: bash tests/test_remote_name.sh
+      - name: Colours, reload at start and Claude Code theme (stubbed proot-distro / termux-reload-settings)
+        run: bash tests/test_colors_theme.sh
       - name: ShellCheck
         run: |
           sudo apt-get install -y shellcheck
@@ -20,4 +22,4 @@ jobs:
             install.sh uninstall.sh \
             termux/bin/rootbridge termux/bin/rootbridge-daemon termux/lib/rootbridge-lib.sh \
             guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude \
-            guest/install-guest.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/test_remote_name.sh tests/headless-proof.sh
+            guest/install-guest.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/test_remote_name.sh tests/test_colors_theme.sh tests/headless-proof.sh

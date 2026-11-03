@@ -2,11 +2,14 @@
 # install-guest.sh - guest (proot-distro Ubuntu) part of termux-root-bridge.
 # Normally started by ../install.sh; can also be run by hand as root in the guest.
 #
-#   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME] [--uninstall]
+#   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
+#                    [--theme NAME] [--uninstall]
 #
 #   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
 #   --autonomous      write skipDangerousModePermissionPrompt into ~/.claude/settings.json
+#   --theme NAME      set the Claude Code theme in ~/.claude/settings.json (dark, light,
+#                     light-daltonized, dark-daltonized, light-ansi, dark-ansi); other keys stay
 #   --remote-name N   name shown in the Remote Control view (claude.ai/code): sets
 #                     `--remote-control N` in CLAUDE_ARGS of /etc/termux-root-bridge.conf
 #                     (other arguments stay; a new line also gets --continue)
@@ -20,6 +23,7 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT=""
 AUTONOMOUS=ask
 REMOTE_NAME=""; REMOTE_NAME_SET=0
+THEME=""; THEME_SET=0
 UNINSTALL=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -29,6 +33,9 @@ while [ $# -gt 0 ]; do
         --remote-name)
             [ $# -ge 2 ] || { echo "--remote-name braucht einen Namen" >&2; exit 2; }
             REMOTE_NAME="$2"; REMOTE_NAME_SET=1; shift 2 ;;
+        --theme)
+            [ $# -ge 2 ] || { echo "--theme braucht einen Namen" >&2; exit 2; }
+            THEME="$2"; THEME_SET=1; shift 2 ;;
         --uninstall) UNINSTALL=1; shift ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
@@ -37,6 +44,14 @@ done
 if [ "$REMOTE_NAME_SET" = 1 ] && ! [[ "$REMOTE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
     echo "--remote-name: ungültiger Name '$REMOTE_NAME' (erlaubt: Buchstaben, Ziffern, . _ -; max. 64 Zeichen; nicht mit - beginnen)" >&2
     exit 2
+fi
+
+if [ "$THEME_SET" = 1 ]; then
+    case "$THEME" in
+        dark|light|light-daltonized|dark-daltonized|light-ansi|dark-ansi) ;;
+        *) echo "--theme: ungültiger Name '$THEME' (erlaubt: dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi)" >&2
+           exit 2 ;;
+    esac
 fi
 
 STAMP="$(date +%Y%m%d%H%M%S)"
@@ -119,6 +134,40 @@ with open(out, "w", encoding="utf-8") as fh:
     json.dump(cur, fh, indent=2, ensure_ascii=False)
     fh.write("\n")
 PY
+}
+
+# settings_set <key> <json-value>: set one key in the user's ~/.claude/settings.json.
+# All other keys stay; nothing is written (and nothing backed up) if the value is already
+# there; a file that is not valid JSON is left alone with a warning.
+settings_set() {
+    local s="$ROOT$HOME_DIR/.claude/settings.json" rc=0
+    mkdir -p "$(dirname "$s")"
+    python3 -I - "$s" "$s.new.$$" "$1" "$2" <<'PY' || rc=$?
+import json, sys
+path, out, key, raw = sys.argv[1:5]
+value = json.loads(raw)
+try:
+    with open(path, encoding="utf-8") as fh:
+        cur = json.load(fh)
+except FileNotFoundError:
+    cur = {}
+except (OSError, ValueError):
+    sys.exit(3)
+if not isinstance(cur, dict):
+    sys.exit(3)
+if key in cur and cur[key] == value:
+    sys.exit(4)
+cur[key] = value
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump(cur, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+PY
+    case "$rc" in
+        0) commit_file "$s.new.$$" "$s"; say "  ~/.claude/settings.json: $1=$2" ;;
+        4) say "  ~/.claude/settings.json: $1=$2 (schon gesetzt)" ;;
+        3) say "  Hinweis: ~/.claude/settings.json ist kein gültiges JSON-Objekt - $1 nicht gesetzt." ;;
+        *) rm -f "$s.new.$$"; echo "settings_set: Fehler ($rc)" >&2; return 1 ;;
+    esac
 }
 
 unmerge_managed() {
@@ -263,22 +312,12 @@ if [ "$AUTONOMOUS" = ask ]; then
     fi
 fi
 if [ "$AUTONOMOUS" = yes ]; then
-    mkdir -p "$ROOT$HOME_DIR/.claude"
-    S="$ROOT$HOME_DIR/.claude/settings.json"
-    python3 -I - "$S" "$S.new.$$" <<'PY'
-import json, sys
-path, out = sys.argv[1:3]
-try:
-    cur = json.load(open(path, encoding="utf-8"))
-except (OSError, ValueError):
-    cur = {}
-cur["skipDangerousModePermissionPrompt"] = True
-with open(out, "w", encoding="utf-8") as fh:
-    json.dump(cur, fh, indent=2, ensure_ascii=False)
-    fh.write("\n")
-PY
-    commit_file "$S.new.$$" "$S"
-    say "  ~/.claude/settings.json: skipDangerousModePermissionPrompt=true"
+    settings_set skipDangerousModePermissionPrompt true
+fi
+
+# Claude Code theme (only when asked for: install.sh passes --theme unless --no-colors)
+if [ "$THEME_SET" = 1 ]; then
+    settings_set theme "\"$THEME\""
 fi
 
 # guest ~/.bashrc: claude() wrapper with browser hand-off and bypass availability

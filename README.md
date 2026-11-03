@@ -68,8 +68,15 @@ Then open a new Termux session. It starts the daemon, counts down 3 s (press a k
 runs `claude update` and starts Claude Code. Claude still **starts in plan mode** (from your `settings.json`);
 press **Shift+Tab** to switch to *bypass permissions*.
 
-Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--autonomous yes|no|ask`, `--remote-name NAME`. The installer
-is idempotent, backs up what it changes, and migrates the old v1 popup bridge if it finds one.
+Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--autonomous yes|no|ask`, `--remote-name NAME`.
+The installer is idempotent, backs up what it changes, and migrates the old v1 popup bridge if it finds one.
+
+**Colours and theme.** Unless you pass `--no-colors`, the installer writes a light colour scheme to
+`~/.termux/colors.properties` (your previous file is kept as `colors.properties.bak-<timestamp>`) and sets
+`"theme": "light"` in the guest's `~/.claude/settings.json` (other keys stay). Every interactive Termux shell runs
+`termux-reload-settings` *before* the autostart, so the colours are loaded before `claude update` and Claude Code
+start; the Termux:Widget shortcuts do the same. To change the look, edit `termux/colors.properties` and run
+`install.sh` again.
 
 **Fixed name in the Remote Control view** (claude.ai/code): `bash install.sh --remote-name android`. **On a new
 device** (or after wiping Termux) pass the option on the first install, because there is no Termux config yet that

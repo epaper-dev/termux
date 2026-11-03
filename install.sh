@@ -2,16 +2,19 @@
 # install.sh - termux-root-bridge v2 installer. Run it in a TERMUX shell
 # (not inside proot): the daemon needs real `su` outside proot.
 #
-#   bash install.sh [--no-guest] [--no-boot] [--no-migrate]
+#   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors]
 #                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME]
 #
 # What it does (idempotent, with backups):
 #   1. installs rootbridge + rootbridge-daemon into $PREFIX/bin
 #   2. config ~/.config/termux-root-bridge/config (--remote-name NAME is stored there as
 #      REMOTE_NAME and reused by every later install), tmux clipboard settings
-#   3. autostart block in ~/.bashrc, Termux:Widget shortcuts, optional boot script
+#   3. light colour scheme ~/.termux/colors.properties (--no-colors skips it and the
+#      Claude Code theme), autostart block in ~/.bashrc (reloads the Termux settings
+#      before Claude Code starts), Termux:Widget shortcuts, optional boot script
 #   4. migrates the old popup based bridge (v1) away
-#   5. installs the guest part (hooks, androidsu, managed settings) via proot-distro
+#   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
+#      theme "light") via proot-distro
 
 set -eu
 
@@ -22,7 +25,8 @@ STAMP="$(date +%Y%m%d%H%M%S)"
 BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
-DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DEPS=1; AUTONOMOUS=ask
+DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DEPS=1; AUTONOMOUS=ask
+CLAUDE_THEME=light
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 while [ $# -gt 0 ]; do
@@ -30,12 +34,13 @@ while [ $# -gt 0 ]; do
         --no-guest) DO_GUEST=0 ;;
         --no-boot) DO_BOOT=0 ;;
         --no-migrate) DO_MIGRATE=0 ;;
+        --no-colors) DO_COLORS=0 ;;
         --no-deps-check) DEPS=0 ;;
         --autonomous) AUTONOMOUS="$2"; shift ;;
         --remote-name)
             [ $# -ge 2 ] || { echo "--remote-name braucht einen Namen" >&2; exit 2; }
             REMOTE_NAME="$2"; REMOTE_NAME_SET=1; shift ;;
-        -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -78,6 +83,19 @@ inst() {
     sed "1s|^#!.*|#!$PREFIX/bin/bash|" "$1" > "$tmp"
     chmod 755 "$tmp"
     if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 0; fi
+    backup "$2"
+    mv -f "$tmp" "$2"
+    say "  installiert: $2"
+}
+
+# put_data <src> <dest> <mode>: copy a data file as it is (no shebang rewrite); back up only on
+# change. Returns 0 if the file was written, 1 if it was already identical.
+put_data() {
+    local tmp="$2.new.$$"
+    mkdir -p "$(dirname "$2")"
+    cp "$1" "$tmp"
+    chmod "$3" "$tmp"
+    if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 1; fi
     backup "$2"
     mv -f "$tmp" "$2"
     say "  installiert: $2"
@@ -176,13 +194,24 @@ fi
 TMP_SNIP="$(mktemp)"; cp "$REPO/termux/tmux.conf.snippet" "$TMP_SNIP"
 set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
 
-say "== 3/5 Autostart, Widgets"
+say "== 3/5 Farben, Autostart, Widgets"
+if [ "$DO_COLORS" = 1 ]; then
+    # chmod 600: Termux itself creates the file that way
+    if put_data "$REPO/termux/colors.properties" "$HOME/.termux/colors.properties" 600; then
+        command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
+    fi
+else
+    say "  Farbschema übersprungen (--no-colors)"
+fi
 TMP_RC="$(mktemp)"
 cat > "$TMP_RC" <<'EOF'
 alias ubuntu='rootbridge attach'
-if [[ $- == *i* ]] && [ -z "${TMUX:-}" ] && [ -z "${ROOTBRIDGE_NO_AUTOSTART:-}" ] \
-        && command -v rootbridge >/dev/null 2>&1; then
-    rootbridge start
+if [[ $- == *i* ]] && [ -z "${TMUX:-}" ]; then
+    # load ~/.termux/colors.properties before Claude Code (and `claude update`) starts
+    if command -v termux-reload-settings >/dev/null 2>&1; then termux-reload-settings; fi
+    if [ -z "${ROOTBRIDGE_NO_AUTOSTART:-}" ] && command -v rootbridge >/dev/null 2>&1; then
+        rootbridge start
+    fi
 fi
 EOF
 set_block "$HOME/.bashrc" "$TMP_RC"; rm -f "$TMP_RC"
@@ -242,6 +271,7 @@ if [ "$DO_GUEST" = 1 ]; then
     cp -r "$REPO/guest/." "$STAGE/"
     GUEST_ARGS=(--src /var/tmp/termux-root-bridge-install --autonomous "$AUTONOMOUS")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
+    if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
     proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/install-guest.sh "${GUEST_ARGS[@]}"
     rm -rf "$STAGE"
 else
@@ -253,3 +283,6 @@ say "Fertig. Weiter:"
 say "  rootbridge status        # Zustand prüfen"
 say "  rootbridge start         # Daemon + Claude Code (startet auch beim Öffnen von Termux)"
 say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."
+if [ "$DO_COLORS" = 1 ]; then
+    say "Farben: ~/.termux/colors.properties wird bei jedem Start geladen; Claude Code nutzt das Theme '$CLAUDE_THEME'."
+fi
