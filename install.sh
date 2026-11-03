@@ -4,6 +4,7 @@
 #
 #   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors]
 #                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME]
+#                   [--apt-upgrade daily|always|off | --no-apt-upgrade]
 #
 # What it does (idempotent, with backups):
 #   1. installs rootbridge + rootbridge-daemon into $PREFIX/bin
@@ -14,7 +15,10 @@
 #      before Claude Code starts), Termux:Widget shortcuts, optional boot script
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
-#      theme "light-ansi") via proot-distro
+#      theme "light-ansi") via proot-distro. The guest runs apt-get update + upgrade
+#      at the start of the Claude Code session, at most once a day (--no-apt-upgrade
+#      turns it off, --apt-upgrade always runs it at every start; the choice is stored
+#      in the Termux config as APT_UPGRADE and reused by every later install)
 
 set -eu
 
@@ -28,7 +32,9 @@ END='# <<< termux-root-bridge <<<'
 DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DEPS=1; AUTONOMOUS=ask
 CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
 REMOTE_NAME=""; REMOTE_NAME_SET=0
+APT_MODE=""; APT_MODE_SET=0
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+APT_RE='^(daily|always|off)$'
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-guest) DO_GUEST=0 ;;
@@ -40,7 +46,11 @@ while [ $# -gt 0 ]; do
         --remote-name)
             [ $# -ge 2 ] || { echo "--remote-name braucht einen Namen" >&2; exit 2; }
             REMOTE_NAME="$2"; REMOTE_NAME_SET=1; shift ;;
-        -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --apt-upgrade)
+            [ $# -ge 2 ] || { echo "--apt-upgrade braucht daily, always oder off" >&2; exit 2; }
+            APT_MODE="$2"; APT_MODE_SET=1; shift ;;
+        --no-apt-upgrade) APT_MODE=off; APT_MODE_SET=1 ;;
+        -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -48,6 +58,11 @@ done
 
 if [ "$REMOTE_NAME_SET" = 1 ] && ! [[ "$REMOTE_NAME" =~ $NAME_RE ]]; then
     echo "--remote-name: ungültiger Name '$REMOTE_NAME' (erlaubt: Buchstaben, Ziffern, . _ -; max. 64 Zeichen; nicht mit - beginnen)" >&2
+    exit 2
+fi
+
+if [ "$APT_MODE_SET" = 1 ] && ! [[ "$APT_MODE" =~ $APT_RE ]]; then
+    echo "--apt-upgrade: ungültiger Wert '$APT_MODE' (erlaubt: daily, always, off)" >&2
     exit 2
 fi
 
@@ -171,6 +186,7 @@ TICKET_TTL=1800
 # SU_ARGS=-mm -c      # global mount namespace (Magisk), if paths look empty
 AUTOSTART_DELAY=3
 # REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); set with install.sh --remote-name
+# APT_UPGRADE=daily     # apt-get update + upgrade in the guest at session start: daily | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
 EOF
     say "  neu: $CFG"
 fi
@@ -190,6 +206,22 @@ else
     v="$(sed -n 's/^REMOTE_NAME=//p' "$CFG" | tail -n 1)"
     v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
     if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; say "  Remote-Control-Name aus der Konfig: $REMOTE_NAME"; fi
+fi
+if [ "$APT_MODE_SET" = 1 ]; then
+    # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
+    tmp="$CFG.new.$$"
+    cp "$CFG" "$tmp"
+    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
+    if grep -q '^APT_UPGRADE=' "$tmp"; then
+        sed -i "s|^APT_UPGRADE=.*|APT_UPGRADE=$APT_MODE|" "$tmp"
+    else
+        printf 'APT_UPGRADE=%s\n' "$APT_MODE" >> "$tmp"
+    fi
+    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  apt-Modus gespeichert: $APT_MODE"; fi
+else
+    v="$(sed -n 's/^APT_UPGRADE=//p' "$CFG" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    if [[ "$v" =~ $APT_RE ]]; then APT_MODE="$v"; say "  apt-Modus aus der Konfig: $APT_MODE"; fi
 fi
 TMP_SNIP="$(mktemp)"; cp "$REPO/termux/tmux.conf.snippet" "$TMP_SNIP"
 set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
@@ -272,6 +304,7 @@ if [ "$DO_GUEST" = 1 ]; then
     GUEST_ARGS=(--src /var/tmp/termux-root-bridge-install --autonomous "$AUTONOMOUS")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
+    if [ -n "$APT_MODE" ]; then GUEST_ARGS+=(--apt-upgrade "$APT_MODE"); fi
     proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/install-guest.sh "${GUEST_ARGS[@]}"
     rm -rf "$STAGE"
 else

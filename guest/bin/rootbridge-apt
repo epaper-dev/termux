@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# rootbridge-apt - apt-get update + upgrade for the guest, at most once a day.
+# Started by rootbridge-claude before `claude update`; can also be run by hand.
+# It never blocks the start: every problem is reported and the exit code is always 0.
+#
+# Config (/etc/termux-root-bridge.conf, read as data):
+#   APT_UPGRADE=daily|always|off   daily (default): at most once per 24 h after a success;
+#                                  always: at every start; off: do nothing
+#   APT_TIMEOUT=600                seconds allowed for `apt-get upgrade` (60-3600)
+#   APT_HOLD="rust-coreutils ..."  installed packages that are held back from the upgrade
+#                                  (default: the uutils/GNU coreutils packages; empty = none)
+# Log: /var/log/termux-root-bridge-apt.log        Last success: /var/lib/termux-root-bridge/apt-last-success
+#
+# Why the safeguards (proot-distro, Ubuntu 26.04): coreutils is rust-coreutils (uutils), a multicall
+# binary that aborts with "Security violation" under proot's link2symlink, so
+#   * dpkg runs maintainer scripts with -o DPkg::Path including /usr/local/bin, where the
+#     GNU-named symlinks that make the guest usable live (apt's default path lacks it),
+#   * the coreutils packages are held: upgrading the multicall binary itself would break the guest.
+
+# /usr/local/bin first: it holds the GNU-named coreutils symlinks. The tests set
+# ROOTBRIDGE_APT_KEEP_PATH so that their stub directory stays in front.
+[ -n "${ROOTBRIDGE_APT_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-root-bridge.conf}"
+STATE_DIR="${ROOTBRIDGE_APT_STATE_DIR:-/var/lib/termux-root-bridge}"
+STAMP="$STATE_DIR/apt-last-success"
+LOG="${ROOTBRIDGE_APT_LOG:-/var/log/termux-root-bridge-apt.log}"
+DEFAULT_HOLD="rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"
+
+# conf_raw KEY: value of KEY (quotes stripped); fails if the key is not there, even if empty
+conf_raw() {
+    [ -r "$CONF" ] && grep -q "^$1=" "$CONF" || return 1
+    local v
+    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    printf '%s' "$v"
+}
+
+mode="$(conf_raw APT_UPGRADE || true)"
+mode="${mode:-daily}"
+case "$mode" in
+    off) exit 0 ;;
+    daily|always) ;;
+    *) echo "apt: unbekannter Wert APT_UPGRADE=$mode (erlaubt: daily, always, off) - übersprungen" >&2
+       exit 0 ;;
+esac
+
+if [ "$(id -u)" -ne 0 ] && [ -z "${ROOTBRIDGE_APT_ALLOW_NONROOT:-}" ]; then
+    echo "apt: braucht root - übersprungen"
+    exit 0
+fi
+
+now="$(date +%s)"
+if [ "$mode" = daily ] && [ -r "$STAMP" ]; then
+    last="$(head -n 1 "$STAMP" 2>/dev/null)"
+    if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt 86400 ]; then
+        echo "apt: vor $(( (now - last) / 3600 )) h erfolgreich aktualisiert - übersprungen (APT_UPGRADE=daily)"
+        exit 0
+    fi
+fi
+
+tmo="$(conf_raw APT_TIMEOUT || true)"
+if ! { [[ "$tmo" =~ ^[0-9]{2,4}$ ]] && [ "$tmo" -ge 60 ] && [ "$tmo" -le 3600 ]; }; then tmo=600; fi
+
+hold_re='^[a-z0-9.+ -]*$'
+if hold="$(conf_raw APT_HOLD)"; then
+    [[ "$hold" =~ $hold_re ]] || hold="$DEFAULT_HOLD"
+else
+    hold="$DEFAULT_HOLD"
+fi
+
+mkdir -p "$(dirname "$LOG")" 2>/dev/null
+# keep the log small: cut it to its last 2000 lines when it passed 256 KiB
+if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 262144 ]; then
+    tail -n 2000 "$LOG" > "$LOG.new.$$" && mv -f "$LOG.new.$$" "$LOG"
+fi
+
+# run_logged <cmd...>: show the output and append it to the log; returns the command's exit code
+run_logged() {
+    "$@" 2>&1 | tee -a "$LOG"
+    return "${PIPESTATUS[0]}"
+}
+
+apt_env=(DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none NEEDRESTART_MODE=a)
+apt_opts=(-y
+    -o "DPkg::Path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    -o "DPkg::Lock::Timeout=60"
+    -o "Dpkg::Options::=--force-confold" -o "Dpkg::Options::=--force-confdef")
+net_opts=(-o "Acquire::http::Timeout=15" -o "Acquire::https::Timeout=15" -o "Acquire::Retries=1")
+
+echo "== apt update + upgrade (APT_UPGRADE=$mode, Log: $LOG)"
+printf '\n=== %s apt (mode=%s)\n' "$(date -Is)" "$mode" >> "$LOG"
+
+if ! run_logged env "${apt_env[@]}" timeout 120 apt-get "${apt_opts[@]}" "${net_opts[@]}" update; then
+    echo "apt: update fehlgeschlagen (kein Netz?) - Upgrade übersprungen, nächster Versuch beim nächsten Start."
+    exit 0
+fi
+
+# hold back the packages that must not be upgraded under proot (only installed ones)
+held="$(apt-mark showhold 2>/dev/null)"
+for pkg in $hold; do
+    case "$(dpkg-query -W -f='${db:Status-Abbrev}' "$pkg" 2>/dev/null)" in
+        ii*) ;;
+        *) continue ;;
+    esac
+    if ! printf '%s\n' "$held" | grep -qx "$pkg"; then
+        if apt-mark hold "$pkg" >> "$LOG" 2>&1; then echo "apt: $pkg auf hold gesetzt (Upgrade würde unter proot brechen)"; fi
+    fi
+done
+
+if ! run_logged env "${apt_env[@]}" timeout "$tmo" apt-get "${apt_opts[@]}" upgrade; then
+    echo "apt: upgrade fehlgeschlagen oder nach ${tmo}s abgebrochen - siehe $LOG. Der Start geht weiter."
+    exit 0
+fi
+
+audit="$(dpkg --audit 2>&1)"
+if [ -n "$audit" ]; then
+    printf '%s\n' "$audit" >> "$LOG"
+    echo "apt: WARNUNG - dpkg meldet unvollständig konfigurierte Pakete. Reparatur:"
+    echo "     apt-get -o DPkg::Path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin --fix-broken install"
+    exit 0
+fi
+
+mkdir -p "$STATE_DIR" && date +%s > "$STAMP"
+echo "apt: fertig."
+exit 0

@@ -3,7 +3,7 @@
 # Normally started by ../install.sh; can also be run by hand as root in the guest.
 #
 #   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
-#                    [--theme NAME] [--uninstall]
+#                    [--theme NAME] [--apt-upgrade daily|always|off] [--uninstall]
 #
 #   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
@@ -13,6 +13,10 @@
 #   --remote-name N   name shown in the Remote Control view (claude.ai/code): sets
 #                     `--remote-control N` in CLAUDE_ARGS of /etc/termux-root-bridge.conf
 #                     (other arguments stay; a new line also gets --continue)
+#   --apt-upgrade M   APT_UPGRADE in /etc/termux-root-bridge.conf: rootbridge-apt runs apt-get
+#                     update + upgrade at the start of the Claude Code session (daily = at most
+#                     once a day, always, off). Without the option an existing value stays and a
+#                     missing one becomes "daily".
 #   --uninstall       remove everything this script installed
 #
 # Idempotent. Existing files are backed up as *.bak-<timestamp>.
@@ -24,6 +28,7 @@ ROOT=""
 AUTONOMOUS=ask
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 THEME=""; THEME_SET=0
+APT_MODE=""; APT_MODE_SET=0
 UNINSTALL=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -36,6 +41,9 @@ while [ $# -gt 0 ]; do
         --theme)
             [ $# -ge 2 ] || { echo "--theme braucht einen Namen" >&2; exit 2; }
             THEME="$2"; THEME_SET=1; shift 2 ;;
+        --apt-upgrade)
+            [ $# -ge 2 ] || { echo "--apt-upgrade braucht daily, always oder off" >&2; exit 2; }
+            APT_MODE="$2"; APT_MODE_SET=1; shift 2 ;;
         --uninstall) UNINSTALL=1; shift ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
@@ -50,6 +58,14 @@ if [ "$THEME_SET" = 1 ]; then
     case "$THEME" in
         dark|light|light-daltonized|dark-daltonized|light-ansi|dark-ansi) ;;
         *) echo "--theme: ungültiger Name '$THEME' (erlaubt: dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi)" >&2
+           exit 2 ;;
+    esac
+fi
+
+if [ "$APT_MODE_SET" = 1 ]; then
+    case "$APT_MODE" in
+        daily|always|off) ;;
+        *) echo "--apt-upgrade: ungültiger Wert '$APT_MODE' (erlaubt: daily, always, off)" >&2
            exit 2 ;;
     esac
 fi
@@ -206,9 +222,9 @@ PY
 if [ "$UNINSTALL" = 1 ]; then
     say "== Gast: Deinstallation"
     unmerge_managed
-    for f in androidsu rootbridge-open rootbridge-claude; do rm -f "$ROOT$BINDIR/$f"; done
+    for f in androidsu rootbridge-open rootbridge-claude rootbridge-apt; do rm -f "$ROOT$BINDIR/$f"; done
     [ -L "$ROOT$BINDIR/xdg-open" ] && rm -f "$ROOT$BINDIR/xdg-open"
-    rm -rf "$ROOT$LIBDIR"
+    rm -rf "$ROOT$LIBDIR" "$ROOT/var/lib/termux-root-bridge"
     rm -f "$ROOT$CONF"
     strip_block "$ROOT$HOME_DIR/.bashrc"
     say "Fertig. ($ROOT$HOME_DIR/.claude/settings.json bleibt unverändert.)"
@@ -228,6 +244,7 @@ PYTHON="$(command -v python3)"
 put "$SRC/bin/androidsu"         "$BINDIR/androidsu"
 put "$SRC/bin/rootbridge-open"   "$BINDIR/rootbridge-open"
 put "$SRC/bin/rootbridge-claude" "$BINDIR/rootbridge-claude"
+put "$SRC/bin/rootbridge-apt"    "$BINDIR/rootbridge-apt"
 put "$SRC/claude/android-root-guard.py" "$LIBDIR/android-root-guard.py"
 put "$SRC/claude/auth-url-hook.py"      "$LIBDIR/auth-url-hook.py"
 
@@ -243,10 +260,20 @@ fi
 mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"
 for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/workspace" \
-          "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" "TTY_CONFIRM=1"; do
+          "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" "TTY_CONFIRM=1" \
+          "APT_UPGRADE=daily" "APT_TIMEOUT=600" \
+          "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"; do
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"
 done
+# APT_UPGRADE from --apt-upgrade: replace the line (an existing value stays without the option)
+if [ "$APT_MODE_SET" = 1 ]; then
+    tmp="$ROOT$CONF.new.$$"
+    cp "$ROOT$CONF" "$tmp"
+    sed -i "s|^APT_UPGRADE=.*|APT_UPGRADE=$APT_MODE|" "$tmp"
+    commit_file "$tmp" "$ROOT$CONF"
+    say "  APT_UPGRADE=$APT_MODE"
+fi
 # Remote Control name -> CLAUDE_ARGS (other arguments stay; a new line also gets --continue,
 # because the name belongs to the session and --continue keeps that session)
 if [ -n "$REMOTE_NAME" ]; then

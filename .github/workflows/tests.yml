@@ -15,11 +15,13 @@ jobs:
         run: bash tests/test_remote_name.sh
       - name: Colours, reload at start and Claude Code theme (stubbed proot-distro / termux-reload-settings)
         run: bash tests/test_colors_theme.sh
+      - name: apt update + upgrade at session start (stubbed apt-get / apt-mark / dpkg / proot-distro)
+        run: bash tests/test_apt_upgrade.sh
       - name: ShellCheck
         run: |
           sudo apt-get install -y shellcheck
           shellcheck -x -S warning \
             install.sh uninstall.sh \
             termux/bin/rootbridge termux/bin/rootbridge-daemon termux/lib/rootbridge-lib.sh \
-            guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude \
-            guest/install-guest.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/test_remote_name.sh tests/test_colors_theme.sh tests/headless-proof.sh
+            guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude guest/bin/rootbridge-apt \
+            guest/install-guest.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/test_remote_name.sh tests/test_colors_theme.sh tests/test_apt_upgrade.sh tests/headless-proof.sh

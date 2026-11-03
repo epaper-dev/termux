@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # rootbridge-claude - guest entry point (started by `rootbridge start`):
-#   1. claude update   2. Claude Code with autonomous mode available
+#   1. apt-get update + upgrade (rootbridge-apt, at most once a day, never blocks the start)
+#   2. claude update   3. Claude Code with autonomous mode available
 #
 # Plan mode stays the start mode (settings.json); Shift+Tab switches to
 # "bypass permissions" because --allow-dangerously-skip-permissions is set.
@@ -28,6 +29,10 @@ claude_bin=/root/.local/bin/claude
 if [ -z "$claude_bin" ]; then
     echo "rootbridge-claude: claude nicht gefunden. Installation: curl -fsSL https://claude.ai/install.sh | bash" >&2
     exec bash -l
+fi
+
+if command -v rootbridge-apt >/dev/null 2>&1; then
+    rootbridge-apt || true
 fi
 
 echo "== claude update"

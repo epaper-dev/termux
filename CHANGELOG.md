@@ -37,6 +37,22 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `light-daltonized`, `dark-daltonized`, `light-ansi`, `dark-ansi`. `tests/test_colors_theme.sh` (84 checks, stubbed
   `proot-distro`, `termux-reload-settings` and `rootbridge`).
 
+* Package updates in the guest: new `guest/bin/rootbridge-apt` (installed to `/usr/local/bin`), called by
+  `rootbridge-claude` before `claude update`. It runs `apt-get update` + `apt-get -y upgrade` at the start of the session,
+  **at most once per 24 h after a success** (`APT_UPGRADE=daily`, the default; `always` = every start, `off` = never).
+  Safeguards for proot-distro/Ubuntu 26.04: `-o DPkg::Path` includes `/usr/local/bin` (the uutils coreutils need the
+  GNU-named symlinks there, apt's default path lacks it), non-interactive with `--force-confold`/`--force-confdef`, short
+  network timeouts, 120 s for the update and `APT_TIMEOUT` (default 600 s) for the upgrade, the coreutils packages
+  (`APT_HOLD`, default `rust-coreutils gnu-coreutils coreutils-from-uutils coreutils`) are held back because upgrading the
+  multicall binary breaks the guest, a failure, a timeout or a missing network never stops the start and leaves no
+  success stamp (so the next start tries again), `dpkg --audit` is checked afterwards. Log:
+  `/var/log/termux-root-bridge-apt.log` (cut at 256 KiB). On by default; `install.sh --no-apt-upgrade` (or
+  `--apt-upgrade daily|always|off`) turns it off or changes it, the choice is stored in the Termux config
+  (`APT_UPGRADE`) and reused by every later install, like `REMOTE_NAME`. `install-guest.sh --apt-upgrade MODE` sets
+  `APT_UPGRADE` in `/etc/termux-root-bridge.conf` (an existing value stays without the option).
+  `tests/test_apt_upgrade.sh` (128 checks; stub `apt-get`/`apt-mark`/`dpkg`/`dpkg-query`/`timeout`/`proot-distro`, real
+  apt is never started).
+
 ### Fixed
 * `install-guest.sh --root DIR` failed when the guest home did not exist below `DIR`.
 * README listed `CLAUDE_ARGS` in the Termux config, but only the guest config is used for it.

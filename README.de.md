@@ -61,11 +61,24 @@ bash install.sh            # stellt eine Frage zum autonomen Modus
 ```
 
 Danach eine neue Termux-Sitzung öffnen. Sie startet den Daemon, zählt 3 s herunter (Taste = in Termux bleiben),
-führt `claude update` aus und startet Claude Code. Claude **startet weiter im Plan-Modus** (aus deiner
+aktualisiert die Pakete des Gasts (`apt-get update` + `upgrade`, höchstens einmal am Tag, siehe unten), führt
+`claude update` aus und startet Claude Code. Claude **startet weiter im Plan-Modus** (aus deiner
 `settings.json`); mit **Umschalt+Tab** wechselst du in *bypass permissions*.
 
-Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--autonomous yes|no|ask`, `--remote-name NAME`.
-Der Installer ist idempotent, sichert Geändertes und migriert die alte v1-Popup-Bridge.
+Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+`--apt-upgrade daily|always|off`, `--no-apt-upgrade`. Der Installer ist idempotent, sichert Geändertes und migriert die
+alte v1-Popup-Bridge.
+
+**Paket-Updates im Gast.** Standardmäßig an: Beim Start der Claude-Code-Sitzung führt `rootbridge-apt`
+`apt-get update` und `apt-get -y upgrade` aus, höchstens einmal in 24 h nach einem Erfolg (`APT_UPGRADE=daily`), und
+blockiert den Start nie (kein Netz, ein Fehler oder ein Timeout geben nur einen Hinweis aus, Claude Code startet, der
+nächste Start versucht es erneut). Zwei Schutzmaßnahmen sind unter proot-distro mit Ubuntu 26.04 wichtig: dpkg bekommt
+`-o DPkg::Path` mit `/usr/local/bin`, weil die uutils-coreutils dort die GNU-benannten Symlinks brauchen (sonst brechen
+Maintainer-Skripte mit „Security violation“ ab), und die coreutils-Pakete (`APT_HOLD`) werden zurückgehalten, weil ein
+Upgrade des Multicall-Binarys den Gast kaputt macht. Log: `/var/log/termux-root-bridge-apt.log` im Gast; gehaltene
+Pakete: `apt-mark showhold`. Abschalten mit `bash install.sh --no-apt-upgrade` (wird in der Termux-Konfig als
+`APT_UPGRADE` gespeichert, spätere Installationen behalten es, auch mit frischem Gast), bei jedem Start mit
+`--apt-upgrade always`. Von Hand: `rootbridge-apt` im Gast.
 
 **Farben und Theme.** Ohne `--no-colors` schreibt der Installer ein helles Farbschema nach
 `~/.termux/colors.properties` (deine bisherige Datei bleibt als `colors.properties.bak-<Zeitstempel>` erhalten) und

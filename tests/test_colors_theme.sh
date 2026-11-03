@@ -220,7 +220,7 @@ check "--no-guest: Gast-Installer nicht aufgerufen"   0 "$(wc -l < "$STUB_LOG" |
 # --help lists the option and is not cut off
 help_out="$(bash "$INSTALL" --help 2>&1)"
 check "--help nennt [--no-colors]"                    1 "$(printf '%s\n' "$help_out" | grep -c -- '\[--no-colors\]')"
-check "--help endet mit dem Gast-Schritt"             1 "$(printf '%s\n' "$help_out" | tail -n 1 | grep -c 'proot-distro')"
+check "--help endet mit dem Gast-Schritt"             1 "$(printf '%s\n' "$help_out" | tail -n 1 | grep -c 'every later install')"
 
 # ---------------------------------------------- 3. autostart block in ~/.bashrc
 run_bashrc() {  # run_bashrc [env assignments...]: interactive bash with the installed ~/.bashrc
