@@ -69,7 +69,9 @@ Der Installer ist idempotent, sichert Geändertes und migriert die alte v1-Popup
 
 **Farben und Theme.** Ohne `--no-colors` schreibt der Installer ein helles Farbschema nach
 `~/.termux/colors.properties` (deine bisherige Datei bleibt als `colors.properties.bak-<Zeitstempel>` erhalten) und
-setzt `"theme": "light"` in der `~/.claude/settings.json` des Gasts (andere Schlüssel bleiben). Jede interaktive
+setzt `"theme": "light-ansi"` in der `~/.claude/settings.json` des Gasts (andere Schlüssel bleiben). Die ANSI-Variante
+zeichnet mit den 16 Farben dieser Datei statt mit festen RGB-Werten und ist in Termux deutlich besser lesbar als
+`light`; jederzeit mit `/theme` umstellbar. Jede interaktive
 Termux-Shell führt `termux-reload-settings` *vor* dem Autostart aus, die Farben sind also geladen, bevor `claude update`
 und Claude Code starten; die Termux:Widget-Verknüpfungen tun dasselbe. Zum Ändern `termux/colors.properties` bearbeiten
 und `install.sh` erneut ausführen.

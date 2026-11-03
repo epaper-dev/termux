@@ -167,8 +167,8 @@ check "install.sh: läuft durch"                       0 "$?"
 check "colors.properties: Inhalt wie im Repo"         0 "$(cmp -s "$COLORS" "$CF"; echo $?)"
 check "colors.properties: Modus 600"                  600 "$(stat -c %a "$CF")"
 check "Neu geschrieben: Reload genau einmal"          1 "$(reloads)"
-check "Gast bekam --theme light"                      1 "$(grep -c -- '--theme light' "$STUB_LOG")"
-check "Gast: theme=light in settings.json"            light "$(jget "$(gsettings)" theme)"
+check "Gast bekam --theme light-ansi"                 1 "$(grep -c -- '--theme light-ansi' "$STUB_LOG")"
+check "Gast: theme=light-ansi in settings.json"       light-ansi "$(jget "$(gsettings)" theme)"
 check "Neu geschrieben: keine Sicherung"              0 "$(cbaks "$H")"
 
 cksum_before="$(cksum < "$CF")"
@@ -196,6 +196,13 @@ check "--no-colors: kein Reload durch den Installer"  0 "$(reloads)"
 check "--no-colors: kein --theme an den Gast"         0 "$(grep -c -- '--theme' "$STUB_LOG")"
 check "--no-colors: theme nicht gesetzt"              - "$(jget "$(gsettings)" theme)"
 check "--no-colors: Farbschema-Hinweis fehlt am Ende" 0 "$(grep -c '^Farben:' "$T/install.log")"
+
+# an earlier install left theme "light" (or the user picked "dark"): the installer sets light-ansi, keeps the rest
+H5="$T/home5"; mkdir -p "$H5"; rm -rf "$GUEST_ROOT"; mkdir -p "$(dirname "$(gsettings)")"
+printf '%s\n' '{"model":"opusplan","theme":"light"}' > "$(gsettings)"
+rinstall "$H5"
+check "Altes Theme 'light' wird zu light-ansi"        light-ansi "$(jget "$(gsettings)" theme)"
+check "Altes Theme: model bleibt"                     opusplan "$(jget "$(gsettings)" model)"
 
 # --no-colors leaves an existing colours file alone
 H3="$T/home3"; mkdir -p "$H3/.termux"; printf '%s\n' 'background=#abcdef' > "$H3/.termux/colors.properties"

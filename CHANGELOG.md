@@ -30,10 +30,11 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `~/.bashrc` runs `termux-reload-settings` at every start of an interactive Termux shell **before** `rootbridge start`
   (so before `claude update`), also with `ROOTBRIDGE_NO_AUTOSTART`, but not inside tmux; the Termux:Widget shortcuts do
   the same. `install.sh --no-colors` skips the colours and the theme.
-* Claude Code theme: `install.sh` passes `--theme light` to `install-guest.sh`, which sets `"theme": "light"` in
-  `~/.claude/settings.json` (new `settings_set` helper: other keys stay, nothing is written or backed up when the value
+* Claude Code theme: `install.sh` passes `--theme light-ansi` to `install-guest.sh`, which sets `"theme": "light-ansi"` in
+  `~/.claude/settings.json` (the ANSI variant uses the 16 colours of `colors.properties`; the RGB theme `light` was hard to
+  read in Termux) (new `settings_set` helper: other keys stay, nothing is written or backed up when the value
   is already there, a file that is not valid JSON is left alone). `install-guest.sh --theme NAME` accepts `dark`, `light`,
-  `light-daltonized`, `dark-daltonized`, `light-ansi`, `dark-ansi`. `tests/test_colors_theme.sh` (82 checks, stubbed
+  `light-daltonized`, `dark-daltonized`, `light-ansi`, `dark-ansi`. `tests/test_colors_theme.sh` (84 checks, stubbed
   `proot-distro`, `termux-reload-settings` and `rootbridge`).
 
 ### Fixed

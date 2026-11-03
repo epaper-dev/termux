@@ -14,7 +14,7 @@
 #      before Claude Code starts), Termux:Widget shortcuts, optional boot script
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
-#      theme "light") via proot-distro
+#      theme "light-ansi") via proot-distro
 
 set -eu
 
@@ -26,7 +26,7 @@ BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
 DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DEPS=1; AUTONOMOUS=ask
-CLAUDE_THEME=light
+CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 while [ $# -gt 0 ]; do

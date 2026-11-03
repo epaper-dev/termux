@@ -73,7 +73,9 @@ The installer is idempotent, backs up what it changes, and migrates the old v1 p
 
 **Colours and theme.** Unless you pass `--no-colors`, the installer writes a light colour scheme to
 `~/.termux/colors.properties` (your previous file is kept as `colors.properties.bak-<timestamp>`) and sets
-`"theme": "light"` in the guest's `~/.claude/settings.json` (other keys stay). Every interactive Termux shell runs
+`"theme": "light-ansi"` in the guest's `~/.claude/settings.json` (other keys stay). The ANSI variant draws with the
+16 colours of that file instead of fixed RGB values, which is much easier to read in Termux than `light`; switch
+any time with `/theme`. Every interactive Termux shell runs
 `termux-reload-settings` *before* the autostart, so the colours are loaded before `claude update` and Claude Code
 start; the Termux:Widget shortcuts do the same. To change the look, edit `termux/colors.properties` and run
 `install.sh` again.
