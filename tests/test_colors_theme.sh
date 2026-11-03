@@ -3,7 +3,8 @@
 # Claude Code theme.
 #   1. guest installer: --theme writes "theme" into ~/.claude/settings.json (staging root)
 #   2. install.sh with a fake HOME/PREFIX: colors.properties, reload, --no-colors, --theme hand-over
-#   3. the autostart block in ~/.bashrc: reload comes BEFORE `rootbridge start`
+#   3. the block in ~/.bashrc: reload in every new shell, nothing else (no autostart); an old
+#      autostart block is replaced when install.sh runs again
 #   4. Termux:Widget shortcuts reload first
 # Nothing real is touched: fake HOME/PREFIX, `proot-distro`, `termux-reload-settings` and
 # `rootbridge` are stubs that only write a log line (no pkill/tmux/clipboard, --no-migrate).
@@ -222,18 +223,42 @@ help_out="$(bash "$INSTALL" --help 2>&1)"
 check "--help nennt [--no-colors]"                    1 "$(printf '%s\n' "$help_out" | grep -c -- '\[--no-colors\]')"
 check "--help endet mit dem Gast-Schritt"             1 "$(printf '%s\n' "$help_out" | tail -n 1 | grep -c 'every later install')"
 
-# ---------------------------------------------- 3. autostart block in ~/.bashrc
-run_bashrc() {  # run_bashrc [env assignments...]: interactive bash with the installed ~/.bashrc
+# ---------------------------------------------- 3. block in ~/.bashrc
+run_bashrc() {  # run_bashrc <home> [env assignments...]: interactive bash with that ~/.bashrc
+    local home="$1"; shift
     : > "$RB_LOG"
-    env -u TMUX -u ROOTBRIDGE_NO_AUTOSTART HOME="$H" PATH="$T/stubs:$PATH" "$@" bash -i -c true > /dev/null 2>&1
+    env -u TMUX HOME="$home" PATH="$T/stubs:$PATH" "$@" bash -i -c true > /dev/null 2>&1
     tr '\n' '|' < "$RB_LOG"
 }
-check "Start in der Termux-Shell: erst Reload, dann Start"  "reload|rootbridge start|" "$(run_bashrc)"
-check "ROOTBRIDGE_NO_AUTOSTART: nur Reload"                 "reload|" "$(run_bashrc ROOTBRIDGE_NO_AUTOSTART=1)"
-check "In tmux (TMUX gesetzt): weder Reload noch Start"     "" "$(run_bashrc TMUX=/tmp/tmux-0/default,1,0)"
+check "Neues Termux-Fenster: nur Reload, kein Start"        "reload|" "$(run_bashrc "$H")"
+check "Block enthält kein 'rootbridge start'"               0 "$(grep -c 'rootbridge start' "$H/.bashrc")"
+check "Alte Variable ROOTBRIDGE_NO_AUTOSTART ändert nichts" "reload|" "$(run_bashrc "$H" ROOTBRIDGE_NO_AUTOSTART=1)"
+check "In tmux (TMUX gesetzt): weder Reload noch Start"     "" "$(run_bashrc "$H" TMUX=/tmp/tmux-0/default,1,0)"
 : > "$RB_LOG"
 env -u TMUX HOME="$H" PATH="$T/stubs:$PATH" bash -c 'true' > /dev/null 2>&1
 check "Nicht interaktiv: nichts"                            "" "$(tr '\n' '|' < "$RB_LOG")"
+check "Alias ubuntu bleibt"                                 "alias ubuntu='rootbridge attach'" "$(env -u TMUX HOME="$H" PATH="$T/stubs:$PATH" bash -i -c 'alias ubuntu' 2>/dev/null)"
+
+# an old autostart block (earlier version) is replaced, the user's own lines stay
+H6="$T/home6"; mkdir -p "$H6"
+cat > "$H6/.bashrc" <<'EOF'
+# my own line
+# >>> termux-root-bridge >>>
+alias ubuntu='rootbridge attach'
+if [[ $- == *i* ]] && [ -z "${TMUX:-}" ] && [ -z "${ROOTBRIDGE_NO_AUTOSTART:-}" ] \
+        && command -v rootbridge >/dev/null 2>&1; then
+    rootbridge start
+fi
+# <<< termux-root-bridge <<<
+export MYVAR=1
+EOF
+check "Altes .bashrc: startet vor der Migration"            "rootbridge start|" "$(run_bashrc "$H6" | sed 's/^reload|//')"
+rinstall "$H6" --no-guest
+check "Altes .bashrc: Installer läuft"                     0 "$?"
+check "Altes .bashrc: kein 'rootbridge start' mehr"         0 "$(grep -c 'rootbridge start' "$H6/.bashrc")"
+check "Altes .bashrc: Block genau einmal"                   1 "$(grep -c '^# >>> termux-root-bridge >>>$' "$H6/.bashrc")"
+check "Altes .bashrc: eigene Zeilen bleiben"                2 "$(grep -c '^# my own line$\|^export MYVAR=1$' "$H6/.bashrc")"
+check "Altes .bashrc: danach nur Reload"                    "reload|" "$(run_bashrc "$H6")"
 
 # ----------------------------------------------------------- 4. widgets
 for w in "Claude Code:rootbridge attach" "Ubuntu Shell:rootbridge shell"; do

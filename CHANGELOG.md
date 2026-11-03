@@ -12,7 +12,7 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
 * `auth-url-hook.py` — PostToolUse hook that opens/copies login links of `mcp__*__authenticate` results.
   19 tests.
 * `rootbridge-open` as `BROWSER` / `xdg-open` in the guest; tmux clipboard settings for Claude Code's `c` key.
-* `rootbridge` control program, autostart in Termux (`claude update` → Claude Code), Termux:Widget shortcuts,
+* `rootbridge` control program, session start via alias `ubuntu`, `rootbridge attach` or the widgets (`claude update` → Claude Code), Termux:Widget shortcuts,
   optional Termux:Boot script.
 * Idempotent installers/uninstaller with change-only backups and a staging root; migration of the v1 bridge.
 * `tests/headless-proof.sh` — run yourself to prove that the hook's `ask` holds in bypass-permissions mode.
@@ -26,15 +26,21 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `tests/test_remote_name.sh` (51 checks, stubbed `proot-distro`, fake HOME/PREFIX).
 
 * Light colour scheme: `install.sh` writes `~/.termux/colors.properties` (`termux/colors.properties`; the previous file
-  is kept as `*.bak-<timestamp>`, a changed file triggers `termux-reload-settings` at once). The autostart block in
-  `~/.bashrc` runs `termux-reload-settings` at every start of an interactive Termux shell **before** `rootbridge start`
-  (so before `claude update`), also with `ROOTBRIDGE_NO_AUTOSTART`, but not inside tmux; the Termux:Widget shortcuts do
-  the same. `install.sh --no-colors` skips the colours and the theme.
+  is kept as `*.bak-<timestamp>`, a changed file triggers `termux-reload-settings` at once). The `~/.bashrc` block runs
+  `termux-reload-settings` in every new interactive Termux shell (not inside tmux), and the Termux:Widget shortcuts run
+  it before they attach, so the colours are loaded before `claude update`. `install.sh --no-colors` skips the colours
+  and the theme.
+* Ordinary Termux windows are plain shells: the `~/.bashrc` block no longer runs `rootbridge start` (it started or
+  attached to the Claude Code session in every window, and once the session ran there was no countdown to escape).
+  Claude Code starts via the widget "Claude Code", alias `ubuntu`, `rootbridge attach` or, after a reboot, Termux:Boot
+  (`rootbridge start --no-attach`). Re-running `install.sh` removes the old autostart from `~/.bashrc`;
+  `ROOTBRIDGE_NO_AUTOSTART` is gone. `tests/test_colors_theme.sh` covers the block (reload only, nothing in tmux,
+  migration of the old block).
 * Claude Code theme: `install.sh` passes `--theme light-ansi` to `install-guest.sh`, which sets `"theme": "light-ansi"` in
   `~/.claude/settings.json` (the ANSI variant uses the 16 colours of `colors.properties`; the RGB theme `light` was hard to
   read in Termux) (new `settings_set` helper: other keys stay, nothing is written or backed up when the value
   is already there, a file that is not valid JSON is left alone). `install-guest.sh --theme NAME` accepts `dark`, `light`,
-  `light-daltonized`, `dark-daltonized`, `light-ansi`, `dark-ansi`. `tests/test_colors_theme.sh` (84 checks, stubbed
+  `light-daltonized`, `dark-daltonized`, `light-ansi`, `dark-ansi`. `tests/test_colors_theme.sh` (92 checks, stubbed
   `proot-distro`, `termux-reload-settings` and `rootbridge`).
 
 * Package updates in the guest: new `guest/bin/rootbridge-apt` (installed to `/usr/local/bin`), called by

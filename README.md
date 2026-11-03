@@ -64,10 +64,12 @@ cd termux-root-bridge
 bash install.sh            # asks one question about autonomous mode
 ```
 
-Then open a new Termux session. It starts the daemon, counts down 3 s (press a key to stay in plain Termux),
-updates the guest's packages (`apt-get update` + `upgrade`, at most once a day, see below), runs `claude update` and
-starts Claude Code. Claude still **starts in plan mode** (from your `settings.json`);
-press **Shift+Tab** to switch to *bypass permissions*.
+Then start Claude Code with the **Claude Code** widget, or type `ubuntu` (alias for `rootbridge attach`) in a Termux
+shell. The first start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +
+`upgrade`, at most once a day, see below), runs `claude update` and starts Claude Code; later starts just attach to it.
+**Ordinary Termux windows stay plain shells** (with the colours loaded), nothing starts by itself. With Termux:Boot the
+session is created in the background after a reboot (`rootbridge start --no-attach`). Claude still **starts in plan
+mode** (from your `settings.json`); press **Shift+Tab** to switch to *bypass permissions*.
 
 Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--autonomous yes|no|ask`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`. The installer is idempotent, backs up what it changes, and
@@ -88,10 +90,9 @@ fresh guest), or run it at every start with `--apt-upgrade always`. Run it by ha
 `~/.termux/colors.properties` (your previous file is kept as `colors.properties.bak-<timestamp>`) and sets
 `"theme": "light-ansi"` in the guest's `~/.claude/settings.json` (other keys stay). The ANSI variant draws with the
 16 colours of that file instead of fixed RGB values, which is much easier to read in Termux than `light`; switch
-any time with `/theme`. Every interactive Termux shell runs
-`termux-reload-settings` *before* the autostart, so the colours are loaded before `claude update` and Claude Code
-start; the Termux:Widget shortcuts do the same. To change the look, edit `termux/colors.properties` and run
-`install.sh` again.
+any time with `/theme`. Every new interactive Termux shell runs
+`termux-reload-settings`, and so do the Termux:Widget shortcuts before they attach, so the colours are loaded before
+`claude update` and Claude Code start. To change the look, edit `termux/colors.properties` and run `install.sh` again.
 
 **Fixed name in the Remote Control view** (claude.ai/code): `bash install.sh --remote-name android`. **On a new
 device** (or after wiping Termux) pass the option on the first install, because there is no Termux config yet that
@@ -106,7 +107,7 @@ restarts. A session that already exists with another name is not renamed by the 
 
 | Command (Termux) | What it does |
 |---|---|
-| `rootbridge start` | daemon + session (runs automatically when Termux opens) |
+| `rootbridge start` | daemon + session; `--no-attach` creates it in the background (Termux:Boot runs that after a reboot) |
 | `rootbridge attach` / alias `ubuntu` | attach to the Claude Code session |
 | `rootbridge shell` | extra window with a plain Ubuntu shell |
 | `rootbridge status` | daemon, session, guest install, last audit lines |
@@ -136,7 +137,7 @@ Guest: `/etc/termux-root-bridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `A
 `TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
 upgrade, default 600), `APT_HOLD` (packages held back from the upgrade).
 
-`CLAUDE_ARGS` in the guest file holds extra arguments for the autostart (`rootbridge-claude`), e.g.
+`CLAUDE_ARGS` in the guest file holds extra arguments for the session start (`rootbridge-claude`), e.g.
 `CLAUDE_ARGS="--remote-control android --continue"` to show the session as "android" in the Remote Control
 view and resume the last session (`install.sh --remote-name` writes and updates this line; other arguments in it
 stay). The `claude()` shell function reads only the Remote Control name from it (never `--continue`) and leaves it
@@ -167,7 +168,7 @@ bash uninstall.sh      # keeps ~/.rootbridge (audit log, backups) and the config
 ## Related projects and credits
 
 Other ways to get Claude Code onto Android — they solve *installation*, this project solves *root confirmation,
-autostart and logins* on top of it: [bd-loser/claude-code-termux](https://github.com/bd-loser/claude-code-termux),
+start-up and logins* on top of it: [bd-loser/claude-code-termux](https://github.com/bd-loser/claude-code-termux),
 [ferrumclaudepilgrim/claude-code-android](https://github.com/ferrumclaudepilgrim/claude-code-android),
 [Crypt0Shmipt0/root-aicli](https://github.com/Crypt0Shmipt0/root-aicli). Details in
 [docs/COMPARISON.md](docs/COMPARISON.md). Not affiliated with Anthropic.

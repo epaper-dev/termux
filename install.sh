@@ -11,8 +11,10 @@
 #   2. config ~/.config/termux-root-bridge/config (--remote-name NAME is stored there as
 #      REMOTE_NAME and reused by every later install), tmux clipboard settings
 #   3. light colour scheme ~/.termux/colors.properties (--no-colors skips it and the
-#      Claude Code theme), autostart block in ~/.bashrc (reloads the Termux settings
-#      before Claude Code starts), Termux:Widget shortcuts, optional boot script
+#      Claude Code theme), a ~/.bashrc block (alias `ubuntu`, reloads the Termux settings
+#      in every new shell; ordinary Termux windows stay plain shells, Claude Code starts
+#      via the widgets, `ubuntu` or `rootbridge attach`), Termux:Widget shortcuts, optional
+#      boot script
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
 #      theme "light-ansi") via proot-distro. The guest runs apt-get update + upgrade
@@ -50,7 +52,7 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--apt-upgrade braucht daily, always oder off" >&2; exit 2; }
             APT_MODE="$2"; APT_MODE_SET=1; shift ;;
         --no-apt-upgrade) APT_MODE=off; APT_MODE_SET=1 ;;
-        -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -226,7 +228,7 @@ fi
 TMP_SNIP="$(mktemp)"; cp "$REPO/termux/tmux.conf.snippet" "$TMP_SNIP"
 set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
 
-say "== 3/5 Farben, Autostart, Widgets"
+say "== 3/5 Farben, Shell-Block, Widgets"
 if [ "$DO_COLORS" = 1 ]; then
     # chmod 600: Termux itself creates the file that way
     if put_data "$REPO/termux/colors.properties" "$HOME/.termux/colors.properties" 600; then
@@ -239,11 +241,9 @@ TMP_RC="$(mktemp)"
 cat > "$TMP_RC" <<'EOF'
 alias ubuntu='rootbridge attach'
 if [[ $- == *i* ]] && [ -z "${TMUX:-}" ]; then
-    # load ~/.termux/colors.properties before Claude Code (and `claude update`) starts
+    # load ~/.termux/colors.properties in every new Termux shell (Claude Code is NOT started here:
+    # use the widget "Claude Code", `ubuntu` or `rootbridge attach`)
     if command -v termux-reload-settings >/dev/null 2>&1; then termux-reload-settings; fi
-    if [ -z "${ROOTBRIDGE_NO_AUTOSTART:-}" ] && command -v rootbridge >/dev/null 2>&1; then
-        rootbridge start
-    fi
 fi
 EOF
 set_block "$HOME/.bashrc" "$TMP_RC"; rm -f "$TMP_RC"
@@ -314,8 +314,10 @@ fi
 say
 say "Fertig. Weiter:"
 say "  rootbridge status        # Zustand prüfen"
-say "  rootbridge start         # Daemon + Claude Code (startet auch beim Öffnen von Termux)"
+say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude Code')"
+say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
+say "Normale Termux-Fenster bleiben reine Shells; Claude Code startet nicht mehr automatisch."
 say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."
 if [ "$DO_COLORS" = 1 ]; then
-    say "Farben: ~/.termux/colors.properties wird bei jedem Start geladen; Claude Code nutzt das Theme '$CLAUDE_THEME'."
+    say "Farben: ~/.termux/colors.properties wird in jeder neuen Termux-Shell und von den Widgets geladen; Claude Code nutzt das Theme '$CLAUDE_THEME'."
 fi

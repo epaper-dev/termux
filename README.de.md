@@ -60,10 +60,13 @@ cd termux-root-bridge
 bash install.sh            # stellt eine Frage zum autonomen Modus
 ```
 
-Danach eine neue Termux-Sitzung öffnen. Sie startet den Daemon, zählt 3 s herunter (Taste = in Termux bleiben),
-aktualisiert die Pakete des Gasts (`apt-get update` + `upgrade`, höchstens einmal am Tag, siehe unten), führt
-`claude update` aus und startet Claude Code. Claude **startet weiter im Plan-Modus** (aus deiner
-`settings.json`); mit **Umschalt+Tab** wechselst du in *bypass permissions*.
+Danach Claude Code über das Widget **Claude Code** starten oder in einer Termux-Shell `ubuntu` eingeben (Alias für
+`rootbridge attach`). Der erste Start legt die Sitzung an: Daemon starten, Pakete des Gasts aktualisieren
+(`apt-get update` + `upgrade`, höchstens einmal am Tag, siehe unten), `claude update` ausführen und Claude Code
+starten; spätere Starts hängen sich nur an. **Normale Termux-Fenster bleiben reine Shells** (mit geladenen Farben),
+nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart im Hintergrund angelegt
+(`rootbridge start --no-attach`). Claude **startet weiter im Plan-Modus** (aus deiner `settings.json`); mit
+**Umschalt+Tab** wechselst du in *bypass permissions*.
 
 Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--autonomous yes|no|ask`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`. Der Installer ist idempotent, sichert Geändertes und migriert die
@@ -85,10 +88,10 @@ endet mit einer Zeile `Ende: ok` (oder dem Grund), ein Lauf ohne sie wurde abgeb
 `~/.termux/colors.properties` (deine bisherige Datei bleibt als `colors.properties.bak-<Zeitstempel>` erhalten) und
 setzt `"theme": "light-ansi"` in der `~/.claude/settings.json` des Gasts (andere Schlüssel bleiben). Die ANSI-Variante
 zeichnet mit den 16 Farben dieser Datei statt mit festen RGB-Werten und ist in Termux deutlich besser lesbar als
-`light`; jederzeit mit `/theme` umstellbar. Jede interaktive
-Termux-Shell führt `termux-reload-settings` *vor* dem Autostart aus, die Farben sind also geladen, bevor `claude update`
-und Claude Code starten; die Termux:Widget-Verknüpfungen tun dasselbe. Zum Ändern `termux/colors.properties` bearbeiten
-und `install.sh` erneut ausführen.
+`light`; jederzeit mit `/theme` umstellbar. Jede neue interaktive
+Termux-Shell führt `termux-reload-settings` aus, ebenso die Termux:Widget-Verknüpfungen vor dem Anhängen; die Farben
+sind also geladen, bevor `claude update` und Claude Code starten. Zum Ändern `termux/colors.properties` bearbeiten und
+`install.sh` erneut ausführen.
 
 **Fester Name in der Remote-Control-Ansicht** (claude.ai/code): `bash install.sh --remote-name android`. **Auf einem
 neuen Gerät** (oder nach einem Zurücksetzen von Termux) die Option bei der ersten Installation angeben, denn es gibt
@@ -102,7 +105,7 @@ Neustart. Eine bestehende Sitzung mit anderem Namen benennt das Flag nicht um; e
 
 | Befehl (Termux) | Wirkung |
 |---|---|
-| `rootbridge start` | Daemon + Session (läuft beim Öffnen von Termux automatisch) |
+| `rootbridge start` | Daemon + Session; mit `--no-attach` im Hintergrund (Termux:Boot ruft das nach einem Neustart auf) |
 | `rootbridge attach` / Alias `ubuntu` | an die Claude-Code-Session anhängen |
 | `rootbridge shell` | zusätzliches Fenster mit normaler Ubuntu-Shell |
 | `rootbridge status` | Daemon, Session, Gast-Installation, letzte Audit-Zeilen |
@@ -148,7 +151,7 @@ bash uninstall.sh      # behält ~/.rootbridge (Audit-Log, Sicherungen) und die 
 ## Verwandte Projekte
 
 Andere Wege, Claude Code auf Android zu bringen, lösen die *Installation*; dieses Projekt löst *Root-Bestätigung,
-Autostart und Logins* darüber: [bd-loser/claude-code-termux](https://github.com/bd-loser/claude-code-termux),
+Start und Logins* darüber: [bd-loser/claude-code-termux](https://github.com/bd-loser/claude-code-termux),
 [ferrumclaudepilgrim/claude-code-android](https://github.com/ferrumclaudepilgrim/claude-code-android),
 [Crypt0Shmipt0/root-aicli](https://github.com/Crypt0Shmipt0/root-aicli). Details: [docs/COMPARISON.md](docs/COMPARISON.md).
 Nicht mit Anthropic verbunden.

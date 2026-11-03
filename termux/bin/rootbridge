@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # rootbridge - control program of termux-root-bridge (runs in Termux).
 #
-#   rootbridge start [--no-attach]   daemon + Claude Code session (autostart)
+#   rootbridge start [--no-attach]   daemon + Claude Code session (Termux:Boot: --no-attach)
 #   rootbridge attach                attach to the session (create if missing)
 #   rootbridge shell                 extra window with a plain guest shell
 #   rootbridge stop                  stop session and daemon
