@@ -81,6 +81,12 @@ run_logged() {
     return "${PIPESTATUS[0]}"
 }
 
+# note <text>: show a result line and keep it in the log as well
+note() { printf '%s\n' "$*" | tee -a "$LOG"; }
+# finish <status>: closing line of a run in the log. A run that has a header but no "Ende" line
+# was interrupted (killed, reboot) - the apt output alone cannot tell.
+finish() { printf '=== %s Ende: %s\n' "$(date -Is)" "$1" >> "$LOG"; }
+
 apt_env=(DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none NEEDRESTART_MODE=a)
 apt_opts=(-y
     -o "DPkg::Path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -92,7 +98,8 @@ echo "== apt update + upgrade (APT_UPGRADE=$mode, Log: $LOG)"
 printf '\n=== %s apt (mode=%s)\n' "$(date -Is)" "$mode" >> "$LOG"
 
 if ! run_logged env "${apt_env[@]}" timeout 120 apt-get "${apt_opts[@]}" "${net_opts[@]}" update; then
-    echo "apt: update fehlgeschlagen (kein Netz?) - Upgrade übersprungen, nächster Versuch beim nächsten Start."
+    note "apt: update fehlgeschlagen (kein Netz?) - Upgrade übersprungen, nächster Versuch beim nächsten Start."
+    finish update-fehlgeschlagen
     exit 0
 fi
 
@@ -104,23 +111,26 @@ for pkg in $hold; do
         *) continue ;;
     esac
     if ! printf '%s\n' "$held" | grep -qx "$pkg"; then
-        if apt-mark hold "$pkg" >> "$LOG" 2>&1; then echo "apt: $pkg auf hold gesetzt (Upgrade würde unter proot brechen)"; fi
+        if apt-mark hold "$pkg" >> "$LOG" 2>&1; then note "apt: $pkg auf hold gesetzt (Upgrade würde unter proot brechen)"; fi
     fi
 done
 
 if ! run_logged env "${apt_env[@]}" timeout "$tmo" apt-get "${apt_opts[@]}" upgrade; then
-    echo "apt: upgrade fehlgeschlagen oder nach ${tmo}s abgebrochen - siehe $LOG. Der Start geht weiter."
+    note "apt: upgrade fehlgeschlagen oder nach ${tmo}s abgebrochen - siehe $LOG. Der Start geht weiter."
+    finish upgrade-fehlgeschlagen
     exit 0
 fi
 
 audit="$(dpkg --audit 2>&1)"
 if [ -n "$audit" ]; then
     printf '%s\n' "$audit" >> "$LOG"
-    echo "apt: WARNUNG - dpkg meldet unvollständig konfigurierte Pakete. Reparatur:"
-    echo "     apt-get -o DPkg::Path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin --fix-broken install"
+    note "apt: WARNUNG - dpkg meldet unvollständig konfigurierte Pakete. Reparatur:"
+    note "     apt-get -o DPkg::Path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin --fix-broken install"
+    finish dpkg-audit-warnung
     exit 0
 fi
 
 mkdir -p "$STATE_DIR" && date +%s > "$STAMP"
-echo "apt: fertig."
+note "apt: fertig."
+finish ok
 exit 0

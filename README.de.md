@@ -75,8 +75,9 @@ blockiert den Start nie (kein Netz, ein Fehler oder ein Timeout geben nur einen 
 nächste Start versucht es erneut). Zwei Schutzmaßnahmen sind unter proot-distro mit Ubuntu 26.04 wichtig: dpkg bekommt
 `-o DPkg::Path` mit `/usr/local/bin`, weil die uutils-coreutils dort die GNU-benannten Symlinks brauchen (sonst brechen
 Maintainer-Skripte mit „Security violation“ ab), und die coreutils-Pakete (`APT_HOLD`) werden zurückgehalten, weil ein
-Upgrade des Multicall-Binarys den Gast kaputt macht. Log: `/var/log/termux-root-bridge-apt.log` im Gast; gehaltene
-Pakete: `apt-mark showhold`. Abschalten mit `bash install.sh --no-apt-upgrade` (wird in der Termux-Konfig als
+Upgrade des Multicall-Binarys den Gast kaputt macht. Log: `/var/log/termux-root-bridge-apt.log` im Gast – jeder Lauf
+endet mit einer Zeile `Ende: ok` (oder dem Grund), ein Lauf ohne sie wurde abgebrochen; gehaltene Pakete:
+`apt-mark showhold`. Abschalten mit `bash install.sh --no-apt-upgrade` (wird in der Termux-Konfig als
 `APT_UPGRADE` gespeichert, spätere Installationen behalten es, auch mit frischem Gast), bei jedem Start mit
 `--apt-upgrade always`. Von Hand: `rootbridge-apt` im Gast.
 

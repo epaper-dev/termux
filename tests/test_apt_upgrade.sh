@@ -99,13 +99,20 @@ check "vier coreutils-Pakete auf hold"                4 "$(calls '^apt-mark hold
 check "hold: rust-coreutils"                          1 "$(calls '^apt-mark hold rust-coreutils$')"
 check "Stempel geschrieben"                           ja "$(stamp_exists)"
 check "Stempel ist eine Zahl"                         1 "$([[ "$(cat "$T/state/apt-last-success")" =~ ^[0-9]{9,12}$ ]] && echo 1 || echo 0)"
-check "Log enthält Lauf-Kopf und apt-Ausgabe"         2 "$(grep -c '^=== \|^stub apt-get: .*update$' "$T/apt.log")"
+check "Log: ein Lauf-Kopf"                            1 "$(grep -c '^=== .* apt (mode=daily)$' "$T/apt.log")"
+check "Log: apt-Ausgabe steht drin"                   1 "$(grep -c '^stub apt-get: .*update$' "$T/apt.log")"
+check "Log: hold-Meldung steht drin"                  1 "$(grep -c '^apt: rust-coreutils auf hold gesetzt' "$T/apt.log")"
+check "Log: 'apt: fertig.' steht drin"                1 "$(grep -c '^apt: fertig\.$' "$T/apt.log")"
+check "Log: Schlusszeile 'Ende: ok'"                  1 "$(grep -c '^=== .* Ende: ok$' "$T/apt.log")"
+check "Log: Schlusszeile ist die letzte Zeile"        1 "$(tail -n 1 "$T/apt.log" | grep -c 'Ende: ok$')"
 check "Ausgabe endet mit 'fertig'"                    1 "$(out_has 'apt: fertig')"
 
 # --- daily with a fresh stamp: nothing runs
 now="$(date +%s)"
 printf '%s\n' "$((now - 3600))" > "$T/state/apt-last-success"
+log_lines="$(wc -l < "$T/apt.log" | tr -d ' ')"
 run_apt
+check "daily, Stempel 1 h alt: Log unverändert"       "$log_lines" "$(wc -l < "$T/apt.log" | tr -d ' ')"
 check "daily, Stempel 1 h alt: Exit 0"                0 "$RC"
 check "daily, Stempel 1 h alt: kein apt-get"          0 "$(calls '^apt-get ')"
 check "daily, Stempel 1 h alt: Hinweis 'übersprungen'" 1 "$(out_has 'übersprungen')"
@@ -152,16 +159,24 @@ check "update schlägt fehl: kein upgrade"             0 "$(calls 'apt-get .* up
 check "update schlägt fehl: kein Stempel"             nein "$(stamp_exists)"
 check "update schlägt fehl: Meldung"                  1 "$(out_has 'update fehlgeschlagen')"
 check "update schlägt fehl: kein apt-mark hold"       0 "$(calls '^apt-mark hold')"
+check "update schlägt fehl: Log-Meldung"              1 "$(grep -c '^apt: update fehlgeschlagen' "$T/apt.log")"
+check "update schlägt fehl: Ende-Zeile mit Grund"     1 "$(grep -c '^=== .* Ende: update-fehlgeschlagen$' "$T/apt.log")"
+check "update schlägt fehl: kein 'Ende: ok'"          0 "$(grep -c 'Ende: ok' "$T/apt.log")"
 
 run_apt STUB_UPGRADE_RC=100
 check "upgrade schlägt fehl: Exit 0"                  0 "$RC"
 check "upgrade schlägt fehl: kein Stempel"            nein "$(stamp_exists)"
 check "upgrade schlägt fehl: Meldung nennt das Log"   1 "$(out_has 'upgrade fehlgeschlagen')"
+check "upgrade schlägt fehl: Log-Meldung"             1 "$(grep -c '^apt: upgrade fehlgeschlagen' "$T/apt.log")"
+check "upgrade schlägt fehl: Ende-Zeile mit Grund"    1 "$(grep -c '^=== .* Ende: upgrade-fehlgeschlagen$' "$T/apt.log")"
 
 run_apt "STUB_AUDIT=iF  foo  1.0  broken"
 check "dpkg --audit meldet etwas: Exit 0"             0 "$RC"
 check "dpkg --audit meldet etwas: kein Stempel"       nein "$(stamp_exists)"
 check "dpkg --audit meldet etwas: Warnung"            1 "$(out_has 'WARNUNG')"
+check "dpkg --audit meldet etwas: Log-Warnung"        1 "$(grep -c '^apt: WARNUNG' "$T/apt.log")"
+check "dpkg --audit meldet etwas: Ende-Zeile mit Grund" 1 "$(grep -c '^=== .* Ende: dpkg-audit-warnung$' "$T/apt.log")"
+check "drei Fehlläufe: nie 'Ende: ok'"                0 "$(grep -c 'Ende: ok' "$T/apt.log")"
 
 # --- holds
 reset_state; mkconf "APT_UPGRADE=daily"
@@ -200,7 +215,8 @@ awk 'BEGIN { for (i = 0; i < 5000; i++) print "old log line " i " with some padd
 size_before="$(wc -c < "$T/apt.log" | tr -d ' ')"
 run_apt
 check "Log > 256 KiB wird gekürzt"                    1 "$([ "$(wc -c < "$T/apt.log")" -lt "$size_before" ] && echo 1 || echo 0)"
-check "Log: neuer Lauf steht drin"                    1 "$(grep -c '^=== ' "$T/apt.log")"
+check "Log: neuer Lauf steht drin"                    1 "$(grep -c '^=== .* apt (mode=' "$T/apt.log")"
+check "Log: gekürzt, der neue Lauf ist vollständig"   1 "$(tail -n 1 "$T/apt.log" | grep -c 'Ende: ok$')"
 
 # --- not root (only checkable when the tests do not run as root)
 if [ "$(id -u)" -ne 0 ]; then

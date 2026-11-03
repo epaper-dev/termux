@@ -46,11 +46,13 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   (`APT_HOLD`, default `rust-coreutils gnu-coreutils coreutils-from-uutils coreutils`) are held back because upgrading the
   multicall binary breaks the guest, a failure, a timeout or a missing network never stops the start and leaves no
   success stamp (so the next start tries again), `dpkg --audit` is checked afterwards. Log:
-  `/var/log/termux-root-bridge-apt.log` (cut at 256 KiB). On by default; `install.sh --no-apt-upgrade` (or
+  `/var/log/termux-root-bridge-apt.log` (cut at 256 KiB): the apt output plus the result lines (`apt: fertig.`, held
+  packages, errors) and a closing line `=== <time> Ende: ok|update-fehlgeschlagen|upgrade-fehlgeschlagen|dpkg-audit-warnung`
+  per run — a run that has a header but no `Ende:` line was interrupted (killed, reboot). On by default; `install.sh --no-apt-upgrade` (or
   `--apt-upgrade daily|always|off`) turns it off or changes it, the choice is stored in the Termux config
   (`APT_UPGRADE`) and reused by every later install, like `REMOTE_NAME`. `install-guest.sh --apt-upgrade MODE` sets
   `APT_UPGRADE` in `/etc/termux-root-bridge.conf` (an existing value stays without the option).
-  `tests/test_apt_upgrade.sh` (128 checks; stub `apt-get`/`apt-mark`/`dpkg`/`dpkg-query`/`timeout`/`proot-distro`, real
+  `tests/test_apt_upgrade.sh` (143 checks; stub `apt-get`/`apt-mark`/`dpkg`/`dpkg-query`/`timeout`/`proot-distro`, real
   apt is never started).
 
 ### Fixed

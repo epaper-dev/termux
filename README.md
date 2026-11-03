@@ -79,7 +79,8 @@ the start (no network, an error or a timeout just print a note and Claude Code s
 safeguards matter on proot-distro with Ubuntu 26.04: dpkg gets `-o DPkg::Path` including `/usr/local/bin`, because the
 uutils coreutils need the GNU-named symlinks there (otherwise maintainer scripts abort with "Security violation"), and
 the coreutils packages (`APT_HOLD`) are held back, because upgrading the multicall binary itself breaks the guest. Log:
-`/var/log/termux-root-bridge-apt.log` in the guest; held packages: `apt-mark showhold`. Turn it off with
+`/var/log/termux-root-bridge-apt.log` in the guest — every run ends with a `Ende: ok` (or the reason) line, a run
+without it was interrupted; held packages: `apt-mark showhold`. Turn it off with
 `bash install.sh --no-apt-upgrade` (stored in the Termux config as `APT_UPGRADE`, so later installs keep it, also with a
 fresh guest), or run it at every start with `--apt-upgrade always`. Run it by hand: `rootbridge-apt` in the guest.
 
