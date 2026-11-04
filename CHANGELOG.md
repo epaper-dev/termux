@@ -6,10 +6,10 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
 
 ### Added
 * Termux extra keys row: `install.sh` sets it in `~/.termux/termux.properties` (marked block, backup first, reload only
-  on a change, mode 600; `termux/extra-keys.snippet`). Two rows of six: `ESC` `/` `S-TAB` `BKSP` `↑` `ENTER` and `KEYBOARD`
-  `CTRL` `TAB` `←` `↓` `→`. S-TAB sends Shift+Tab (a phone keyboard has none, Claude Code switches its permission mode with
+  on a change, mode 600; `termux/extra-keys.snippet`). Two rows of six: `ESC` `CTRL` `S-TAB` `BKSP` `↑` `ENTER` and `KEYBOARD`
+  `/` `TAB` `←` `↓` `→`. S-TAB sends Shift+Tab (a phone keyboard has none, Claude Code switches its permission mode with
   it), TAB completes slash commands and `@` files; KEYBOARD shows/hides the soft keyboard (ENTER and the arrows keep working without it); swipe up
-  on `/` for `-`, on `←` for HOME, on `→` for END. An `extra-keys` line of the user's own is never replaced (single or
+  on `←` for HOME and on `→` for END. An `extra-keys` line of the user's own is never replaced (single or
   multi line). `--no-extra-keys`, removed by `uninstall.sh`. `backup()` no longer keeps empty files.
   `tests/test_extra_keys.sh` (90 checks, own parser for the layout, mutation probes fail as expected);
   the other install tests pass `--no-extra-keys` so they never count or trigger a reload.

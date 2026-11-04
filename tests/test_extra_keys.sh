@@ -159,8 +159,8 @@ for gone in PGUP PGDN HOME END DEL ALT; do
     case "$names" in *"|$gone|"*) r=ja ;; *) r=nein ;; esac
     check "Vorlage: keine eigene Taste $gone"         nein "$r"
 done
-check "Vorlage: Wisch nach oben liefert -, HOME, END" "- HOME END" "$(line popups)"
-check "Vorlage: Reihenfolge der Tasten"               "|ESC|/|macro:SHIFT TAB|BKSP|UP|ENTER|KEYBOARD|CTRL|TAB|LEFT|DOWN|RIGHT|" "$names"
+check "Vorlage: Wisch nach oben liefert nur HOME und END" "HOME END" "$(line popups)"
+check "Vorlage: Reihenfolge der Tasten"               "|ESC|CTRL|macro:SHIFT TAB|BKSP|UP|ENTER|KEYBOARD|/|TAB|LEFT|DOWN|RIGHT|" "$names"
 check "Vorlage: S-TAB beschriftet"                    1 "$(grep -c 'display: "S-TAB"' "$SNIP")"
 check "Vorlage: keine Zeilenfortsetzung mit Backslash" 0 "$(grep -c '\\$' "$SNIP")"
 
