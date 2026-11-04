@@ -63,6 +63,7 @@ the **full address from the browser's address bar** and paste it into the prompt
 Tested automatically: link extraction from 19 response shapes, URL rules, the three modes, daemon opening and
 `--copy-only`. **Confirmed on a device** (Hisense A9, 2026-11-04): `/login` opens the Android browser from the guest,
 the **`c`** key puts the link into the Android clipboard (OSC 52 through tmux), and `rootbridge-open --copy-only` copies a
-214-character link through the daemon without a single changed character. **Not yet confirmed on a device:** the
-`localhost` redirect after a completed login, the real `tool_response` shape of `authenticate` tools, and whether
+214-character link through the daemon without a single changed character. A complete `/login` also works: after
+approving in the browser, the `localhost` redirect returns to Claude Code by itself, with no code to paste.
+**Not yet confirmed on a device:** the real `tool_response` shape of `authenticate` tools, and whether
 `updatedToolOutput` is accepted for MCP tools. Please report results using the device-report issue template.

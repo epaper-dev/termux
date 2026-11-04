@@ -124,13 +124,13 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
 Hisense A9, 2026-11-04: installer, colours and theme, apt upgrade, `claude update`, the file-descriptor limit, widgets,
 ending the session with `/exit`, the root prompt in bypass mode (live session in `bypassPermissions`: the hook answered
 `ask` for `androidsu 'id'` 0.5 s after the call, the result came 5.6 s later, i.e. after the answer in Claude Code),
-opening the browser from the guest (`BROWSER` → `rootbridge-open` → daemon → `termux-open-url`), copying a
+a complete `/login` with the automatic `localhost` redirect (no code to paste; new token, `claude auth status` logged
+in), opening the browser from the guest (`BROWSER` → `rootbridge-open` → daemon → `termux-open-url`), copying a
 214-character link into the Android clipboard through the daemon (`--copy-only`, pasted back byte for byte identical)
 and the `c` key in the login dialog (OSC 52 through tmux).
 
 ### Not yet verified on a device
-The `localhost` redirect after a completed login, the `tool_response` shape of MCP login tools and `updatedToolOutput`
-for MCP tools. `tests/headless-proof.sh` (the automated version of the bypass check, with a stub instead of `su`) has
+The `tool_response` shape of MCP login tools and `updatedToolOutput` for MCP tools. `tests/headless-proof.sh` (the automated version of the bypass check, with a stub instead of `su`) has
 not been run on the device yet.
 
 ## 1.0.0
