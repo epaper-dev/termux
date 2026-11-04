@@ -90,8 +90,8 @@ check "attach bei laufender Sitzung: hängt sich an"    1 "$(calls '^tmux attach
 check "help nennt: shell startet Claude Code nicht"    1 "$(bash "$T/bin/rootbridge" help 2>&1 | grep -c 'does not start Claude Code')"
 # the widget runs `exec rootbridge shell` through PATH: put the copy under test in front of any installed one
 rb env PATH="$T/bin:$T/stubs:$PATH" bash "$ROOT/termux/shortcuts/ubuntu"
-check "Widget 'Ubuntu >_': nur proot-distro login"     "proot-distro login ubuntu" "$(grep '^proot-distro ' "$STUB_LOG")"
-check "Widget 'Ubuntu >_': tmux nie aufgerufen"        0 "$(calls '^tmux ')"
+check "Widget 'ubuntu': nur proot-distro login"     "proot-distro login ubuntu" "$(grep '^proot-distro ' "$STUB_LOG")"
+check "Widget 'ubuntu': tmux nie aufgerufen"        0 "$(calls '^tmux ')"
 
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"

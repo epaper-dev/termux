@@ -14,9 +14,9 @@
 #      Claude Code theme), a ~/.bashrc block (alias `ubuntu`, reloads the Termux settings
 #      in every new shell; ordinary Termux windows stay plain shells, Claude Code starts
 #      via the widgets, `ubuntu` or `rootbridge attach`), the Termux:Widget shortcuts
-#      "Claude >_" and "Ubuntu >_" with icons (an icon you already have stays; icons of the
-#      old names "Claude Code" / "Ubuntu Shell" are carried over; --no-widgets skips all
-#      this), optional boot script
+#      "Claude" and "Ubuntu" with icons (an icon you already have stays; icons of the
+#      earlier names "Claude Code" / "Ubuntu Shell" / "Claude >_" / "Ubuntu >_" are carried
+#      over; --no-widgets skips all this), optional boot script
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
 #      theme "light-ansi") via proot-distro. The guest runs apt-get update + upgrade
@@ -256,7 +256,7 @@ cat > "$TMP_RC" <<'EOF'
 alias ubuntu='rootbridge attach'
 if [[ $- == *i* ]] && [ -z "${TMUX:-}" ]; then
     # load ~/.termux/colors.properties in every new Termux shell (Claude Code is NOT started here:
-    # use the widget "Claude >_", `ubuntu` or `rootbridge attach`)
+    # use the widget "Claude", `ubuntu` or `rootbridge attach`)
     if command -v termux-reload-settings >/dev/null 2>&1; then termux-reload-settings; fi
 fi
 EOF
@@ -264,10 +264,10 @@ set_block "$HOME/.bashrc" "$TMP_RC"; rm -f "$TMP_RC"
 if [ "$DO_WIDGETS" = 1 ]; then
     SC="$HOME/.shortcuts"
     mkdir -p "$SC/icons" "$BRIDGE_DIR/backups"
-    # Earlier versions called the widgets "Claude Code" / "Ubuntu Shell": carry the user's icon over to the
-    # new name (before a default icon is installed), and move our old script and its *.bak-* files out
-    # of the widget list.
-    for pair in "Claude Code:Claude >_" "Ubuntu Shell:Ubuntu >_"; do
+    # Earlier versions called the widgets "Claude Code" / "Ubuntu Shell", then "Claude >_" / "Ubuntu >_":
+    # carry the user's icon over to the new name (before a default icon is installed), and move our old
+    # scripts and their *.bak-* files out of the widget list.
+    for pair in "Claude >_:Claude" "Claude Code:Claude" "Ubuntu >_:Ubuntu" "Ubuntu Shell:Ubuntu"; do
         old="${pair%%:*}"; new="${pair#*:}"
         if [ -e "$SC/icons/$old.png" ] && [ ! -e "$SC/icons/$new.png" ]; then
             mv "$SC/icons/$old.png" "$SC/icons/$new.png"
@@ -281,7 +281,7 @@ if [ "$DO_WIDGETS" = 1 ]; then
             if [ -e "$f" ]; then mv "$f" "$BRIDGE_DIR/backups/"; say "  Sicherung aus der Widget-Liste verschoben: ${f##*/}"; fi
         done
     done
-    for pair in "claude:Claude >_" "ubuntu:Ubuntu >_"; do
+    for pair in "claude:Claude" "ubuntu:Ubuntu"; do
         src="${pair%%:*}"; name="${pair#*:}"
         inst "$REPO/termux/shortcuts/$src" "$SC/$name"
         # the default icon only if there is none: an icon the user chose stays
@@ -359,7 +359,7 @@ fi
 say
 say "Fertig. Weiter:"
 say "  rootbridge status        # Zustand prüfen"
-say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude >_')"
+say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude')"
 say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
 say "Normale Termux-Fenster bleiben reine Shells; Claude Code startet nicht mehr automatisch."
 say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."

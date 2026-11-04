@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Test: Termux:Widget shortcuts "Claude >_" / "Ubuntu >_" and their icons (install.sh / uninstall.sh).
+# Test: Termux:Widget shortcuts "Claude" / "Ubuntu" and their icons (install.sh / uninstall.sh).
 #   - installed under the new names, with default icons (neutral, no logos) only where no icon exists
-#   - upgrade from the old names "Claude Code" / "Ubuntu Shell": the user's icons are carried over, our old
-#     scripts and their *.bak-* files leave the widget list (Termux:Widget lists EVERY file there)
+#   - upgrade from the earlier names "Claude Code" / "Ubuntu Shell" and "Claude >_" / "Ubuntu >_": the user's
+#     icons are carried over, our old scripts and their *.bak-* files leave the widget list (Termux:Widget
+#     lists EVERY file there)
 #   - backups of ~/.shortcuts and ~/.termux/boot files go to $BRIDGE_DIR/backups (Termux:Boot runs EVERY file)
 #   - --no-widgets, idempotence, uninstall keeps an icon the user chose
 #   - the committed PNGs are valid and match tools/make-shortcut-icons.py
@@ -27,7 +28,7 @@ check() {   # check <name> <expected> <actual>
 has() { [ -e "$1" ] && echo ja || echo nein; }
 files() { ( cd "$1" && find .shortcuts .termux .rootbridge -type f 2>/dev/null | sort ); }
 
-W1="Claude >_"; W2="Ubuntu >_"
+W1="Claude"; W2="Ubuntu"
 P="$T/prefix"; mkdir -p "$P/bin" "$T/stubs"
 # uninstall.sh runs `rootbridge stop` if it finds one: never the real one (it would end the user's session)
 for s in rootbridge tmux pkill pgrep; do
@@ -99,6 +100,41 @@ before="$(files "$H2")"
 rinstall "$H2"
 check "Umstieg, zweiter Lauf: nichts ändert sich"      "$before" "$(files "$H2")"
 
+# ----------------- 2b. upgrade from the intermediate names "Claude >_" / "Ubuntu >_" (the state of the device)
+H6="$T/h6"; mkdir -p "$H6/.shortcuts/icons"
+SC="$H6/.shortcuts"; BR="$H6/.rootbridge"
+printf '#!/data/data/com.termux/files/usr/bin/bash\nexec rootbridge attach\n' > "$SC/Claude >_"
+printf '#!/data/data/com.termux/files/usr/bin/bash\nexec rootbridge shell\n'  > "$SC/Ubuntu >_"
+chmod +x "$SC/Claude >_" "$SC/Ubuntu >_"
+printf 'USERICON-CLAUDE' > "$SC/icons/Claude >_.png"
+printf 'USERICON-UBUNTU' > "$SC/icons/Ubuntu >_.png"
+rinstall "$H6"
+check ">_-Umstieg: Installer läuft"                    0 "$?"
+check ">_-Umstieg: neues Widget '$W1'"                 ja "$(has "$SC/$W1")"
+check ">_-Umstieg: neues Widget '$W2'"                 ja "$(has "$SC/$W2")"
+check ">_-Umstieg: 'Claude >_' ist weg"                nein "$(has "$SC/Claude >_")"
+check ">_-Umstieg: 'Ubuntu >_' ist weg"                nein "$(has "$SC/Ubuntu >_")"
+check ">_-Umstieg: Kopie in backups"                   1 "$(find "$BR/backups" -name 'Claude >_.old-*' | wc -l | tr -d ' ')"
+check ">_-Umstieg: Icon des Users (Claude)"            USERICON-CLAUDE "$(cat "$SC/icons/$W1.png" 2>/dev/null)"
+check ">_-Umstieg: Icon des Users (Ubuntu)"            USERICON-UBUNTU "$(cat "$SC/icons/$W2.png" 2>/dev/null)"
+check ">_-Umstieg: alte Icon-Namen sind weg"           nein "$(has "$SC/icons/Claude >_.png")"
+check ">_-Umstieg: genau zwei Widgets in der Liste"    2 "$(find "$SC" -maxdepth 1 -type f | wc -l | tr -d ' ')"
+before="$(files "$H6")"
+rinstall "$H6"
+check ">_-Umstieg, zweiter Lauf: nichts ändert sich"   "$before" "$(files "$H6")"
+
+# both earlier generations at once: the newer ">_" icon wins, both old scripts go
+H7="$T/h7"; mkdir -p "$H7/.shortcuts/icons"
+SC="$H7/.shortcuts"
+printf '#!/bin/bash\nexec rootbridge attach\n' > "$SC/Claude Code"
+printf '#!/bin/bash\nexec rootbridge attach\n' > "$SC/Claude >_"
+printf 'ICON-OLD' > "$SC/icons/Claude Code.png"
+printf 'ICON-NEWER' > "$SC/icons/Claude >_.png"
+rinstall "$H7"
+check "beide Generationen: das neuere Icon gewinnt"    ICON-NEWER "$(cat "$SC/icons/$W1.png" 2>/dev/null)"
+check "beide Generationen: beide alten Skripte weg"    "nein nein" "$(has "$SC/Claude Code") $(has "$SC/Claude >_")"
+check "beide Generationen: neues Widget da"            ja "$(has "$SC/$W1")"
+
 # ------------------------------------------------- 3. an old script that is not ours stays
 H3="$T/h3"; mkdir -p "$H3/.shortcuts"
 printf '#!/bin/bash\necho my own script\n' > "$H3/.shortcuts/Claude Code"
@@ -126,6 +162,18 @@ check "uninstall: Widget '$W2' weg"                    nein "$(has "$H4/.shortcu
 check "uninstall: eigenes Icon des Users bleibt"       MY-ICON "$(cat "$H4/.shortcuts/icons/$W1.png" 2>/dev/null)"
 check "uninstall: Standard-Icon wird entfernt"         nein "$(has "$H4/.shortcuts/icons/$W2.png")"
 check "uninstall: das echte rootbridge wurde nie benutzt (nur der Stub)" 1 "$(grep -c '^rootbridge stop' "$STUB_LOG")"
+
+# uninstall removes our scripts under every name, but not a script of the user that happens to be called "Claude"
+H8="$T/h8"; mkdir -p "$H8/.shortcuts/icons"
+printf '#!/bin/bash\necho my own widget\n' > "$H8/.shortcuts/Claude"
+printf '#!/bin/bash\nexec rootbridge shell\n' > "$H8/.shortcuts/Ubuntu >_"
+printf '#!/bin/bash\nexec rootbridge attach\n' > "$H8/.shortcuts/Claude Code"
+cp "$ICONS/ubuntu.png" "$H8/.shortcuts/icons/Ubuntu >_.png"
+runinstall_uninstall "$H8"
+check "uninstall: fremdes Skript 'Claude' bleibt"      ja "$(has "$H8/.shortcuts/Claude")"
+check "uninstall: 'Ubuntu >_' (unseres) ist weg"       nein "$(has "$H8/.shortcuts/Ubuntu >_")"
+check "uninstall: 'Claude Code' (unseres) ist weg"     nein "$(has "$H8/.shortcuts/Claude Code")"
+check "uninstall: Standard-Icon der >_-Generation weg" nein "$(has "$H8/.shortcuts/icons/Ubuntu >_.png")"
 
 # ----------------------------------------------------------------------------- 7. the icons
 for n in claude ubuntu; do

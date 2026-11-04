@@ -53,10 +53,16 @@ done
 
 rm -f "$PREFIX/bin/rootbridge" "$PREFIX/bin/rootbridge-daemon"
 rm -rf "$PREFIX/lib/termux-root-bridge"
-rm -f "$HOME/.shortcuts/Claude >_" "$HOME/.shortcuts/Ubuntu >_" \
-      "$HOME/.shortcuts/Claude Code" "$HOME/.shortcuts/Ubuntu Shell" "$HOME/.termux/boot/10-rootbridge.sh"
+rm -f "$HOME/.termux/boot/10-rootbridge.sh"
+# widgets, under every name this project has used: "Claude"/"Ubuntu" are generic, so only remove a script
+# that really is ours (it calls rootbridge)
+for n in "Claude" "Ubuntu" "Claude >_" "Ubuntu >_" "Claude Code" "Ubuntu Shell"; do
+    if [ -f "$HOME/.shortcuts/$n" ] && grep -q 'rootbridge' "$HOME/.shortcuts/$n" 2>/dev/null; then
+        rm -f "$HOME/.shortcuts/$n"
+    fi
+done
 # icons: only the default ones this project installed (an icon you chose stays)
-for pair in "claude:Claude >_" "ubuntu:Ubuntu >_"; do
+for pair in "claude:Claude" "claude:Claude >_" "ubuntu:Ubuntu" "ubuntu:Ubuntu >_"; do
     if cmp -s "$REPO/termux/shortcuts/icons/${pair%%:*}.png" "$HOME/.shortcuts/icons/${pair#*:}.png" 2>/dev/null; then
         rm -f "$HOME/.shortcuts/icons/${pair#*:}.png"
     fi

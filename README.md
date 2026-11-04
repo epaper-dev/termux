@@ -64,7 +64,7 @@ cd termux-root-bridge
 bash install.sh            # asks one question about autonomous mode
 ```
 
-Then start Claude Code with the **Claude >_** widget, or type `ubuntu` (alias for `rootbridge attach`) in a Termux
+Then start Claude Code with the **Claude** widget, or type `ubuntu` (alias for `rootbridge attach`) in a Termux
 shell. The first start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +
 `upgrade`, at most once a day, see below), runs `claude update` and starts Claude Code; later starts just attach to it.
 **Ordinary Termux windows stay plain shells** (with the colours loaded), nothing starts by itself. With Termux:Boot the
@@ -75,10 +75,10 @@ Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`. The installer is idempotent, backs up what it changes, and
 migrates the old v1 popup bridge if it finds one.
 
-**Widgets.** With the Termux:Widget app you get two shortcuts: **Claude >_** (attach to the Claude Code session) and
-**Ubuntu >_** (a plain Ubuntu shell). The installer puts them into `~/.shortcuts` together with neutral `>_` icons
+**Widgets.** With the Termux:Widget app you get two shortcuts: **Claude** (attach to the Claude Code session) and
+**Ubuntu** (a plain Ubuntu shell). The installer puts them into `~/.shortcuts` together with neutral `>_` icons
 (`~/.shortcuts/icons/<name>.png`, no logos; regenerate with `tools/make-shortcut-icons.py`). An icon that already exists
-is never replaced, so you can drop your own PNG there; with the old names "Claude Code" / "Ubuntu Shell" an existing icon
+is never replaced, so you can drop your own PNG there; with earlier names ("Claude Code" / "Ubuntu Shell", "Claude >_" / "Ubuntu >_") an existing icon
 is carried over to the new name and the old scripts are removed. Backups of widget and boot scripts go to
 `~/.rootbridge/backups` (Termux:Widget lists every file in `~/.shortcuts`, Termux:Boot runs every file in
 `~/.termux/boot`). `--no-widgets` skips all of it.
@@ -117,7 +117,7 @@ restarts. A session that already exists with another name is not renamed by the 
 |---|---|
 | `rootbridge start` | daemon + session; `--no-attach` creates it in the background (Termux:Boot runs that after a reboot) |
 | `rootbridge attach` / alias `ubuntu` | attach to the Claude Code session |
-| `rootbridge shell` | plain Ubuntu shell in this terminal (starts the daemon for `androidsu`, but no Claude Code and no tmux session; widget "Ubuntu >_") |
+| `rootbridge shell` | plain Ubuntu shell in this terminal (starts the daemon for `androidsu`, but no Claude Code and no tmux session; widget "Ubuntu") |
 | `rootbridge status` | daemon, session, guest install, last audit lines |
 | `rootbridge login <server>` | `claude mcp login <server>` with browser hand-off |
 | `rootbridge stop` | stop session and daemon |
