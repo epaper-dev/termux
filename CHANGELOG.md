@@ -120,9 +120,15 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
 * `root-bridge-watch.sh`, `root-bridge-confirm.sh` (tmux popup), `ubuntu-toggle.sh`, `ubuntu-switch.sh`, v1 widgets.
   They stay available in the tag `v1.0.0`.
 
+### Verified on a device
+Hisense A9, 2026-11-04: installer, colours and theme, apt upgrade, `claude update`, the file-descriptor limit, widgets,
+ending the session with `/exit`, opening the browser from the guest (`BROWSER` → `rootbridge-open` → daemon →
+`termux-open-url`), copying a 214-character link into the Android clipboard through the daemon (`--copy-only`, pasted
+back byte for byte identical) and the `c` key in the login dialog (OSC 52 through tmux).
+
 ### Not yet verified on a device
-OSC 52 clipboard into Android, opening the browser from the guest, the `tool_response` shape of MCP login tools,
-`updatedToolOutput` for MCP tools, and the bypass-mode proof above.
+The hook prompt in bypass mode (`tests/headless-proof.sh`), the `localhost` redirect after a completed login, the
+`tool_response` shape of MCP login tools and `updatedToolOutput` for MCP tools.
 
 ## 1.0.0
 

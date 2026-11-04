@@ -5,8 +5,9 @@
 [Deutsch](README.de.md) · [Español](README.es.md) · [Comparison with other projects](docs/COMPARISON.md) · [Login & MCP details](docs/LOGIN.md) · [Security](SECURITY.md)
 
 > **Status: v2.0.0-dev.** Unit and integration tests pass (guard hook, login hook, daemon, installers).
-> Not yet verified on a device: the clipboard hand-off (OSC 52 through tmux into Android), opening
-> the browser from the guest, and the exact `tool_response` format of MCP login tools.
+> Confirmed on a device (Hisense A9): opening the browser from the guest and copying links into the Android
+> clipboard (through the daemon and with the `c` key through tmux). Still to check: the hook prompt in bypass mode,
+> the `localhost` redirect of a completed login, and the exact `tool_response` format of MCP login tools.
 > See [what is verified](#what-is-verified).
 
 ## What problem does it solve?
@@ -172,12 +173,16 @@ out for `-p`, `--version` and `--help`.
 
 ## What is verified
 
-| Verified by automated tests | Needs a check on a real device |
+| Verified by automated tests | Still to check on a real device |
 |---|---|
 | Guard decisions (43 tests): ticket binding, indirect calls, tamper protection, fail-closed | Hook `ask` also in bypass mode (`tests/headless-proof.sh`) |
-| Daemon: ticket single-use/expiry/hash, long commands, URL validation (49 checks) | OSC 52 clipboard through tmux into Android |
-| Login hook (19 tests: response shapes, URL rules, modes) | Browser opening from the guest, `localhost` redirect |
-| Installers: staging root, idempotence, v1 migration, uninstall | `tool_response` shape of MCP login tools; `updatedToolOutput` |
+| Daemon: ticket single-use/expiry/hash, long commands, URL validation (49 checks) | `localhost` redirect after a completed login |
+| Login hook (19 tests: response shapes, URL rules, modes) | `tool_response` shape of MCP login tools; `updatedToolOutput` |
+| Installers: staging root, idempotence, v1 migration, uninstall | — |
+
+Confirmed on a device (Hisense A9, 2026-11-04): installer, colours and theme, apt upgrade, `claude update`, the
+file-descriptor limit, widgets, ending the session with `/exit`, opening the browser from the guest and copying links into
+the Android clipboard (`--copy-only` through the daemon, and the `c` key through tmux).
 
 Run the tests: `python3 -I -m unittest discover -s tests && bash tests/test_daemon.sh`.
 
