@@ -91,6 +91,13 @@ endet mit einer Zeile `Ende: ok` (oder dem Grund), ein Lauf ohne sie wurde abgeb
 `APT_UPGRADE` gespeichert, spätere Installationen behalten es, auch mit frischem Gast), bei jedem Start mit
 `--apt-upgrade always`. Von Hand: `rootbridge-apt` im Gast.
 
+**Startzeit von Hooks und Tools.** Claude Code schließt nach jedem Prozessstart alle Dateideskriptoren bis zum
+Limit (`ulimit -n`), und unter proot ist jedes `close()` ein abgefangener Syscall: Androids Standard von 32768 kostete
+2,5 bis 4 s pro gestartetem Prozess, jeder Hook und jeder Tool-Aufruf brauchte 4 bis 9 s statt unter einer Sekunde.
+`rootbridge-claude` und die Funktion `claude()` starten Claude Code deshalb mit `NOFILE_LIMIT` (Standard 2048, `0` =
+nicht ändern; `/etc/termux-root-bridge.conf` im Gast). Das Limit wird nur gesenkt, nie erhöht, und nur für Claude: die
+Shell drumherum behält ihres. Wirkt nach `install.sh` und einem Neustart der Claude-Code-Sitzung.
+
 **Farben und Theme.** Ohne `--no-colors` schreibt der Installer ein helles Farbschema nach
 `~/.termux/colors.properties` (deine bisherige Datei bleibt als `colors.properties.bak-<Zeitstempel>` erhalten) und
 setzt `"theme": "light-ansi"` in der `~/.claude/settings.json` des Gasts (andere Schlüssel bleiben). Die ANSI-Variante

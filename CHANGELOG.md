@@ -79,6 +79,14 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   apt is never started).
 
 ### Fixed
+* Every hook and tool call took 4-9 s: Claude Code closes every file descriptor up to `RLIMIT_NOFILE` after each fork,
+  and under proot each `close()` is a trapped syscall (~80 us), so Android's limit of 32768 cost 2.5-4 s per started
+  process (the guard itself needs 0.2 s; even an empty `true` hook took 4-8 s). `rootbridge-claude` and the `claude()`
+  function now start Claude Code (and `claude update`) with `ulimit -n 2048` in a subshell: hook phase 12 s → 1.2 s, a
+  whole test run 45 s → 10 s. Both limits have to go down (Bun raises the soft limit back to the hard one); the limit is
+  never raised and the shell afterwards keeps its own. New guest key `NOFILE_LIMIT` (default 2048, `0` = off; an existing
+  value is kept). `tests/test_nofile_limit.sh` (29 checks, stubbed `command`, staging root, the real `rootbridge-claude`
+  is never run). Takes effect after `install.sh` and a restart of the Claude Code session.
 * Leaked daemons: every `install.sh` run deleted the lock (`~/.rootbridge/.lock`) of the RUNNING daemon (the cleanup was meant
   for v1 leftovers), so the next `rootbridge start` spawned a second daemon while the old one kept polling — five were
   running on a device. Two daemons can race for one request (the ticket is single-use, but the second one may write a

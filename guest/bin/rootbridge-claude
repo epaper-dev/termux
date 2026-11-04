@@ -18,6 +18,23 @@ conf_get() {
     [ -n "$v" ] && printf '%s' "$v"
 }
 
+# Claude Code closes every file descriptor up to RLIMIT_NOFILE after each fork. Under proot every
+# close() is a trapped syscall (~80 us), so Android's limit of 32768 costs 2.5-4 s per started process
+# (hooks, Bash tool, rg, ...). Bun raises the soft limit back to the hard one, so both go down. Only
+# ever lowered, and only for Claude (callers run this in a subshell); NOFILE_LIMIT=0 switches it off.
+limit_nofile() {
+    local n cur
+    n="$(conf_get NOFILE_LIMIT || echo 2048)"
+    case "$n" in ''|0|*[!0-9]*) return 0 ;; esac
+    cur="$(ulimit -Hn)"
+    case "$cur" in
+        unlimited) ;;
+        ''|*[!0-9]*) return 0 ;;
+        *) [ "$cur" -gt "$n" ] || return 0 ;;
+    esac
+    ulimit -n "$n" 2>/dev/null || true
+}
+
 workdir="$(conf_get WORKDIR || echo /root/workspace)"
 cd "$workdir" 2>/dev/null || cd /root || exit 1
 
@@ -36,12 +53,12 @@ if command -v rootbridge-apt >/dev/null 2>&1; then
 fi
 
 echo "== claude update"
-if ! timeout 180 "$claude_bin" update; then
+if ! ( limit_nofile; exec timeout 180 "$claude_bin" update ); then
     echo "Update fehlgeschlagen oder abgebrochen - starte die vorhandene Version."
 fi
 
 read -r -a extra <<< "$(conf_get CLAUDE_ARGS || true)"
-"$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}"
+( limit_nofile; exec "$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}" )
 
 echo
 echo "Claude Code beendet. Neu starten mit: claude   (Shell bleibt offen)"

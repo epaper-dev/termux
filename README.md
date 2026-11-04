@@ -143,7 +143,13 @@ Termux: `~/.config/termux-root-bridge/config` (parsed as data, never executed): 
 `TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME` and `APT_UPGRADE` (both read by `install.sh`).
 Guest: `/etc/termux-root-bridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
-upgrade, default 600), `APT_HOLD` (packages held back from the upgrade).
+upgrade, default 600), `APT_HOLD` (packages held back from the upgrade), `NOFILE_LIMIT` (see below).
+
+`NOFILE_LIMIT` (default `2048`, `0` = leave the limit alone) is the file-descriptor limit Claude Code is started with.
+Claude Code closes every descriptor up to that limit after each fork, and under proot every `close()` is a trapped
+syscall, so Android's default of 32768 added 2.5-4 s to every started process: each hook and tool call took 4-9 s
+instead of well under a second. `rootbridge-claude` and the `claude()` function lower it for Claude only (never raise
+it); the shell around it keeps its own limit.
 
 `CLAUDE_ARGS` in the guest file holds extra arguments for the session start (`rootbridge-claude`), e.g.
 `CLAUDE_ARGS="--remote-control android --continue"` to show the session as "android" in the Remote Control

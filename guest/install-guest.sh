@@ -261,7 +261,7 @@ mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"
 for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/workspace" \
           "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" "TTY_CONFIRM=1" \
-          "APT_UPGRADE=daily" "APT_TIMEOUT=600" \
+          "APT_UPGRADE=daily" "APT_TIMEOUT=600" "NOFILE_LIMIT=2048" \
           "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"; do
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"
@@ -360,18 +360,30 @@ $BEGIN
 # Browser hand-off for logins (/login, /mcp) and bypass mode selectable with Shift+Tab.
 # A Remote Control name set in CLAUDE_ARGS ($CONF) is applied here too (the name only, no other flags).
 claude() {
-    local conf="\${ROOTBRIDGE_CONF:-$CONF}" name="" rc=()
+    local conf="\${ROOTBRIDGE_CONF:-$CONF}" name="" rc=() nofile=""
     if [ -r "\$conf" ]; then
         name="\$(sed -n 's/^CLAUDE_ARGS=.*--remote-control[ =]\([A-Za-z0-9._][A-Za-z0-9._-]*\).*/\1/p' "\$conf" | tail -n 1)"
+        nofile="\$(sed -n 's/^NOFILE_LIMIT=//p' "\$conf" | tail -n 1 | tr -d '\042\047')"
     fi
     [ -n "\$name" ] && rc=(--remote-control "\$name")
     case " \$* " in
         *" -p "*|*" --print "*|*" --remote-control"*|*" -v "*|*" --version "*|*" -h "*|*" --help "*) rc=() ;;
     esac
-    case "\${1:-}" in
-        ""|-*) IS_SANDBOX=1 BROWSER=$BINDIR/rootbridge-open command claude --allow-dangerously-skip-permissions "\${rc[@]}" "\$@" ;;
-        *)     BROWSER=$BINDIR/rootbridge-open command claude "\$@" ;;
-    esac
+    # Claude Code closes every fd up to the limit after each fork; under proot that costs 2.5-4 s per
+    # started process. Lowered in a subshell, never raised; NOFILE_LIMIT=0 in $CONF switches it off.
+    (
+        nofile="\${nofile:-2048}"
+        case "\$nofile" in
+            ''|0|*[!0-9]*) ;;
+            *) if [ "\$(ulimit -Hn)" = unlimited ] || [ "\$(ulimit -Hn)" -gt "\$nofile" ] 2>/dev/null; then
+                   ulimit -n "\$nofile" 2>/dev/null
+               fi ;;
+        esac
+        case "\${1:-}" in
+            ""|-*) IS_SANDBOX=1 BROWSER=$BINDIR/rootbridge-open command claude --allow-dangerously-skip-permissions "\${rc[@]}" "\$@" ;;
+            *)     BROWSER=$BINDIR/rootbridge-open command claude "\$@" ;;
+        esac
+    )
 }
 $END
 EOF
