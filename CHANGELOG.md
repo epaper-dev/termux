@@ -5,6 +5,8 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Added
+* MIT `LICENSE`, linked from the READMEs (before: "not chosen yet").
+* `README.es.md` rewritten for v2 (the version on GitHub still described the v1 popup); the three READMEs link to each other.
 * `android-root-guard.py` — PreToolUse hook: confirmation for every Android-root execution, tickets bound to
   `sha256(<cmd>)`, tamper protection, fail-closed. 43 tests.
 * `rootbridge-daemon` — headless, ticket-only, long commands (`ack` + unlimited wait for the result), URL opener.
