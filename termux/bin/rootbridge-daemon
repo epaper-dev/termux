@@ -32,7 +32,7 @@ write_res() { rb_write_atomic "$BRIDGE_DIR/res-$1.txt" "$2" "$3"; }
 
 # --- root requests -----------------------------------------------------------
 handle_request() {
-    local id="$1" req work tk res cmd tid mtime age out code want
+    local id="$1" req work tk cmd tid mtime age out code want
     local -a su_args
     req="$BRIDGE_DIR/req-$id.txt"
     work="$req.work"

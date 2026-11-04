@@ -44,8 +44,7 @@ daemon_start() {
     mkdir -p "$BRIDGE_DIR"
     rm -f "$BRIDGE_DIR/.alive"
     setsid nohup "$here/rootbridge-daemon" >> "$BRIDGE_DIR/daemon.log" 2>&1 < /dev/null &
-    local i
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         [ -e "$BRIDGE_DIR/.alive" ] && return 0
         sleep 0.3
     done

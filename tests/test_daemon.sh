@@ -58,14 +58,14 @@ mkticket() {  # mkticket <cmd> <ttl> [hash]  -> prints id
     echo "$id"
 }
 
-OUT=""; ERR=""; CODE=""
+OUT=""; CODE=""
 run_client() {  # run_client <androidsu args...>; env (ROOTBRIDGE_TICKET...) is inherited
     ( bash "$CLIENT" "$@" > "$T/out" 2> "$T/err"; echo $? > "$T/code" ) &
     local pid=$!
     sleep 0.7
     bash "$DAEMON" --once
     wait "$pid"
-    OUT="$(cat "$T/out")"; ERR="$(cat "$T/err")"; CODE="$(cat "$T/code")"
+    OUT="$(cat "$T/out")"; CODE="$(cat "$T/code")"
 }
 su_runs() { [ -f "$T/su.log" ] && wc -l < "$T/su.log" | tr -d ' ' || echo 0; }
 
@@ -157,7 +157,7 @@ open_url() {  # open_url <url>  -> CODE
     sleep 0.7
     bash "$DAEMON" --once
     wait "$pid"
-    CODE="$(cat "$T/code")"; ERR="$(cat "$T/err")"
+    CODE="$(cat "$T/code")"
 }
 : > "$BRIDGE_DIR/.alive"     # heartbeat: daemon "läuft"
 open_url 'https://example.com/oauth/authorize?client_id=abc&state=x%20y'

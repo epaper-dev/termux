@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2034  # the settings below are read by the scripts that source this file
 # rootbridge-lib.sh - shared helpers of termux-root-bridge (sourced, not run).
 # Used by rootbridge-daemon and the rootbridge CLI inside Termux.
 

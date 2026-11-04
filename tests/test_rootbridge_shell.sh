@@ -11,7 +11,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 T="$(mktemp -d)"
 # the stub daemon sleeps: stop exactly that process (by pid, never by name) and clean up
-trap 'p="$(cat "$T/bridge/.lock/pid" 2>/dev/null)"; [ -n "$p" ] && kill "$p" 2>/dev/null; rm -rf "$T"' EXIT
+cleanup() {
+    local p
+    p="$(cat "$T/bridge/.lock/pid" 2>/dev/null)"
+    [ -n "$p" ] && kill "$p" 2>/dev/null
+    rm -rf "$T"
+}
+trap cleanup EXIT
 
 PASS=0; FAIL=0
 check() {   # check <name> <expected> <actual>
