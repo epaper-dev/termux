@@ -2,7 +2,7 @@
 
 **Claude Code auf Android (Termux + proot-distro) – jede echte Root-Aktion wird direkt in Claude Code bestätigt, und Logins funktionieren ohne Kopierärger.**
 
-[English](README.md) · [Vergleich mit anderen Projekten](docs/COMPARISON.md) · [Login & MCP](docs/LOGIN.md) · [Sicherheit](SECURITY.md)
+[English](README.md) · [Español](README.es.md) · [Vergleich mit anderen Projekten](docs/COMPARISON.md) · [Login & MCP](docs/LOGIN.md) · [Sicherheit](SECURITY.md)
 
 > **Stand: v2.0.0-dev.** Unit- und Integrationstests laufen (Guard-Hook, Login-Hook, Daemon, Installer).
 > Noch nicht auf einem Gerät bestätigt: Zwischenablage (OSC 52 durch tmux nach Android), Browser-Öffnen aus dem
@@ -184,4 +184,4 @@ Nicht mit Anthropic verbunden.
 
 ## Lizenz
 
-Noch nicht festgelegt – die Maintainer:in ergänzt vor dem ersten Release eine `LICENSE`-Datei.
+[MIT](LICENSE).

@@ -2,7 +2,7 @@
 
 **Run Claude Code on Android (Termux + proot-distro) with every real-root action confirmed inside Claude Code — and with logins that just work.**
 
-[Deutsch](README.de.md) · [Comparison with other projects](docs/COMPARISON.md) · [Login & MCP details](docs/LOGIN.md) · [Security](SECURITY.md)
+[Deutsch](README.de.md) · [Español](README.es.md) · [Comparison with other projects](docs/COMPARISON.md) · [Login & MCP details](docs/LOGIN.md) · [Security](SECURITY.md)
 
 > **Status: v2.0.0-dev.** Unit and integration tests pass (guard hook, login hook, daemon, installers).
 > Not yet verified on a device: the clipboard hand-off (OSC 52 through tmux into Android), opening
@@ -202,4 +202,4 @@ start-up and logins* on top of it: [bd-loser/claude-code-termux](https://github.
 
 ## License
 
-Not chosen yet — the maintainer adds a `LICENSE` file before the first release.
+[MIT](LICENSE).
