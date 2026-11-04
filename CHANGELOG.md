@@ -78,7 +78,17 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `tests/test_apt_upgrade.sh` (143 checks; stub `apt-get`/`apt-mark`/`dpkg`/`dpkg-query`/`timeout`/`proot-distro`, real
   apt is never started).
 
+* `claude update` at the session start runs at most once a day, like the apt upgrade: guest key `CLAUDE_UPDATE`
+  (`daily` default, `always`, `off`), stamp `/var/lib/termux-root-bridge/claude-update-last-success` written only after a
+  successful update (a failed or aborted one leaves none, the start goes on and the next start tries again).
+  `install.sh --claude-update MODE` / `--no-claude-update` are stored in the Termux config (`CLAUDE_UPDATE`) and reused by
+  every later install, also with a fresh guest; the guest installer takes `--claude-update MODE`. A value already in the
+  guest config is kept. `tests/test_claude_update.sh` (125 checks, stubbed `claude` / `proot-distro`, the real
+  `rootbridge-claude` is never run).
+
 ### Fixed
+* `tests/test_nofile_limit.sh` aborted in a session that runs with the lowered limit (a hard limit cannot be raised again).
+  It now starts from `min(hard limit, 8192)`; lowering to 2048 is only observable above that (CI), everything else is.
 * Every hook and tool call took 4-9 s: Claude Code closes every file descriptor up to `RLIMIT_NOFILE` after each fork,
   and under proot each `close()` is a trapped syscall (~80 us), so Android's limit of 32768 cost 2.5-4 s per started
   process (the guard itself needs 0.2 s; even an empty `true` hook took 4-8 s). `rootbridge-claude` and the `claude()`

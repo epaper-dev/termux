@@ -23,10 +23,24 @@ check() {   # check <name> <expected> <actual>
     else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
 }
 
-START=8192   # the tests start from a limit they can lower to, whatever the machine's default is
+# The tests start from a limit they can lower from: 8192, or the machine's hard limit if that is lower
+# (a session started by rootbridge-claude already runs with NOFILE_LIMIT, and a hard limit cannot be
+# raised again). w N = what a run with NOFILE_LIMIT=N has to end up with: N if that is below START,
+# otherwise START (limits are only ever lowered).
+HARD="$(ulimit -Hn)"
+case "$HARD" in
+    unlimited) START=8192 ;;
+    ''|*[!0-9]*) echo "ABBRUCH: ulimit -Hn liefert '$HARD'." >&2; exit 1 ;;
+    *) START=$(( HARD < 8192 ? HARD : 8192 )) ;;
+esac
+w() { if [ "$START" -gt "$1" ]; then echo "$1"; else echo "$START"; fi; }
 if ! bash -c "ulimit -n $START" 2>/dev/null; then
-    echo "ABBRUCH: ulimit -n $START ist hier nicht setzbar (Hard-Limit zu niedrig)." >&2
+    echo "ABBRUCH: ulimit -n $START ist hier nicht setzbar." >&2
     exit 1
+fi
+if [ "$START" -le 2048 ]; then
+    echo "Hinweis: Hard-Limit hier nur $HARD - das Absenken auf 2048 ist so nicht zu beobachten (voll prüfbar"
+    echo "         außerhalb einer Claude-Sitzung und in der CI); Werte unter $START und 'nie erhöhen' schon."
 fi
 
 conf() { printf '%s\n' "$@" > "$T/test.conf"; export ROOTBRIDGE_CONF="$T/test.conf"; }
@@ -51,14 +65,14 @@ lim() {
 P="parent=$START/$START"
 
 conf 'WORKDIR=/root/workspace'
-check "ohne NOFILE_LIMIT: Standard 2048"             "2048/2048 $P"  "$(lim "$T/test.conf")"
-check "Konfig fehlt: Standard 2048"                  "2048/2048 $P"  "$(lim "$T/gibt-es-nicht.conf")"
+check "ohne NOFILE_LIMIT: Standard 2048"             "$(w 2048)/$(w 2048) $P"  "$(lim "$T/test.conf")"
+check "Konfig fehlt: Standard 2048"                  "$(w 2048)/$(w 2048) $P"  "$(lim "$T/gibt-es-nicht.conf")"
 conf 'NOFILE_LIMIT=1024'
-check "NOFILE_LIMIT=1024"                            "1024/1024 $P"  "$(lim "$T/test.conf")"
+check "NOFILE_LIMIT=1024"                            "$(w 1024)/$(w 1024) $P"  "$(lim "$T/test.conf")"
 conf 'NOFILE_LIMIT="4096"'
-check "NOFILE_LIMIT=\"4096\" (in Anführungszeichen)" "4096/4096 $P"  "$(lim "$T/test.conf")"
+check "NOFILE_LIMIT=\"4096\" (in Anführungszeichen)" "$(w 4096)/$(w 4096) $P"  "$(lim "$T/test.conf")"
 conf 'NOFILE_LIMIT=1024' 'NOFILE_LIMIT=3000'
-check "mehrere Zeilen: die letzte gilt"              "3000/3000 $P"  "$(lim "$T/test.conf")"
+check "mehrere Zeilen: die letzte gilt"              "$(w 3000)/$(w 3000) $P"  "$(lim "$T/test.conf")"
 conf 'NOFILE_LIMIT=0'
 check "NOFILE_LIMIT=0: nichts ändern"                "$START/$START $P" "$(lim "$T/test.conf")"
 conf 'NOFILE_LIMIT=abc'
@@ -66,7 +80,7 @@ check "NOFILE_LIMIT=abc: nichts ändern"              "$START/$START $P" "$(lim 
 conf 'NOFILE_LIMIT=16384'
 check "Limit über dem aktuellen: nie erhöhen"        "$START/$START $P" "$(lim "$T/test.conf")"
 conf 'NOFILE_LIMIT='
-check "NOFILE_LIMIT leer: Standard 2048"             "2048/2048 $P"  "$(lim "$T/test.conf")"
+check "NOFILE_LIMIT leer: Standard 2048"             "$(w 2048)/$(w 2048) $P"  "$(lim "$T/test.conf")"
 
 # Both claude starts of the script go through limit_nofile (in a subshell, so the shell afterwards keeps its limit)
 check "claude update läuft über limit_nofile"        1 "$(grep -c 'limit_nofile; exec timeout 180 "\$claude_bin" update' "$SCRIPT")"
@@ -102,17 +116,17 @@ call() {
 BASE="claude --allow-dangerously-skip-permissions"
 
 conf 'WORKDIR=/root/workspace'
-check "claude(): Standard 2048"                      "$BASE hard=2048 soft=2048" "$(call)"
-check "claude update: ebenfalls 2048"                "claude update hard=2048 soft=2048" "$(call update)"
-check "claude -p: ebenfalls 2048"                    "$BASE -p hi hard=2048 soft=2048" "$(call -p hi)"
+check "claude(): Standard 2048"                      "$BASE hard=$(w 2048) soft=$(w 2048)" "$(call)"
+check "claude update: ebenfalls 2048"                "claude update hard=$(w 2048) soft=$(w 2048)" "$(call update)"
+check "claude -p: ebenfalls 2048"                    "$BASE -p hi hard=$(w 2048) soft=$(w 2048)" "$(call -p hi)"
 export ROOTBRIDGE_CONF="$T/gibt-es-nicht.conf"
-check "claude(): Konfig fehlt, Standard 2048"        "$BASE hard=2048 soft=2048" "$(call)"
+check "claude(): Konfig fehlt, Standard 2048"        "$BASE hard=$(w 2048) soft=$(w 2048)" "$(call)"
 conf 'NOFILE_LIMIT=1024'
-check "claude(): NOFILE_LIMIT=1024"                  "$BASE hard=1024 soft=1024" "$(call)"
+check "claude(): NOFILE_LIMIT=1024"                  "$BASE hard=$(w 1024) soft=$(w 1024)" "$(call)"
 conf 'NOFILE_LIMIT="4096"'
-check "claude(): NOFILE_LIMIT=\"4096\""              "$BASE hard=4096 soft=4096" "$(call)"
+check "claude(): NOFILE_LIMIT=\"4096\""              "$BASE hard=$(w 4096) soft=$(w 4096)" "$(call)"
 conf 'NOFILE_LIMIT='"'"'3000'"'"
-check "claude(): NOFILE_LIMIT='3000'"                "$BASE hard=3000 soft=3000" "$(call)"
+check "claude(): NOFILE_LIMIT='3000'"                "$BASE hard=$(w 3000) soft=$(w 3000)" "$(call)"
 conf 'NOFILE_LIMIT=0'
 check "claude(): NOFILE_LIMIT=0 ändert nichts"       "$BASE hard=$START soft=$START" "$(call)"
 conf 'NOFILE_LIMIT=abc'

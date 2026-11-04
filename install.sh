@@ -5,6 +5,7 @@
 #   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors] [--no-widgets]
 #                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME]
 #                   [--apt-upgrade daily|always|off | --no-apt-upgrade]
+#                   [--claude-update daily|always|off | --no-claude-update]
 #
 # What it does (idempotent, with backups):
 #   1. installs rootbridge + rootbridge-daemon into $PREFIX/bin
@@ -22,7 +23,9 @@
 #      theme "light-ansi") via proot-distro. The guest runs apt-get update + upgrade
 #      at the start of the Claude Code session, at most once a day (--no-apt-upgrade
 #      turns it off, --apt-upgrade always runs it at every start; the choice is stored
-#      in the Termux config as APT_UPGRADE and reused by every later install)
+#      in the Termux config as APT_UPGRADE and reused by every later install). `claude
+#      update` follows the same rules: once a day by default (--no-claude-update turns it
+#      off, --claude-update always runs it at every start; stored as CLAUDE_UPDATE)
 
 set -eu
 
@@ -37,6 +40,7 @@ DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DEPS=1; AUTONOMO
 CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 APT_MODE=""; APT_MODE_SET=0
+CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 APT_RE='^(daily|always|off)$'
 while [ $# -gt 0 ]; do
@@ -55,7 +59,11 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--apt-upgrade braucht daily, always oder off" >&2; exit 2; }
             APT_MODE="$2"; APT_MODE_SET=1; shift ;;
         --no-apt-upgrade) APT_MODE=off; APT_MODE_SET=1 ;;
-        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --claude-update)
+            [ $# -ge 2 ] || { echo "--claude-update braucht daily, always oder off" >&2; exit 2; }
+            CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift ;;
+        --no-claude-update) CLAUDE_UPD_MODE=off; CLAUDE_UPD_SET=1 ;;
+        -h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -68,6 +76,11 @@ fi
 
 if [ "$APT_MODE_SET" = 1 ] && ! [[ "$APT_MODE" =~ $APT_RE ]]; then
     echo "--apt-upgrade: ungültiger Wert '$APT_MODE' (erlaubt: daily, always, off)" >&2
+    exit 2
+fi
+
+if [ "$CLAUDE_UPD_SET" = 1 ] && ! [[ "$CLAUDE_UPD_MODE" =~ $APT_RE ]]; then
+    echo "--claude-update: ungültiger Wert '$CLAUDE_UPD_MODE' (erlaubt: daily, always, off)" >&2
     exit 2
 fi
 
@@ -203,6 +216,7 @@ TICKET_TTL=1800
 AUTOSTART_DELAY=3
 # REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); set with install.sh --remote-name
 # APT_UPGRADE=daily     # apt-get update + upgrade in the guest at session start: daily | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
+# CLAUDE_UPDATE=daily   # claude update in the guest at session start: daily | always | off; set with install.sh --claude-update / --no-claude-update
 EOF
     say "  neu: $CFG"
 fi
@@ -238,6 +252,22 @@ else
     v="$(sed -n 's/^APT_UPGRADE=//p' "$CFG" | tail -n 1)"
     v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
     if [[ "$v" =~ $APT_RE ]]; then APT_MODE="$v"; say "  apt-Modus aus der Konfig: $APT_MODE"; fi
+fi
+if [ "$CLAUDE_UPD_SET" = 1 ]; then
+    # same idea as APT_UPGRADE: the choice survives a reinstall of the guest
+    tmp="$CFG.new.$$"
+    cp "$CFG" "$tmp"
+    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
+    if grep -q '^CLAUDE_UPDATE=' "$tmp"; then
+        sed -i "s|^CLAUDE_UPDATE=.*|CLAUDE_UPDATE=$CLAUDE_UPD_MODE|" "$tmp"
+    else
+        printf 'CLAUDE_UPDATE=%s\n' "$CLAUDE_UPD_MODE" >> "$tmp"
+    fi
+    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  claude-update-Modus gespeichert: $CLAUDE_UPD_MODE"; fi
+else
+    v="$(sed -n 's/^CLAUDE_UPDATE=//p' "$CFG" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    if [[ "$v" =~ $APT_RE ]]; then CLAUDE_UPD_MODE="$v"; say "  claude-update-Modus aus der Konfig: $CLAUDE_UPD_MODE"; fi
 fi
 TMP_SNIP="$(mktemp)"; cp "$REPO/termux/tmux.conf.snippet" "$TMP_SNIP"
 set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
@@ -350,6 +380,7 @@ if [ "$DO_GUEST" = 1 ]; then
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
     if [ -n "$APT_MODE" ]; then GUEST_ARGS+=(--apt-upgrade "$APT_MODE"); fi
+    if [ -n "$CLAUDE_UPD_MODE" ]; then GUEST_ARGS+=(--claude-update "$CLAUDE_UPD_MODE"); fi
     proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/install-guest.sh "${GUEST_ARGS[@]}"
     rm -rf "$STAGE"
 else

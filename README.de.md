@@ -62,14 +62,14 @@ bash install.sh            # stellt eine Frage zum autonomen Modus
 
 Danach Claude Code über das Widget **Claude** starten oder in einer Termux-Shell `ubuntu` eingeben (Alias für
 `rootbridge attach`). Der erste Start legt die Sitzung an: Daemon starten, Pakete des Gasts aktualisieren
-(`apt-get update` + `upgrade`, höchstens einmal am Tag, siehe unten), `claude update` ausführen und Claude Code
-starten; spätere Starts hängen sich nur an. **Normale Termux-Fenster bleiben reine Shells** (mit geladenen Farben),
+(`apt-get update` + `upgrade`, höchstens einmal am Tag, siehe unten), `claude update` ausführen (ebenfalls höchstens einmal am
+Tag) und Claude Code starten; spätere Starts hängen sich nur an. **Normale Termux-Fenster bleiben reine Shells** (mit geladenen Farben),
 nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart im Hintergrund angelegt
 (`rootbridge start --no-attach`). Claude **startet weiter im Plan-Modus** (aus deiner `settings.json`); mit
 **Umschalt+Tab** wechselst du in *bypass permissions*.
 
 Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--autonomous yes|no|ask`, `--remote-name NAME`,
-`--apt-upgrade daily|always|off`, `--no-apt-upgrade`. Der Installer ist idempotent, sichert Geändertes und migriert die
+`--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. Der Installer ist idempotent, sichert Geändertes und migriert die
 alte v1-Popup-Bridge.
 
 **Widgets.** Mit der App Termux:Widget gibt es zwei Verknüpfungen: **Claude** (an die Claude-Code-Sitzung anhängen)
@@ -90,6 +90,14 @@ endet mit einer Zeile `Ende: ok` (oder dem Grund), ein Lauf ohne sie wurde abgeb
 `apt-mark showhold`. Abschalten mit `bash install.sh --no-apt-upgrade` (wird in der Termux-Konfig als
 `APT_UPGRADE` gespeichert, spätere Installationen behalten es, auch mit frischem Gast), bei jedem Start mit
 `--apt-upgrade always`. Von Hand: `rootbridge-apt` im Gast.
+
+**`claude update`.** Gleiche Regeln wie bei den Paket-Updates (`CLAUDE_UPDATE=daily|always|off`, Standard `daily`): Der
+Sitzungsstart führt `claude update` höchstens einmal in 24 h nach einem Erfolg aus (Stempel
+`/var/lib/termux-root-bridge/claude-update-last-success` im Gast). Ein fehlgeschlagenes oder abgebrochenes Update hinterlässt
+keinen Stempel, meldet es kurz und Claude Code startet trotzdem; der nächste Start versucht es erneut. Mit `daily` kann
+Claude Code bis zu einen Tag hinter der neuesten Version liegen. Abschalten mit `bash install.sh --no-claude-update`, bei
+jedem Start mit `--claude-update always` (wird in der Termux-Konfig als `CLAUDE_UPDATE` gespeichert, spätere
+Installationen behalten es, auch mit frischem Gast). Ein von Hand gestartetes `claude update` setzt den Stempel nicht.
 
 **Startzeit von Hooks und Tools.** Claude Code schließt nach jedem Prozessstart alle Dateideskriptoren bis zum
 Limit (`ulimit -n`), und unter proot ist jedes `close()` ein abgefangener Syscall: Androids Standard von 32768 kostete
