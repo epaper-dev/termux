@@ -151,15 +151,16 @@ check "Vorlage: Syntax lesbar (kein Parserfehler)"    "" "$(printf '%s\n' "$LAYO
 check "Vorlage: zwei Zeilen"                          2 "$(line rows)"
 check "Vorlage: je sechs Tasten"                      "6,6" "$(line lens)"
 names="$(line names)"
-for want in ESC HOME UP END CTRL ALT LEFT DOWN RIGHT KEYBOARD '/' 'macro:SHIFT TAB'; do
+for want in ESC DEL UP ENTER CTRL ALT LEFT DOWN RIGHT KEYBOARD '/' 'macro:SHIFT TAB'; do
     case "$names" in *"|$want|"*) r=ja ;; *) r=nein ;; esac
     check "Vorlage: Taste $want vorhanden"            ja "$r"
 done
-for gone in PGUP PGDN TAB; do
+for gone in PGUP PGDN TAB HOME END; do
     case "$names" in *"|$gone|"*) r=ja ;; *) r=nein ;; esac
     check "Vorlage: keine eigene Taste $gone"         nein "$r"
 done
-check "Vorlage: Wisch nach oben liefert - und TAB"    "- macro:TAB" "$(line popups)"
+check "Vorlage: Wisch nach oben liefert -, TAB, HOME, END" "- macro:TAB HOME END" "$(line popups)"
+check "Vorlage: Reihenfolge der Tasten"               "|ESC|/|macro:SHIFT TAB|DEL|UP|ENTER|KEYBOARD|CTRL|ALT|LEFT|DOWN|RIGHT|" "$names"
 check "Vorlage: S-TAB beschriftet"                    1 "$(grep -c 'display: "S-TAB"' "$SNIP")"
 check "Vorlage: keine Zeilenfortsetzung mit Backslash" 0 "$(grep -c '\\$' "$SNIP")"
 

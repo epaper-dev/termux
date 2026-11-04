@@ -85,9 +85,10 @@ Termux:Boot führt jede Datei in `~/.termux/boot` aus). `--no-widgets` überspri
 **Zusatztasten.** Eine Handy-Tastatur hat kein Umschalt+Tab, und Claude Code wechselt damit den Berechtigungsmodus (Plan,
 Auto, Bypass). Der Installer setzt deshalb die Zusatztastenleiste von Termux in `~/.termux/termux.properties` (in einem
 markierten Block, die Datei wird vorher gesichert, danach lädt Termux seine Einstellungen neu): zwei Zeilen mit je sechs Tasten,
-`ESC` `/` `S-TAB` `HOME` `↑` `END` und `KEYBOARD` `CTRL` `ALT` `←` `↓` `→`. **S-TAB** sendet Umschalt+Tab, Wisch nach oben
+`ESC` `/` `S-TAB` `DEL` `↑` `ENTER` und `KEYBOARD` `CTRL` `ALT` `←` `↓` `→`. **S-TAB** sendet Umschalt+Tab, Wisch nach oben
 ergibt Tab (vervollständigt Slash-Befehle und `@`-Dateien). **KEYBOARD** blendet die Bildschirmtastatur ein oder aus (eine
-ausgeblendete Tastatur kommt nicht von selbst zurück); Wisch nach oben auf `/` ergibt `-`. Eine eigene Leiste (eine `extra-keys`-Zeile
+ausgeblendete Tastatur kommt nicht von selbst zurück; `ENTER`, die Pfeile, `ESC` und `S-TAB` beantworten weiter Rückfragen
+und Menüs). Wisch nach oben auf `/` ergibt `-`, auf `←` `HOME`, auf `→` `END`. Eine eigene Leiste (eine `extra-keys`-Zeile
 außerhalb unseres Blocks) wird nie ersetzt, der Installer nennt dann nur die Taste, die du selbst ergänzen kannst (Vorlage:
 `termux/extra-keys.snippet`). `--no-extra-keys` überspringt das Ganze, `uninstall.sh` entfernt den Block. Die Farben der
 Leiste legt Termux fest, sie lassen sich von hier aus nicht ändern.
