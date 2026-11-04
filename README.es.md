@@ -5,9 +5,9 @@
 [English](README.md) · [Deutsch](README.de.md) · [Comparación con otros proyectos](docs/COMPARISON.md) · [Inicio de sesión y MCP](docs/LOGIN.md) · [Seguridad](SECURITY.md)
 
 > **Estado: v2.0.0-dev.** Las pruebas unitarias y de integración pasan (hook de guardia, hook de inicio de sesión,
-> daemon, instaladores). Confirmado en un dispositivo (Hisense A9): la apertura del navegador desde el invitado y la
-> copia de enlaces al portapapeles de Android (mediante el daemon y con la tecla `c` a través de tmux). Pendiente de
-> comprobar: la confirmación del hook en modo bypass, la redirección a `localhost` de un inicio de sesión completado y el
+> daemon, instaladores). Confirmado en un dispositivo (Hisense A9): la confirmación de root también en modo bypass, la
+> apertura del navegador desde el invitado y la copia de enlaces al portapapeles de Android (mediante el daemon y con la
+> tecla `c` a través de tmux). Pendiente de comprobar: la redirección a `localhost` de un inicio de sesión completado y el
 > formato exacto de `tool_response` de las herramientas de inicio de sesión MCP. Consulta
 > [qué está verificado](#qué-está-verificado).
 
@@ -186,13 +186,14 @@ Remote Control (nunca `--continue`) y lo omite para `-p`, `--version` y `--help`
 
 | Verificado con pruebas automáticas | Pendiente de comprobar en un dispositivo real |
 |---|---|
-| Decisiones de la guardia (43 pruebas): vínculo del ticket, llamadas indirectas, protección contra manipulación, fail-closed | `ask` del hook también en modo bypass (`tests/headless-proof.sh`) |
-| Daemon: ticket de un solo uso/caducidad/hash, comandos largos, validación de URL (49 comprobaciones) | Redirección a `localhost` tras un inicio de sesión completado |
-| Hook de inicio de sesión (19 pruebas: formas de respuesta, reglas de URL, modos) | Forma de `tool_response` de las herramientas de inicio de sesión MCP; `updatedToolOutput` |
+| Decisiones de la guardia (43 pruebas): vínculo del ticket, llamadas indirectas, protección contra manipulación, fail-closed | Redirección a `localhost` tras un inicio de sesión completado |
+| Daemon: ticket de un solo uso/caducidad/hash, comandos largos, validación de URL (49 comprobaciones) | Forma de `tool_response` de las herramientas de inicio de sesión MCP; `updatedToolOutput` |
+| Hook de inicio de sesión (19 pruebas: formas de respuesta, reglas de URL, modos) | — |
 | Instaladores: raíz de staging, idempotencia, migración de la v1, desinstalación | — |
 
 Confirmado en un dispositivo (Hisense A9, 04/11/2026): instalador, colores y tema, actualización de apt,
-`claude update`, límite de descriptores de archivo, widgets, fin de la sesión con `/exit`, apertura del navegador desde
+`claude update`, límite de descriptores de archivo, widgets, fin de la sesión con `/exit`, la confirmación de root en modo bypass (el hook preguntó en Claude Code y `androidsu` solo
+se ejecutó tras la respuesta), apertura del navegador desde
 el invitado y copia de enlaces al portapapeles de Android (`--copy-only` mediante el daemon y la tecla `c` a través de
 tmux).
 

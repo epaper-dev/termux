@@ -5,10 +5,9 @@
 [English](README.md) · [Español](README.es.md) · [Vergleich mit anderen Projekten](docs/COMPARISON.md) · [Login & MCP](docs/LOGIN.md) · [Sicherheit](SECURITY.md)
 
 > **Stand: v2.0.0-dev.** Unit- und Integrationstests laufen (Guard-Hook, Login-Hook, Daemon, Installer).
-> Auf einem Gerät bestätigt (Hisense A9): Browser-Öffnen aus dem Gast und Kopieren von Links in die
-> Android-Zwischenablage (über den Daemon und mit der Taste `c` durch tmux). Noch zu prüfen: die Rückfrage des Hooks im
-> Bypass-Modus, der `localhost`-Redirect eines abgeschlossenen Logins und das genaue `tool_response`-Format der
-> MCP-Login-Tools. Siehe [Was geprüft ist](#was-geprüft-ist).
+> Auf einem Gerät bestätigt (Hisense A9): die Root-Rückfrage auch im Bypass-Modus, Browser-Öffnen aus dem Gast und
+> Kopieren von Links in die Android-Zwischenablage (über den Daemon und mit der Taste `c` durch tmux). Noch zu prüfen:
+> der `localhost`-Redirect eines abgeschlossenen Logins und das genaue `tool_response`-Format der MCP-Login-Tools. Siehe [Was geprüft ist](#was-geprüft-ist).
 
 ## Welches Problem löst es?
 
@@ -158,13 +157,14 @@ Kurzfassung (Details: [docs/LOGIN.md](docs/LOGIN.md)):
 
 | Durch automatische Tests belegt | Auf einem echten Gerät noch zu prüfen |
 |---|---|
-| Guard-Entscheidungen (43 Tests): Ticketbindung, indirekte Aufrufe, Manipulationsschutz, fail-closed | Rückfrage des Hooks auch im Bypass-Modus (`tests/headless-proof.sh`) |
-| Daemon: Ticket einmalig/Ablauf/Hash, lange Befehle, URL-Prüfung (49 Checks) | `localhost`-Redirect nach einem abgeschlossenen Login |
-| Login-Hook (19 Tests: Antwortformen, URL-Regeln, Modi) | `tool_response`-Form der MCP-Login-Tools; `updatedToolOutput` |
+| Guard-Entscheidungen (43 Tests): Ticketbindung, indirekte Aufrufe, Manipulationsschutz, fail-closed | `localhost`-Redirect nach einem abgeschlossenen Login |
+| Daemon: Ticket einmalig/Ablauf/Hash, lange Befehle, URL-Prüfung (49 Checks) | `tool_response`-Form der MCP-Login-Tools; `updatedToolOutput` |
+| Login-Hook (19 Tests: Antwortformen, URL-Regeln, Modi) | — |
 | Installer: Staging-Root, Idempotenz, v1-Migration, Deinstallation | — |
 
 Auf einem Gerät bestätigt (Hisense A9, 04.11.2026): Installer, Farben und Theme, apt-Upgrade, `claude update`, das
-Dateideskriptor-Limit, Widgets, Sitzungsende mit `/exit`, Browser-Öffnen aus dem Gast und Kopieren von Links in die
+Dateideskriptor-Limit, Widgets, Sitzungsende mit `/exit`, die Root-Rückfrage im Bypass-Modus (der Hook fragte in Claude Code, `androidsu` lief erst nach
+der Antwort), Browser-Öffnen aus dem Gast und Kopieren von Links in die
 Android-Zwischenablage (`--copy-only` über den Daemon und die Taste `c` durch tmux).
 
 Tests starten: `python3 -I -m unittest discover -s tests && bash tests/test_daemon.sh`.
