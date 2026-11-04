@@ -84,6 +84,10 @@ is carried over to the new name and the old scripts are removed. Backups of widg
 `~/.rootbridge/backups` (Termux:Widget lists every file in `~/.shortcuts`, Termux:Boot runs every file in
 `~/.termux/boot`). `--no-widgets` skips all of it.
 
+**End of the session.** `/exit` (or Ctrl+C) in Claude Code ends everything: the tmux window and session close, `rootbridge attach`
+returns, and the Termux window opened by the **Claude** widget closes with it. You do not land in the Ubuntu shell. Only if Claude Code
+ends with an error code does the guest shell stay open, with a note, so the message stays readable (also when `claude` is not installed).
+
 **Package updates in the guest.** On by default: when the Claude Code session starts, `rootbridge-apt` runs
 `apt-get update` and `apt-get -y upgrade` — at most once per 24 h after a success (`APT_UPGRADE=daily`), never blocking
 the start (no network, an error or a timeout just print a note and Claude Code starts; the next start tries again). Two

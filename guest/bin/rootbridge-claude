@@ -84,9 +84,15 @@ update_claude() {
 }
 update_claude
 
+# After Claude Code: a clean end (/exit = 0, Ctrl+C = 130) ends the script, so the tmux window and
+# session close and the widget's Termux window closes too. On an error the shell stays open.
+after_claude() {
+    case "$1" in 0|130) exit 0 ;; esac
+    echo
+    echo "Claude Code wurde mit Code $1 beendet. Neu starten mit: claude   (Shell bleibt offen)"
+    exec bash -l
+}
+
 read -r -a extra <<< "$(conf_get CLAUDE_ARGS || true)"
 ( limit_nofile; exec "$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}" )
-
-echo
-echo "Claude Code beendet. Neu starten mit: claude   (Shell bleibt offen)"
-exec bash -l
+after_claude "$?"

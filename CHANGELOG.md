@@ -85,6 +85,11 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   every later install, also with a fresh guest; the guest installer takes `--claude-update MODE`. A value already in the
   guest config is kept. `tests/test_claude_update.sh` (125 checks, stubbed `claude` / `proot-distro`, the real
   `rootbridge-claude` is never run).
+* The session ends with Claude Code: after `/exit` (exit code 0) or Ctrl+C (130) `rootbridge-claude` exits instead of
+  starting `exec bash -l`, so the tmux window and session close, `rootbridge attach` returns and the Termux window of the
+  "Claude" widget closes. Any other exit code (crash, kill) still opens the guest shell with a note naming the code, and
+  so does a missing `claude` binary. New `after_claude()`; `tests/test_session_exit.sh` (28 checks, stub `claude` and stub
+  `bash`, mutation probes fail as expected).
 
 ### Fixed
 * `tests/test_nofile_limit.sh` aborted in a session that runs with the lowered limit (a hard limit cannot be raised again).
