@@ -93,8 +93,8 @@ archivo de `~/.shortcuts` y Termux:Boot ejecuta cada archivo de `~/.termux/boot`
 **Teclas extra.** El teclado de un teléfono no tiene Shift+Tab, y Claude Code cambia con él su modo de permisos (plan,
 auto, bypass). Por eso el instalador configura la fila de teclas extra de Termux en `~/.termux/termux.properties` (dentro de
 un bloque marcado; antes se hace una copia del archivo y después Termux recarga su configuración): dos filas de seis teclas,
-`ESC` `/` `S-TAB` `DEL` `↑` `ENTER` y `KEYBOARD` `CTRL` `ALT` `←` `↓` `→`. **S-TAB** envía Shift+Tab; deslizar hacia arriba
-da Tab (completa comandos slash y archivos `@`). **KEYBOARD** muestra u oculta el teclado en pantalla (un teclado
+`ESC` `/` `S-TAB` `BKSP` `↑` `ENTER` y `KEYBOARD` `CTRL` `TAB` `←` `↓` `→`. **S-TAB** envía Shift+Tab; **TAB** completa
+comandos slash y archivos `@`. **KEYBOARD** muestra u oculta el teclado en pantalla (un teclado
 oculto no vuelve a aparecer por sí solo; `ENTER`, las flechas, `ESC` y `S-TAB` siguen respondiendo a preguntas y menús).
 Deslizar hacia arriba sobre `/` da `-`, sobre `←` da `HOME` y sobre `→` da `END`. Una fila propia (una línea `extra-keys` fuera de
 nuestro bloque) nunca se sustituye; el instalador solo indica qué tecla añadir a mano (plantilla:

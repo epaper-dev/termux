@@ -89,8 +89,8 @@ is carried over to the new name and the old scripts are removed. Backups of widg
 **Extra keys.** A phone keyboard has no Shift+Tab, and Claude Code switches its permission mode (plan, auto, bypass) with it.
 The installer therefore sets the Termux extra keys row in `~/.termux/termux.properties` (inside a marked block, the file is
 backed up first, Termux reloads its settings afterwards): two rows of six keys,
-`ESC` `/` `S-TAB` `DEL` `↑` `ENTER` and `KEYBOARD` `CTRL` `ALT` `←` `↓` `→`. **S-TAB** sends Shift+Tab, swipe up on it for Tab
-(completes slash commands and `@` files). **KEYBOARD** shows or hides the soft keyboard (a hidden keyboard does not reappear by itself;
+`ESC` `/` `S-TAB` `BKSP` `↑` `ENTER` and `KEYBOARD` `CTRL` `TAB` `←` `↓` `→`. **S-TAB** sends Shift+Tab, **TAB** completes
+slash commands and `@` files. **KEYBOARD** shows or hides the soft keyboard (a hidden keyboard does not reappear by itself;
 `ENTER`, the arrows, `ESC` and `S-TAB` still answer prompts and menus). Swipe up on `/` for `-`, on `←` for `HOME`, on `→` for `END`. A row of your own (an `extra-keys` line outside our block) is never replaced, the installer
 only tells you which key to add by hand (template: `termux/extra-keys.snippet`). `--no-extra-keys` skips all of this,
 `uninstall.sh` removes the block. The colours of the bar are fixed by Termux and cannot be changed from here.
