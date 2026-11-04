@@ -261,7 +261,7 @@ check "Altes .bashrc: eigene Zeilen bleiben"                2 "$(grep -c '^# my 
 check "Altes .bashrc: danach nur Reload"                    "reload|" "$(run_bashrc "$H6")"
 
 # ----------------------------------------------------------- 4. widgets
-for w in "Claude Code:rootbridge attach" "Ubuntu Shell:rootbridge shell"; do
+for w in "claude:rootbridge attach" "ubuntu:rootbridge shell"; do
     f="$ROOT/termux/shortcuts/${w%%:*}"
     : > "$RB_LOG"
     PATH="$T/stubs:$PATH" bash "$f" > /dev/null 2>&1

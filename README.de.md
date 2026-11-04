@@ -60,7 +60,7 @@ cd termux-root-bridge
 bash install.sh            # stellt eine Frage zum autonomen Modus
 ```
 
-Danach Claude Code über das Widget **Claude Code** starten oder in einer Termux-Shell `ubuntu` eingeben (Alias für
+Danach Claude Code über das Widget **Claude >_** starten oder in einer Termux-Shell `ubuntu` eingeben (Alias für
 `rootbridge attach`). Der erste Start legt die Sitzung an: Daemon starten, Pakete des Gasts aktualisieren
 (`apt-get update` + `upgrade`, höchstens einmal am Tag, siehe unten), `claude update` ausführen und Claude Code
 starten; spätere Starts hängen sich nur an. **Normale Termux-Fenster bleiben reine Shells** (mit geladenen Farben),
@@ -68,9 +68,17 @@ nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart 
 (`rootbridge start --no-attach`). Claude **startet weiter im Plan-Modus** (aus deiner `settings.json`); mit
 **Umschalt+Tab** wechselst du in *bypass permissions*.
 
-Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--autonomous yes|no|ask`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`. Der Installer ist idempotent, sichert Geändertes und migriert die
 alte v1-Popup-Bridge.
+
+**Widgets.** Mit der App Termux:Widget gibt es zwei Verknüpfungen: **Claude >_** (an die Claude-Code-Sitzung anhängen)
+und **Ubuntu >_** (normale Ubuntu-Shell). Der Installer legt sie zusammen mit neutralen `>_`-Icons in `~/.shortcuts`
+ab (`~/.shortcuts/icons/<Name>.png`, keine Logos; neu erzeugen mit `tools/make-shortcut-icons.py`). Ein schon
+vorhandenes Icon wird nie ersetzt, du kannst also ein eigenes PNG dorthin legen; bei den alten Namen „Claude Code“ /
+„Ubuntu Shell“ wandert ein vorhandenes Icon auf den neuen Namen, und die alten Skripte werden entfernt. Sicherungen von
+Widget- und Boot-Skripten landen in `~/.rootbridge/backups` (Termux:Widget listet jede Datei in `~/.shortcuts`,
+Termux:Boot führt jede Datei in `~/.termux/boot` aus). `--no-widgets` überspringt das Ganze.
 
 **Paket-Updates im Gast.** Standardmäßig an: Beim Start der Claude-Code-Sitzung führt `rootbridge-apt`
 `apt-get update` und `apt-get -y upgrade` aus, höchstens einmal in 24 h nach einem Erfolg (`APT_UPGRADE=daily`), und
@@ -107,7 +115,7 @@ Neustart. Eine bestehende Sitzung mit anderem Namen benennt das Flag nicht um; e
 |---|---|
 | `rootbridge start` | Daemon + Session; mit `--no-attach` im Hintergrund (Termux:Boot ruft das nach einem Neustart auf) |
 | `rootbridge attach` / Alias `ubuntu` | an die Claude-Code-Session anhängen |
-| `rootbridge shell` | normale Ubuntu-Shell in diesem Terminal (startet den Daemon für `androidsu`, aber weder Claude Code noch eine tmux-Sitzung; Widget „Ubuntu Shell“) |
+| `rootbridge shell` | normale Ubuntu-Shell in diesem Terminal (startet den Daemon für `androidsu`, aber weder Claude Code noch eine tmux-Sitzung; Widget „Ubuntu >_“) |
 | `rootbridge status` | Daemon, Session, Gast-Installation, letzte Audit-Zeilen |
 | `rootbridge login <server>` | `claude mcp login <server>` mit Browser-Übergabe |
 | `rootbridge stop` | Session und Daemon stoppen |

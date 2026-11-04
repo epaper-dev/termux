@@ -2,7 +2,7 @@
 # install.sh - termux-root-bridge v2 installer. Run it in a TERMUX shell
 # (not inside proot): the daemon needs real `su` outside proot.
 #
-#   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors]
+#   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors] [--no-widgets]
 #                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME]
 #                   [--apt-upgrade daily|always|off | --no-apt-upgrade]
 #
@@ -13,8 +13,10 @@
 #   3. light colour scheme ~/.termux/colors.properties (--no-colors skips it and the
 #      Claude Code theme), a ~/.bashrc block (alias `ubuntu`, reloads the Termux settings
 #      in every new shell; ordinary Termux windows stay plain shells, Claude Code starts
-#      via the widgets, `ubuntu` or `rootbridge attach`), Termux:Widget shortcuts, optional
-#      boot script
+#      via the widgets, `ubuntu` or `rootbridge attach`), the Termux:Widget shortcuts
+#      "Claude >_" and "Ubuntu >_" with icons (an icon you already have stays; icons of the
+#      old names "Claude Code" / "Ubuntu Shell" are carried over; --no-widgets skips all
+#      this), optional boot script
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
 #      theme "light-ansi") via proot-distro. The guest runs apt-get update + upgrade
@@ -31,7 +33,7 @@ STAMP="$(date +%Y%m%d%H%M%S)"
 BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
-DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DEPS=1; AUTONOMOUS=ask
+DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DEPS=1; AUTONOMOUS=ask
 CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 APT_MODE=""; APT_MODE_SET=0
@@ -43,6 +45,7 @@ while [ $# -gt 0 ]; do
         --no-boot) DO_BOOT=0 ;;
         --no-migrate) DO_MIGRATE=0 ;;
         --no-colors) DO_COLORS=0 ;;
+        --no-widgets) DO_WIDGETS=0 ;;
         --no-deps-check) DEPS=0 ;;
         --autonomous) AUTONOMOUS="$2"; shift ;;
         --remote-name)
@@ -52,7 +55,7 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--apt-upgrade braucht daily, always oder off" >&2; exit 2; }
             APT_MODE="$2"; APT_MODE_SET=1; shift ;;
         --no-apt-upgrade) APT_MODE=off; APT_MODE_SET=1 ;;
-        -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -91,7 +94,18 @@ if [ "$DEPS" = 1 ]; then
     command -v termux-open-url >/dev/null 2>&1 || say "Hinweis: pkg install termux-api (für Browser-Öffnen und Zwischenablage)."
 fi
 
-backup() { [ -e "$1" ] && cp -p "$1" "$1.bak-$STAMP" && say "  Sicherung: $1.bak-$STAMP" || true; }
+backup() {
+    [ -e "$1" ] || return 0
+    local dest="$1.bak-$STAMP"
+    # Termux:Widget lists EVERY file in ~/.shortcuts and Termux:Boot runs EVERY file in
+    # ~/.termux/boot: backups of those must not sit next to the originals
+    case "$1" in
+        "$HOME/.shortcuts/"*|"$HOME/.termux/boot/"*)
+            mkdir -p "$BRIDGE_DIR/backups"
+            dest="$BRIDGE_DIR/backups/${1##*/}.bak-$STAMP" ;;
+    esac
+    cp -p "$1" "$dest" && say "  Sicherung: $dest" || true
+}
 
 # inst <src> <dest>: copy with Termux shebang; back up only on change
 inst() {
@@ -242,16 +256,42 @@ cat > "$TMP_RC" <<'EOF'
 alias ubuntu='rootbridge attach'
 if [[ $- == *i* ]] && [ -z "${TMUX:-}" ]; then
     # load ~/.termux/colors.properties in every new Termux shell (Claude Code is NOT started here:
-    # use the widget "Claude Code", `ubuntu` or `rootbridge attach`)
+    # use the widget "Claude >_", `ubuntu` or `rootbridge attach`)
     if command -v termux-reload-settings >/dev/null 2>&1; then termux-reload-settings; fi
 fi
 EOF
 set_block "$HOME/.bashrc" "$TMP_RC"; rm -f "$TMP_RC"
-if [ -d "$HOME/.shortcuts" ] || command -v termux-widget >/dev/null 2>&1; then
-    mkdir -p "$HOME/.shortcuts"
-    for f in "Claude Code" "Ubuntu Shell"; do
-        inst "$REPO/termux/shortcuts/$f" "$HOME/.shortcuts/$f"
+if [ "$DO_WIDGETS" = 1 ]; then
+    SC="$HOME/.shortcuts"
+    mkdir -p "$SC/icons" "$BRIDGE_DIR/backups"
+    # Earlier versions called the widgets "Claude Code" / "Ubuntu Shell": carry the user's icon over to the
+    # new name (before a default icon is installed), and move our old script and its *.bak-* files out
+    # of the widget list.
+    for pair in "Claude Code:Claude >_" "Ubuntu Shell:Ubuntu >_"; do
+        old="${pair%%:*}"; new="${pair#*:}"
+        if [ -e "$SC/icons/$old.png" ] && [ ! -e "$SC/icons/$new.png" ]; then
+            mv "$SC/icons/$old.png" "$SC/icons/$new.png"
+            say "  Icon übernommen: $old.png -> $new.png"
+        fi
+        if [ -f "$SC/$old" ] && grep -q 'rootbridge' "$SC/$old" 2>/dev/null; then
+            mv "$SC/$old" "$BRIDGE_DIR/backups/$old.old-$STAMP"
+            say "  altes Widget entfernt: $old (Kopie in $BRIDGE_DIR/backups)"
+        fi
+        for f in "$SC/$old".bak-*; do
+            if [ -e "$f" ]; then mv "$f" "$BRIDGE_DIR/backups/"; say "  Sicherung aus der Widget-Liste verschoben: ${f##*/}"; fi
+        done
     done
+    for pair in "claude:Claude >_" "ubuntu:Ubuntu >_"; do
+        src="${pair%%:*}"; name="${pair#*:}"
+        inst "$REPO/termux/shortcuts/$src" "$SC/$name"
+        # the default icon only if there is none: an icon the user chose stays
+        if [ ! -e "$SC/icons/$name.png" ]; then
+            cp "$REPO/termux/shortcuts/icons/$src.png" "$SC/icons/$name.png"
+            say "  Icon: $SC/icons/$name.png"
+        fi
+    done
+else
+    say "  Widgets übersprungen (--no-widgets)"
 fi
 if [ "$DO_BOOT" = 1 ] && [ -d "$HOME/.termux/boot" ]; then
     inst "$REPO/termux/boot/10-rootbridge.sh" "$HOME/.termux/boot/10-rootbridge.sh"
@@ -319,7 +359,7 @@ fi
 say
 say "Fertig. Weiter:"
 say "  rootbridge status        # Zustand prüfen"
-say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude Code')"
+say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude >_')"
 say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
 say "Normale Termux-Fenster bleiben reine Shells; Claude Code startet nicht mehr automatisch."
 say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."

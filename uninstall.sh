@@ -53,7 +53,14 @@ done
 
 rm -f "$PREFIX/bin/rootbridge" "$PREFIX/bin/rootbridge-daemon"
 rm -rf "$PREFIX/lib/termux-root-bridge"
-rm -f "$HOME/.shortcuts/Claude Code" "$HOME/.shortcuts/Ubuntu Shell" "$HOME/.termux/boot/10-rootbridge.sh"
+rm -f "$HOME/.shortcuts/Claude >_" "$HOME/.shortcuts/Ubuntu >_" \
+      "$HOME/.shortcuts/Claude Code" "$HOME/.shortcuts/Ubuntu Shell" "$HOME/.termux/boot/10-rootbridge.sh"
+# icons: only the default ones this project installed (an icon you chose stays)
+for pair in "claude:Claude >_" "ubuntu:Ubuntu >_"; do
+    if cmp -s "$REPO/termux/shortcuts/icons/${pair%%:*}.png" "$HOME/.shortcuts/icons/${pair#*:}.png" 2>/dev/null; then
+        rm -f "$HOME/.shortcuts/icons/${pair#*:}.png"
+    fi
+done
 say "Programme, Widgets und Boot-Skript entfernt."
 say "Bleibt erhalten: ~/.rootbridge (Audit-Log, Sicherungen), ~/.config/termux-root-bridge,"
 say "~/.termux/colors.properties (die vorherige Version liegt als colors.properties.bak-*) und das Claude-Code-Theme."
