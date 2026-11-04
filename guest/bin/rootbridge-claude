@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# rootbridge-claude - guest entry point (started by `rootbridge start`):
+#   1. apt-get update + upgrade (rootbridge-apt, at most once a day, never blocks the start)
+#   2. claude update (CLAUDE_UPDATE, at most once a day, never blocks the start)
+#   3. Claude Code with autonomous mode available
+#
+# Plan mode stays the start mode (settings.json); Shift+Tab switches to
+# "bypass permissions" because --allow-dangerously-skip-permissions is set.
+# Root-related commands are still confirmed by the android-root-guard hook.
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
+
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-root-bridge.conf}"
+conf_get() {
+    [ -r "$CONF" ] || return 1
+    local v
+    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    [ -n "$v" ] && printf '%s' "$v"
+}
+
+# Claude Code closes every file descriptor up to RLIMIT_NOFILE after each fork. Under proot every
+# close() is a trapped syscall (~80 us), so Android's limit of 32768 costs 2.5-4 s per started process
+# (hooks, Bash tool, rg, ...). Bun raises the soft limit back to the hard one, so both go down. Only
+# ever lowered, and only for Claude (callers run this in a subshell); NOFILE_LIMIT=0 switches it off.
+limit_nofile() {
+    local n cur
+    n="$(conf_get NOFILE_LIMIT || echo 2048)"
+    case "$n" in ''|0|*[!0-9]*) return 0 ;; esac
+    cur="$(ulimit -Hn)"
+    case "$cur" in
+        unlimited) ;;
+        ''|*[!0-9]*) return 0 ;;
+        *) [ "$cur" -gt "$n" ] || return 0 ;;
+    esac
+    ulimit -n "$n" 2>/dev/null || true
+}
+
+workdir="$(conf_get WORKDIR || echo /root/workspace)"
+cd "$workdir" 2>/dev/null || cd /root || exit 1
+
+export BROWSER=/usr/local/bin/rootbridge-open
+export IS_SANDBOX=1          # Claude Code refuses bypass mode as root otherwise
+
+claude_bin=/root/.local/bin/claude
+[ -x "$claude_bin" ] || claude_bin="$(command -v claude || true)"
+if [ -z "$claude_bin" ]; then
+    echo "rootbridge-claude: claude nicht gefunden. Installation: curl -fsSL https://claude.ai/install.sh | bash" >&2
+    exec bash -l
+fi
+
+if command -v rootbridge-apt >/dev/null 2>&1; then
+    rootbridge-apt || true
+fi
+
+# claude update. CLAUDE_UPDATE=daily (default) | always | off (/etc/termux-root-bridge.conf, like APT_UPGRADE).
+# daily: at most once per 24 h after a success (stamp /var/lib/termux-root-bridge/claude-update-last-success).
+# A failed or aborted update leaves no stamp, so the next start tries again. Never stops the start.
+update_claude() {
+    local mode stamp now last
+    mode="$(conf_get CLAUDE_UPDATE || echo daily)"
+    case "$mode" in
+        off) return 0 ;;
+        daily|always) ;;
+        *) echo "claude update: unbekannter Wert CLAUDE_UPDATE=$mode (erlaubt: daily, always, off) - übersprungen" >&2
+           return 0 ;;
+    esac
+    stamp="${ROOTBRIDGE_STATE_DIR:-/var/lib/termux-root-bridge}/claude-update-last-success"
+    now="$(date +%s)"
+    if [ "$mode" = daily ] && [ -r "$stamp" ]; then
+        last="$(head -n 1 "$stamp" 2>/dev/null)"
+        if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt 86400 ]; then
+            echo "claude update: vor $(( (now - last) / 3600 )) h erfolgreich - übersprungen (CLAUDE_UPDATE=daily)"
+            return 0
+        fi
+    fi
+    echo "== claude update"
+    if ( limit_nofile; exec timeout 180 "$claude_bin" update ); then
+        { mkdir -p "$(dirname "$stamp")" && date +%s > "$stamp"; } 2>/dev/null || true
+    else
+        echo "Update fehlgeschlagen oder abgebrochen - starte die vorhandene Version."
+    fi
+    return 0
+}
+update_claude
+
+# After Claude Code: a clean end (/exit = 0, Ctrl+C = 130) ends the script, so the tmux window and
+# session close and the widget's Termux window closes too. On an error the shell stays open.
+after_claude() {
+    case "$1" in 0|130) exit 0 ;; esac
+    echo
+    echo "Claude Code wurde mit Code $1 beendet. Neu starten mit: claude   (Shell bleibt offen)"
+    exec bash -l
+}
+
+read -r -a extra <<< "$(conf_get CLAUDE_ARGS || true)"
+( limit_nofile; exec "$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}" )
+after_claude "$?"
