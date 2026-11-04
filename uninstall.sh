@@ -31,7 +31,7 @@ if [ "$DO_GUEST" = 1 ] && command -v proot-distro >/dev/null 2>&1; then
     done
 fi
 
-for f in "$HOME/.bashrc" "$HOME/.tmux.conf"; do
+for f in "$HOME/.bashrc" "$HOME/.tmux.conf" "$HOME/.termux/termux.properties"; do
     [ -f "$f" ] || continue
     python3 -I - "$f" "$BEGIN" "$END" <<'PYEOF'
 import sys

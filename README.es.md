@@ -74,9 +74,10 @@ Termux. El primer arranque crea la sesión: inicia el daemon, actualiza los paqu
 inicia Claude Code; los arranques posteriores solo se conectan a ella.
 **Las ventanas normales de Termux siguen siendo shells simples** (con los colores cargados): nada se inicia solo. Con
 Termux:Boot la sesión se crea en segundo plano tras un reinicio (`rootbridge start --no-attach`). Claude sigue
-**arrancando en modo plan** (según tu `settings.json`); pulsa **Shift+Tab** para cambiar a *bypass permissions*.
+**arrancando en modo plan** (según tu `settings.json`); pulsa **Shift+Tab** para cambiar a *bypass permissions* (en un
+teléfono, con la tecla **S-TAB** que el instalador añade a la fila de teclas extra de Termux, ver abajo).
 
-Opciones: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--autonomous yes|no|ask`,
+Opciones: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`,
 `--remote-name NAME`, `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`,
 `--no-claude-update`. El instalador es idempotente, hace copia de seguridad de lo que modifica y migra el antiguo puente
 con ventana emergente de la v1 si lo encuentra.
@@ -88,6 +89,16 @@ existe nunca se reemplaza, así que puedes poner allí tu propio PNG; con los no
 «Ubuntu Shell», «Claude >_» / «Ubuntu >_») un icono existente pasa al nombre nuevo y se eliminan los scripts antiguos.
 Las copias de seguridad de los scripts de widgets y de arranque van a `~/.rootbridge/backups` (Termux:Widget lista cada
 archivo de `~/.shortcuts` y Termux:Boot ejecuta cada archivo de `~/.termux/boot`). `--no-widgets` omite todo esto.
+
+**Teclas extra.** El teclado de un teléfono no tiene Shift+Tab, y Claude Code cambia con él su modo de permisos (plan,
+auto, bypass). Por eso el instalador configura la fila de teclas extra de Termux en `~/.termux/termux.properties` (dentro de
+un bloque marcado; antes se hace una copia del archivo y después Termux recarga su configuración): dos filas de seis teclas,
+`ESC` `/` `S-TAB` `HOME` `↑` `END` y `KEYBOARD` `CTRL` `ALT` `←` `↓` `→`. **S-TAB** envía Shift+Tab; deslizar hacia arriba
+da Tab (completa comandos slash y archivos `@`). **KEYBOARD** muestra u oculta el teclado en pantalla (un teclado
+oculto no vuelve a aparecer por sí solo); deslizar hacia arriba sobre `/` da `-`. Una fila propia (una línea `extra-keys` fuera de
+nuestro bloque) nunca se sustituye; el instalador solo indica qué tecla añadir a mano (plantilla:
+`termux/extra-keys.snippet`). `--no-extra-keys` omite todo esto y `uninstall.sh` elimina el bloque. Los colores de la fila
+los fija Termux y no se pueden cambiar desde aquí.
 
 **Fin de la sesión.** `/exit` (o Ctrl+C) en Claude Code lo termina todo: la ventana y la sesión de tmux se cierran,
 `rootbridge attach` vuelve, y la ventana de Termux abierta por el widget **Claude** se cierra con ellas. No terminas en

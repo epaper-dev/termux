@@ -3,7 +3,7 @@
 # (not inside proot): the daemon needs real `su` outside proot.
 #
 #   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors] [--no-widgets]
-#                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME]
+#                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME] [--no-extra-keys]
 #                   [--apt-upgrade daily|always|off | --no-apt-upgrade]
 #                   [--claude-update daily|always|off | --no-claude-update]
 #
@@ -17,7 +17,9 @@
 #      via the widgets, `ubuntu` or `rootbridge attach`), the Termux:Widget shortcuts
 #      "Claude" and "Ubuntu" with icons (an icon you already have stays; icons of the
 #      earlier names "Claude Code" / "Ubuntu Shell" / "Claude >_" / "Ubuntu >_" are carried
-#      over; --no-widgets skips all this), optional boot script
+#      over; --no-widgets skips all this), optional boot script, an extra keys row in
+#      ~/.termux/termux.properties (S-TAB = Shift+Tab, KEYBOARD = soft keyboard on/off; an
+#      extra-keys line of your own stays; --no-extra-keys skips it)
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
 #      theme "light-ansi") via proot-distro. The guest runs apt-get update + upgrade
@@ -36,7 +38,7 @@ STAMP="$(date +%Y%m%d%H%M%S)"
 BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
-DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DEPS=1; AUTONOMOUS=ask
+DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=ask
 CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 APT_MODE=""; APT_MODE_SET=0
@@ -50,6 +52,7 @@ while [ $# -gt 0 ]; do
         --no-migrate) DO_MIGRATE=0 ;;
         --no-colors) DO_COLORS=0 ;;
         --no-widgets) DO_WIDGETS=0 ;;
+        --no-extra-keys) DO_EXTRAKEYS=0 ;;
         --no-deps-check) DEPS=0 ;;
         --autonomous) AUTONOMOUS="$2"; shift ;;
         --remote-name)
@@ -63,7 +66,7 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--claude-update braucht daily, always oder off" >&2; exit 2; }
             CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift ;;
         --no-claude-update) CLAUDE_UPD_MODE=off; CLAUDE_UPD_SET=1 ;;
-        -h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -108,7 +111,8 @@ if [ "$DEPS" = 1 ]; then
 fi
 
 backup() {
-    [ -e "$1" ] || return 0
+    # nothing to keep of a missing or empty file (set_block creates an empty one first)
+    [ -s "$1" ] || return 0
     local dest="$1.bak-$STAMP"
     # Termux:Widget lists EVERY file in ~/.shortcuts and Termux:Boot runs EVERY file in
     # ~/.termux/boot: backups of those must not sit next to the originals
@@ -191,6 +195,28 @@ for line in open(src, encoding="utf-8").read().split("\n"):
 open(out, "w", encoding="utf-8").write("\n".join(res).rstrip("\n") + "\n")
 PYEOF
     mv -f "$tmp" "$1"
+}
+
+# own_extra_keys <file>: succeeds if the file sets `extra-keys` OUTSIDE our block, i.e. a row of the user's
+# own. Our block is appended at the end and a later duplicate key wins, so it would silently replace it.
+own_extra_keys() {
+    [ -f "$1" ] || return 1
+    python3 -I - "$1" "$BEGIN" "$END" <<'PYEOF'
+import re, sys
+path, begin, end = sys.argv[1:4]
+skip = False
+for line in open(path, encoding="utf-8").read().split("\n"):
+    if line.strip() == begin:
+        skip = True
+        continue
+    if skip:
+        if line.strip() == end:
+            skip = False
+        continue
+    if re.match(r"\s*extra-keys\s*[=:]", line):
+        sys.exit(0)
+sys.exit(1)
+PYEOF
 }
 
 command -v python3 >/dev/null 2>&1 || die "python3 fehlt (pkg install python)"
@@ -280,6 +306,26 @@ if [ "$DO_COLORS" = 1 ]; then
     fi
 else
     say "  Farbschema übersprungen (--no-colors)"
+fi
+if [ "$DO_EXTRAKEYS" = 1 ]; then
+    # S-TAB (a phone keyboard has no Shift+Tab, Claude Code switches its permission mode with it) and
+    # KEYBOARD (show/hide the soft keyboard) in the Termux extra keys row
+    TP="$HOME/.termux/termux.properties"
+    mkdir -p "$HOME/.termux"
+    if own_extra_keys "$TP"; then
+        say "  Zusatztasten: $TP enthält eine eigene extra-keys-Zeile, sie bleibt unverändert."
+        say "    Für Shift+Tab die Taste {macro: \"SHIFT TAB\", display: \"S-TAB\"} selbst ergänzen,"
+        say "    oder die Zeile löschen und install.sh erneut starten (Vorlage: termux/extra-keys.snippet)."
+    else
+        before="$(cksum < "$TP" 2>/dev/null || true)"
+        set_block "$TP" "$REPO/termux/extra-keys.snippet"
+        chmod 600 "$TP"
+        if [ "$before" != "$(cksum < "$TP")" ]; then
+            command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
+        fi
+    fi
+else
+    say "  Zusatztasten übersprungen (--no-extra-keys)"
 fi
 TMP_RC="$(mktemp)"
 cat > "$TMP_RC" <<'EOF'
@@ -394,6 +440,9 @@ say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie
 say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
 say "Normale Termux-Fenster bleiben reine Shells; Claude Code startet nicht mehr automatisch."
 say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."
+if [ "$DO_EXTRAKEYS" = 1 ]; then
+    say "Zusatztasten: S-TAB (Shift+Tab; Wisch nach oben = Tab) und KEYBOARD stehen in ~/.termux/termux.properties."
+fi
 if [ "$DO_COLORS" = 1 ]; then
     say "Farben: ~/.termux/colors.properties wird in jeder neuen Termux-Shell und von den Widgets geladen; Claude Code nutzt das Theme '$CLAUDE_THEME'."
 fi

@@ -106,7 +106,7 @@ chmod +x "$T/stubs"/*
 export STUB_LOG="$T/stub.log"; : > "$STUB_LOG"
 inst() {   # inst: install.sh with the migration step (no guest, no colours, no deps check)
     HOME="$H" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$BR" \
-        bash "$INSTALL" --no-guest --no-boot --no-colors --no-deps-check > "$T/install.log" 2>&1
+        bash "$INSTALL" --no-guest --no-boot --no-colors --no-deps-check --no-extra-keys > "$T/install.log" 2>&1
 }
 
 mkdir -p "$BR/.lock"; sleeper; L="$SLEEPER"; echo "$L" > "$BR/.lock/pid"

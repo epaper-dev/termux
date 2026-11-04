@@ -121,7 +121,7 @@ export STUB_LOG="$T/proot.log" STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$GUEST_ROOT"
 
 rinstall() {  # rinstall [args...]  (fake HOME/PREFIX, stub proot-distro, no migration, no deps check)
     HOME="$H" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H/.rootbridge" \
-        bash "$INSTALL" --no-boot --no-migrate --no-deps-check --autonomous no "$@" > "$T/install.log" 2>&1
+        bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --autonomous no "$@" > "$T/install.log" 2>&1
 }
 tcount() { grep -c '^REMOTE_NAME=' "$CFG" 2>/dev/null || true; }
 gline2() { grep '^CLAUDE_ARGS=' "$GUEST_ROOT/etc/termux-root-bridge.conf" 2>/dev/null || true; }
@@ -159,7 +159,7 @@ check "Ungültiger Wert in der Konfig wird ignoriert"  0 "$(grep -c -- '--remote
 H2="$T/home2"; mkdir -p "$H2"
 : > "$STUB_LOG"; rm -rf "$GUEST_ROOT"
 HOME="$H2" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H2/.rootbridge" \
-    bash "$INSTALL" --no-boot --no-migrate --no-deps-check --autonomous no > "$T/install.log" 2>&1
+    bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --autonomous no > "$T/install.log" 2>&1
 check "Ohne Name: Installer läuft"                    0 "$?"
 check "Ohne Name: nichts an den Gast übergeben"       0 "$(grep -c -- '--remote-name' "$STUB_LOG")"
 check "Ohne Name: keine REMOTE_NAME-Zeile"            0 "$(grep -c '^REMOTE_NAME=' "$H2/.config/termux-root-bridge/config")"
@@ -174,7 +174,7 @@ check "install.sh: dabei nichts geschrieben"          nein "$([ -e "$H3/.config"
 # --no-guest: name is stored, guest installer not called
 H4="$T/home4"; mkdir -p "$H4"; : > "$STUB_LOG"
 HOME="$H4" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H4/.rootbridge" \
-    bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-guest --remote-name android > /dev/null 2>&1
+    bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-guest --remote-name android > /dev/null 2>&1
 check "--no-guest: Name gespeichert"                  "REMOTE_NAME=android" "$(grep '^REMOTE_NAME=' "$H4/.config/termux-root-bridge/config")"
 check "--no-guest: Gast-Installer nicht aufgerufen"   0 "$(wc -l < "$STUB_LOG" | tr -d ' ')"
 

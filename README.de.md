@@ -68,9 +68,10 @@ Danach Claude Code über das Widget **Claude** starten oder in einer Termux-Shel
 Tag) und Claude Code starten; spätere Starts hängen sich nur an. **Normale Termux-Fenster bleiben reine Shells** (mit geladenen Farben),
 nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart im Hintergrund angelegt
 (`rootbridge start --no-attach`). Claude **startet weiter im Plan-Modus** (aus deiner `settings.json`); mit
-**Umschalt+Tab** wechselst du in *bypass permissions*.
+**Umschalt+Tab** wechselst du in *bypass permissions* (am Handy mit der Taste **S-TAB**, die der Installer der
+Termux-Zusatztastenleiste hinzufügt, siehe unten).
 
-Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. Der Installer ist idempotent, sichert Geändertes und migriert die
 alte v1-Popup-Bridge.
 
@@ -80,6 +81,16 @@ ab (`~/.shortcuts/icons/<Name>.png`, keine Logos; neu erzeugen mit `tools/make-s
 vorhandenes Icon wird nie ersetzt, du kannst also ein eigenes PNG dorthin legen; bei früheren Namen („Claude Code“ / „Ubuntu Shell“, „Claude >_“ / „Ubuntu >_“) wandert ein vorhandenes Icon auf den neuen Namen, und die alten Skripte werden entfernt. Sicherungen von
 Widget- und Boot-Skripten landen in `~/.rootbridge/backups` (Termux:Widget listet jede Datei in `~/.shortcuts`,
 Termux:Boot führt jede Datei in `~/.termux/boot` aus). `--no-widgets` überspringt das Ganze.
+
+**Zusatztasten.** Eine Handy-Tastatur hat kein Umschalt+Tab, und Claude Code wechselt damit den Berechtigungsmodus (Plan,
+Auto, Bypass). Der Installer setzt deshalb die Zusatztastenleiste von Termux in `~/.termux/termux.properties` (in einem
+markierten Block, die Datei wird vorher gesichert, danach lädt Termux seine Einstellungen neu): zwei Zeilen mit je sechs Tasten,
+`ESC` `/` `S-TAB` `HOME` `↑` `END` und `KEYBOARD` `CTRL` `ALT` `←` `↓` `→`. **S-TAB** sendet Umschalt+Tab, Wisch nach oben
+ergibt Tab (vervollständigt Slash-Befehle und `@`-Dateien). **KEYBOARD** blendet die Bildschirmtastatur ein oder aus (eine
+ausgeblendete Tastatur kommt nicht von selbst zurück); Wisch nach oben auf `/` ergibt `-`. Eine eigene Leiste (eine `extra-keys`-Zeile
+außerhalb unseres Blocks) wird nie ersetzt, der Installer nennt dann nur die Taste, die du selbst ergänzen kannst (Vorlage:
+`termux/extra-keys.snippet`). `--no-extra-keys` überspringt das Ganze, `uninstall.sh` entfernt den Block. Die Farben der
+Leiste legt Termux fest, sie lassen sich von hier aus nicht ändern.
 
 **Ende der Sitzung.** `/exit` (oder Strg+C) in Claude Code beendet alles: Das tmux-Fenster und die tmux-Sitzung schließen sich,
 `rootbridge attach` kehrt zurück, und das über das Widget **Claude** geöffnete Termux-Fenster schließt sich mit. Du landest nicht in der

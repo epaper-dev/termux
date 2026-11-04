@@ -1,0 +1,4 @@
+### termux-root-bridge: extra keys, two rows of six.
+### S-TAB sends Shift+Tab (Claude Code cycles plan / auto / bypass with it; phone keyboards have none),
+### swipe up on it for TAB. KEYBOARD shows or hides the soft keyboard. Swipe up on '/' for '-'.
+extra-keys = [['ESC',{key: '/', popup: '-'},{macro: "SHIFT TAB", display: "S-TAB", popup: {macro: "TAB", display: "TAB"}},'HOME','UP','END'], ['KEYBOARD','CTRL','ALT','LEFT','DOWN','RIGHT']]

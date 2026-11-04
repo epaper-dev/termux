@@ -71,9 +71,10 @@ shell. The first start creates the session: it starts the daemon, updates the gu
 starts just attach to it.
 **Ordinary Termux windows stay plain shells** (with the colours loaded), nothing starts by itself. With Termux:Boot the
 session is created in the background after a reboot (`rootbridge start --no-attach`). Claude still **starts in plan
-mode** (from your `settings.json`); press **Shift+Tab** to switch to *bypass permissions*.
+mode** (from your `settings.json`); press **Shift+Tab** to switch to *bypass permissions* (on a phone use the **S-TAB** key
+the installer adds to the Termux extra keys row, see below).
 
-Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. The installer is idempotent, backs up what it changes, and
 migrates the old v1 popup bridge if it finds one.
 
@@ -84,6 +85,15 @@ is never replaced, so you can drop your own PNG there; with earlier names ("Clau
 is carried over to the new name and the old scripts are removed. Backups of widget and boot scripts go to
 `~/.rootbridge/backups` (Termux:Widget lists every file in `~/.shortcuts`, Termux:Boot runs every file in
 `~/.termux/boot`). `--no-widgets` skips all of it.
+
+**Extra keys.** A phone keyboard has no Shift+Tab, and Claude Code switches its permission mode (plan, auto, bypass) with it.
+The installer therefore sets the Termux extra keys row in `~/.termux/termux.properties` (inside a marked block, the file is
+backed up first, Termux reloads its settings afterwards): two rows of six keys,
+`ESC` `/` `S-TAB` `HOME` `↑` `END` and `KEYBOARD` `CTRL` `ALT` `←` `↓` `→`. **S-TAB** sends Shift+Tab, swipe up on it for Tab
+(completes slash commands and `@` files). **KEYBOARD** shows or hides the soft keyboard (a hidden keyboard does not reappear by itself);
+swipe up on `/` for `-`. A row of your own (an `extra-keys` line outside our block) is never replaced, the installer
+only tells you which key to add by hand (template: `termux/extra-keys.snippet`). `--no-extra-keys` skips all of this,
+`uninstall.sh` removes the block. The colours of the bar are fixed by Termux and cannot be changed from here.
 
 **End of the session.** `/exit` (or Ctrl+C) in Claude Code ends everything: the tmux window and session close, `rootbridge attach`
 returns, and the Termux window opened by the **Claude** widget closes with it. You do not land in the Ubuntu shell. Only if Claude Code

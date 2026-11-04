@@ -5,6 +5,13 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Added
+* Termux extra keys row: `install.sh` sets it in `~/.termux/termux.properties` (marked block, backup first, reload only
+  on a change, mode 600; `termux/extra-keys.snippet`). Two rows of six: `ESC` `/` `S-TAB` `HOME` `↑` `END` and `KEYBOARD`
+  `CTRL` `ALT` `←` `↓` `→`. S-TAB sends Shift+Tab (a phone keyboard has none, Claude Code switches its permission mode with
+  it), swipe up for Tab; KEYBOARD shows/hides the soft keyboard; swipe up on `/` for `-`. An `extra-keys` line of the user's
+  own is never replaced (single or multi line). `--no-extra-keys`, removed by `uninstall.sh`. `backup()` no longer
+  keeps empty files. `tests/test_extra_keys.sh` (86 checks, own parser for the layout, 5 mutation probes fail as expected);
+  the other install tests pass `--no-extra-keys` so they never count or trigger a reload.
 * MIT `LICENSE`, linked from the READMEs (before: "not chosen yet").
 * `README.es.md` rewritten for v2 (the version on GitHub still described the v1 popup); the three READMEs link to each other.
 * `android-root-guard.py` — PreToolUse hook: confirmation for every Android-root execution, tickets bound to

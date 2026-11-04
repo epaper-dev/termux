@@ -40,7 +40,7 @@ export STUB_LOG="$T/stub.log"; : > "$STUB_LOG"
 rinstall() {  # rinstall <home> [args...]
     local home="$1"; shift
     HOME="$home" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$home/.rootbridge" \
-        bash "$INSTALL" --no-guest --no-migrate --no-colors --no-deps-check "$@" > "$T/install.log" 2>&1
+        bash "$INSTALL" --no-guest --no-migrate --no-colors --no-deps-check --no-extra-keys "$@" > "$T/install.log" 2>&1
 }
 runinstall_uninstall() {  # <home>
     HOME="$1" PREFIX="$P" PATH="$T/stubs:$PATH" bash "$UNINSTALL" --no-guest > "$T/uninstall.log" 2>&1
