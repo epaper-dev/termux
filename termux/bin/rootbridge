@@ -3,7 +3,7 @@
 #
 #   rootbridge start [--no-attach]   daemon + Claude Code session (Termux:Boot: --no-attach)
 #   rootbridge attach                attach to the session (create if missing)
-#   rootbridge shell                 extra window with a plain guest shell
+#   rootbridge shell                 plain guest shell here (does not start Claude Code)
 #   rootbridge stop                  stop session and daemon
 #   rootbridge status                daemon, session, guest install, audit log
 #   rootbridge login <server>        `claude mcp login <server>` with browser hand-off
@@ -109,11 +109,13 @@ cmd_start() {
     cmd_attach
 }
 
+# A plain guest shell in THIS terminal: no tmux, and no Claude Code session in the background
+# (session_create would start rootbridge-claude: apt, `claude update`, Claude Code). Only the
+# daemon is started, so that `androidsu` works in the shell.
 cmd_shell() {
+    command -v proot-distro >/dev/null 2>&1 || die "proot-distro fehlt (pkg install proot-distro)"
     daemon_start
-    session_create
-    tmux new-window -t "$SESSION" -n shell "proot-distro login $DISTRO"
-    cmd_attach
+    exec proot-distro login "$DISTRO"
 }
 
 cmd_stop() {

@@ -284,7 +284,12 @@ $f"
         say "  nichts zu migrieren"
     fi
     rm -f "$BRIDGE_DIR"/req-*.txt "$BRIDGE_DIR"/res-*.txt 2>/dev/null || true
-    rm -rf "$BRIDGE_DIR/.lock" 2>/dev/null || true
+    # Keep the lock of a RUNNING daemon: deleting it makes the next `rootbridge start` spawn a second
+    # daemon while the old one keeps polling. Only leftovers (no pid, dead pid, e.g. from v1) go.
+    lock_pid="$(cat "$BRIDGE_DIR/.lock/pid" 2>/dev/null || true)"
+    if ! { [[ "$lock_pid" =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; }; then
+        rm -rf "$BRIDGE_DIR/.lock" 2>/dev/null || true
+    fi
 else
     say "  übersprungen"
 fi

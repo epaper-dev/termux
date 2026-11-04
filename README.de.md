@@ -107,7 +107,7 @@ Neustart. Eine bestehende Sitzung mit anderem Namen benennt das Flag nicht um; e
 |---|---|
 | `rootbridge start` | Daemon + Session; mit `--no-attach` im Hintergrund (Termux:Boot ruft das nach einem Neustart auf) |
 | `rootbridge attach` / Alias `ubuntu` | an die Claude-Code-Session anhängen |
-| `rootbridge shell` | zusätzliches Fenster mit normaler Ubuntu-Shell |
+| `rootbridge shell` | normale Ubuntu-Shell in diesem Terminal (startet den Daemon für `androidsu`, aber weder Claude Code noch eine tmux-Sitzung; Widget „Ubuntu Shell“) |
 | `rootbridge status` | Daemon, Session, Gast-Installation, letzte Audit-Zeilen |
 | `rootbridge login <server>` | `claude mcp login <server>` mit Browser-Übergabe |
 | `rootbridge stop` | Session und Daemon stoppen |

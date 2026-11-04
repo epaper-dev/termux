@@ -36,6 +36,11 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   (`rootbridge start --no-attach`). Re-running `install.sh` removes the old autostart from `~/.bashrc`;
   `ROOTBRIDGE_NO_AUTOSTART` is gone. `tests/test_colors_theme.sh` covers the block (reload only, nothing in tmux,
   migration of the old block).
+* `rootbridge shell` (widget "Ubuntu Shell") is a plain guest shell: it only starts the daemon (for `androidsu`) and runs
+  `proot-distro login` in the current terminal. It used to call `session_create`, which started the Claude Code window
+  (`rootbridge-claude`: apt, `claude update`, Claude Code) in the background and put the shell in front of it, so leaving the
+  shell with `exit` dropped you into Claude Code. `tests/test_rootbridge_shell.sh` (19 checks, stub daemon/`tmux`/
+  `proot-distro`): no tmux call, no `rootbridge-claude`, `attach` still creates the session.
 * Claude Code theme: `install.sh` passes `--theme light-ansi` to `install-guest.sh`, which sets `"theme": "light-ansi"` in
   `~/.claude/settings.json` (the ANSI variant uses the 16 colours of `colors.properties`; the RGB theme `light` was hard to
   read in Termux) (new `settings_set` helper: other keys stay, nothing is written or backed up when the value
@@ -62,6 +67,15 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   apt is never started).
 
 ### Fixed
+* Leaked daemons: every `install.sh` run deleted the lock (`~/.rootbridge/.lock`) of the RUNNING daemon (the cleanup was meant
+  for v1 leftovers), so the next `rootbridge start` spawned a second daemon while the old one kept polling — five were
+  running on a device. Two daemons can race for one request (the ticket is single-use, but the second one may write a
+  "refused" result for a command the first one executed). Now `install.sh` removes the lock only if it has no pid or the
+  pid is dead; the daemon removes the lock only while it is its own (a leftover used to delete its successor's lock), checks
+  in every poll that the lock still names it, takes a vanished lock again, and stops itself when another daemon owns it.
+  `tests/test_daemon_lock.sh` (22 checks, real daemon loop in a temp dir, `pkill`/`pgrep`/`tmux` stubs). Daemons that are
+  already running keep the old code: stop leftovers once with `kill -9 <pid>` (not `kill`: the old cleanup would delete the
+  live daemon's lock), the one named in `~/.rootbridge/.lock/pid` stays.
 * `install-guest.sh --root DIR` failed when the guest home did not exist below `DIR`.
 * README listed `CLAUDE_ARGS` in the Termux config, but only the guest config is used for it.
 

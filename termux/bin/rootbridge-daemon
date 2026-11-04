@@ -176,12 +176,31 @@ if ! mkdir "$LOCK" 2>/dev/null; then
     rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null || exit 0
 fi
 echo "$$" > "$LOCK/pid"
-cleanup() { rm -rf "$LOCK" 2>/dev/null; }
+# Remove the lock only while it is still ours: after someone deleted it (an installer run) a newer
+# daemon may own it, and deleting that lock would let yet another daemon start.
+cleanup() {
+    if [ "$(cat "$LOCK/pid" 2>/dev/null)" = "$$" ]; then rm -rf "$LOCK" 2>/dev/null; fi
+    return 0
+}
 trap cleanup EXIT
 trap 'cleanup; exit 0' INT TERM HUP
 
+# own_lock: does the lock still name this daemon? If it vanished, take it again; if another daemon
+# owns it, this one is a leftover and must stop (two daemons would race for the same requests).
+own_lock() {
+    local cur
+    cur="$(cat "$LOCK/pid" 2>/dev/null)"
+    [ "$cur" = "$$" ] && return 0
+    if [ -z "$cur" ] && mkdir "$LOCK" 2>/dev/null; then
+        echo "$$" > "$LOCK/pid"
+        return 0
+    fi
+    return 1
+}
+
 startup_cleanup
 while true; do
+    own_lock || { echo "rootbridge-daemon: Lock gehört einem anderen Daemon - beende mich (PID $$)." >&2; exit 0; }
     scan_once
     : > "$BRIDGE_DIR/.alive"          # heartbeat for the guest
     sleep "$POLL_INTERVAL"

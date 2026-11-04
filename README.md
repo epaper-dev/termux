@@ -109,7 +109,7 @@ restarts. A session that already exists with another name is not renamed by the 
 |---|---|
 | `rootbridge start` | daemon + session; `--no-attach` creates it in the background (Termux:Boot runs that after a reboot) |
 | `rootbridge attach` / alias `ubuntu` | attach to the Claude Code session |
-| `rootbridge shell` | extra window with a plain Ubuntu shell |
+| `rootbridge shell` | plain Ubuntu shell in this terminal (starts the daemon for `androidsu`, but no Claude Code and no tmux session; widget "Ubuntu Shell") |
 | `rootbridge status` | daemon, session, guest install, last audit lines |
 | `rootbridge login <server>` | `claude mcp login <server>` with browser hand-off |
 | `rootbridge stop` | stop session and daemon |

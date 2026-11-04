@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Termux:Widget shortcut: extra window with a plain Ubuntu shell.
+# Termux:Widget shortcut: plain Ubuntu shell (does not start Claude Code).
 # Widget shells do not read ~/.bashrc: load ~/.termux/colors.properties here as well.
 if command -v termux-reload-settings >/dev/null 2>&1; then termux-reload-settings; fi
 exec rootbridge shell
