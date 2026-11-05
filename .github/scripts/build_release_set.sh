@@ -108,6 +108,9 @@ build_app() {
     ver="$(grep -m 1 -E '^\s+versionName "' app/build.gradle | sed -r 's/^\s+versionName "([^"]+)".*/\1/')"
     sha="$(git rev-parse --short=7 HEAD)"
     say "app: version $ver+$sha, variant apt-android-7, task $TASK"
+    # app/build.gradle hooks the bootstrap download onto the Java compile task, but the native build of a release
+    # variant runs first and needs the zips (`Could not find incbin file 'bootstrap-aarch64.zip'`): fetch them up front
+    TERMUX_PACKAGE_VARIANT=apt-android-7 retry ./gradlew --no-daemon downloadBootstraps || die "app: downloading the bootstrap packages failed"
     TERMUX_PACKAGE_VARIANT=apt-android-7 \
     TERMUX_APP_VERSION_NAME="$ver+$sha" \
     TERMUX_APK_VERSION_TAG="v$ver+$sha-apt-android-7-epaper-$KIND" \
