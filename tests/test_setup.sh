@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Test: install.sh --setup (fresh device) and guest/setup-guest.sh.
-#   A. install.sh --setup end to end: the missing Termux packages (pkg), the guest (proot-distro install),
-#      setup-guest.sh and install-guest.sh in this order; a second run changes nothing; without --setup
-#      nothing is installed and the old hints stay; failures stop early with a message.
+# Test: the automatic setup of install.sh (fresh device) and guest/setup-guest.sh.
+#   A. install.sh end to end: the missing Termux packages (pkg), the guest (proot-distro install),
+#      setup-guest.sh and install-guest.sh in this order; a second run changes nothing; with --no-setup (or
+#      --no-deps-check for the packages) nothing is installed and the old hints stay; --setup is still
+#      accepted; failures stop early with a message.
 #   B. setup-guest.sh: python3 / curl / certificates through apt-get, Claude Code through the official
 #      installer, nothing when it is all there, failures of apt-get / curl / the installer.
 #   C. the guest ~/.bashrc block puts ~/.local/bin on the PATH (where the Claude Code installer puts claude).
@@ -64,6 +65,9 @@ for a in "$@"; do
         tmux|proot-distro) cp "$STUB_AV/$a" "$STUB_BIN/$a" ;;
         termux-api) cp "$STUB_AV/termux-open-url" "$STUB_BIN/termux-open-url" ;;
         python) ln -sf "$STUB_REAL_PYTHON" "$STUB_BIN/python3" ;;
+        coreutils) for c in stat timeout sha256sum; do
+                       r="$(PATH="$STUB_ORIG_PATH" command -v "$c")"; [ -n "$r" ] && ln -sf "$r" "$STUB_BIN/$c"
+                   done ;;
         util-linux) if [ -n "$STUB_REAL_SETSID" ]; then ln -sf "$STUB_REAL_SETSID" "$STUB_BIN/setsid"
                     else printf '#!/bin/bash\nexec "$@"\n' > "$STUB_BIN/setsid"; fi ;;
     esac
@@ -149,19 +153,19 @@ newenv() {
 # envrun <args...>: runs the command with the environment of the current fake device
 envrun() {
     env -i HOME="$E/home" PREFIX="$E/prefix" PATH="$E/bin:$SHIMDIR" STUB_LOG="$LOG" STUB_PREFIX="$E/prefix" \
-        STUB_AV="$AV" STUB_BIN="$E/bin" STUB_REAL_PYTHON="$REAL_PYTHON" STUB_REAL_SETSID="$REAL_SETSID" \
+        STUB_AV="$AV" STUB_BIN="$E/bin" STUB_REAL_PYTHON="$REAL_PYTHON" STUB_REAL_SETSID="$REAL_SETSID" STUB_ORIG_PATH="$ORIG_PATH" \
         BRIDGE_DIR="$E/home/.rootbridge" ROOTBRIDGE_ALLOW_GUEST=1 \
-        ROOTBRIDGE_CA_BUNDLE="$E/ca/ca-certificates.crt" ROOTBRIDGE_GUEST_HOME="$E/ghome" \
+        ROOTBRIDGE_CA_BUNDLE="$E/ca/ca-certificates.crt" ROOTBRIDGE_GUEST_HOME="${ROOTBRIDGE_GUEST_HOME:-$E/ghome}" \
         "$@"
 }
 rinstall() { envrun bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --autonomous no "$@" > "$E/out.log" 2>&1; }
 
 ALL_DEPS="tmux proot-distro python3 setsid termux-open-url"
 
-# =========================================================== A. install.sh --setup, fresh device
+# =========================================================== A. install.sh, fresh device
 newenv a1
-rinstall --setup
-check "A1 frisch: --setup läuft durch"                          0 "$?"
+rinstall
+check "A1 frisch: ohne Option läuft die Einrichtung durch"                          0 "$?"
 check "A1 genau ein pkg install"                                1 "$(count "$LOG" '^pkg install')"
 pk="$(grep '^pkg install' "$LOG")"
 check "A1 pkg: -y und nicht interaktiv"                         1 "$(printf '%s' "$pk" | grep -c -- 'pkg install -y .*DEBIAN_FRONTEND=noninteractive')"
@@ -180,61 +184,94 @@ check "A1 Bridge ist eingerichtet (Widget Claude)"              ja "$([ -f "$E/h
 check "A1 Staging im Gast ist wieder aufgeräumt"                nein "$([ -e "$E/prefix/var/lib/proot-distro/containers/ubuntu/rootfs/var/tmp/termux-root-bridge-install" ] && echo ja || echo nein)"
 
 : > "$LOG"
-rinstall --setup
+rinstall
 check "A2 zweiter Lauf: läuft durch"                            0 "$?"
 check "A2 zweiter Lauf: kein pkg"                               0 "$(count "$LOG" '^pkg ')"
 check "A2 zweiter Lauf: Gast wird nicht neu angelegt"           0 "$(count "$LOG" '^proot-distro install')"
 check "A2 zweiter Lauf: setup-guest.sh läuft (macht selbst nichts, wenn alles da ist)" 1 "$(count "$LOG" '^staged setup-guest.sh$')"
-check "A2 zweiter Lauf: alle Pakete sind da"                    1 "$(count "$E/out.log" 'alle Pakete sind da')"
+check "A2 zweiter Lauf: keine Paket-Einrichtung gemeldet"       0 "$(count "$E/out.log" '== 0/5 Einrichtung')"
+
+# the guest holds everything (python3, curl, certificates, claude): setup-guest.sh is not even started
+G="$E/prefix/var/lib/proot-distro/containers/ubuntu/rootfs"
+mkdir -p "$G/usr/bin" "$G/etc/ssl/certs" "$G/root/.local/bin"
+printf '#!/bin/bash\n' > "$G/usr/bin/python3"; printf '#!/bin/bash\n' > "$G/usr/bin/curl"; echo cert > "$G/etc/ssl/certs/ca-certificates.crt"
+printf '#!/bin/bash\n' > "$G/root/.local/bin/claude"; chmod +x "$G/root/.local/bin/claude"
+: > "$LOG"
+ROOTBRIDGE_GUEST_HOME=/root rinstall
+check "A2b Gast vollständig: läuft durch"                       0 "$?"
+check "A2b Gast vollständig: setup-guest.sh wird nicht gerufen" 0 "$(count "$LOG" 'setup-guest.sh')"
+check "A2b Gast vollständig: install-guest.sh läuft"            1 "$(count "$LOG" '^staged install-guest.sh$')"
+check "A2b nichts eingerichtet: kein 'Noch von Hand'"           0 "$(count "$E/out.log" 'Noch von Hand')"
+rm -f "$G/root/.local/bin/claude"
+: > "$LOG"
+rinstall
+check "A2c claude fehlt im Gast: setup-guest.sh läuft"          1 "$(count "$LOG" '^staged setup-guest.sh$')"
+check "A2c claude fehlt im Gast: Hinweis 'Noch von Hand'"       1 "$(count "$E/out.log" 'Noch von Hand')"
+
+# the old option is still accepted and changes nothing
+newenv a11
+rinstall --setup
+check "A11 --setup (Altlast) wird angenommen"                   0 "$?"
+check "A11 --setup: dieselbe Einrichtung wie ohne Option"       1 "$(count "$LOG" '^pkg install')"
 
 # a package that is half there: only the missing one is installed
 newenv a3 tmux proot-distro python3 setsid
-rinstall --setup --no-guest
+rinstall --no-guest
 check "A3 nur termux-api fehlt: läuft durch"                    0 "$?"
 check "A3 nur termux-api wird installiert"                      "pkg install -y -o Dpkg::Options::=--force-confold termux-api [DEBIAN_FRONTEND=noninteractive]" "$(grep '^pkg ' "$LOG")"
 
 # stat, timeout and sha256sum all come from coreutils: named once
 HIDE="stat timeout sha256sum" newenv a10 tmux proot-distro python3 setsid termux-open-url
-rinstall --setup --no-guest --no-deps-check   # the pkg stub does not bring the three commands back
+rinstall --no-guest
 check "A10 coreutils fehlt: läuft durch"                        0 "$?"
 check "A10 coreutils wird genau einmal genannt"                 "pkg install -y -o Dpkg::Options::=--force-confold coreutils [DEBIAN_FRONTEND=noninteractive]" "$(grep '^pkg ' "$LOG")"
 
-# --setup --no-guest: packages yes, guest no
+# --no-guest: packages yes, guest no
 newenv a4
-rinstall --setup --no-guest
-check "A4 --setup --no-guest: läuft durch"                      0 "$?"
-check "A4 --setup --no-guest: pkg läuft"                        1 "$(count "$LOG" '^pkg install')"
-check "A4 --setup --no-guest: proot-distro wird nie gerufen"    0 "$(count "$LOG" '^proot-distro')"
+rinstall --no-guest
+check "A4 --no-guest: läuft durch"                              0 "$?"
+check "A4 --no-guest: pkg läuft"                                1 "$(count "$LOG" '^pkg install')"
+check "A4 --no-guest: proot-distro wird nie gerufen"            0 "$(count "$LOG" '^proot-distro')"
 
-# without --setup: nothing is installed, the hints stay
+# --no-setup: nothing is installed, the hints stay
 newenv a5
-rinstall
-check "A5 ohne --setup: Abbruch bei fehlenden Paketen"          1 "$?"
-check "A5 ohne --setup: nennt die fehlenden Pakete"             1 "$(count "$E/out.log" 'Fehlende Pakete:')"
-check "A5 ohne --setup: pkg wird nie gerufen"                   0 "$(count "$LOG" '^pkg ')"
+rinstall --no-setup
+check "A5 --no-setup: Abbruch bei fehlenden Paketen"            1 "$?"
+check "A5 --no-setup: nennt die fehlenden Pakete"               1 "$(count "$E/out.log" 'Fehlende Pakete:')"
+check "A5 --no-setup: pkg wird nie gerufen"                     0 "$(count "$LOG" '^pkg ')"
 
 newenv a6 $ALL_DEPS
+rinstall --no-setup
+check "A6 --no-setup, ohne Gast: Abbruch"                       1 "$?"
+check "A6 --no-setup, ohne Gast: nennt --no-setup / --no-guest" 1 "$(count "$E/out.log" 'Ohne --no-setup legt install.sh ihn an')"
+check "A6 --no-setup, ohne Gast: kein proot-distro install"     0 "$(count "$LOG" '^proot-distro install')"
+check "A6 --no-setup: kein 'Noch von Hand' am Ende"             0 "$(count "$E/out.log" 'Noch von Hand')"
+
+# --no-deps-check also skips the package part; without pkg (not Termux) the old hint stays
+newenv a12
+rinstall --no-deps-check --no-guest
+check "A12 --no-deps-check: pkg wird nie gerufen"               0 "$(count "$LOG" '^pkg ')"
+newenv a13
+rm -f "$E/bin/pkg"
 rinstall
-check "A6 ohne --setup, ohne Gast: Abbruch"                     1 "$?"
-check "A6 ohne --setup, ohne Gast: nennt --setup"               1 "$(count "$E/out.log" 'Mit --setup einrichten')"
-check "A6 ohne --setup, ohne Gast: kein proot-distro install"   0 "$(count "$LOG" '^proot-distro install')"
-check "A6 ohne --setup: kein 'Noch von Hand' am Ende"           0 "$(count "$E/out.log" 'Noch von Hand')"
+check "A13 ohne pkg: Abbruch mit dem alten Hinweis"             1 "$?"
+check "A13 ohne pkg: nennt die fehlenden Pakete"                1 "$(count "$E/out.log" 'Fehlende Pakete:')"
 
 # failures stop early
 newenv a7
-envrun env STUB_PKG_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --setup > "$E/out.log" 2>&1
+envrun env STUB_PKG_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys > "$E/out.log" 2>&1
 check "A7 pkg schlägt fehl: Abbruch"                            1 "$?"
 check "A7 pkg schlägt fehl: Meldung"                            1 "$(count "$E/out.log" 'ist fehlgeschlagen (Netz? pkg update?)')"
 check "A7 pkg schlägt fehl: kein proot-distro"                  0 "$(count "$LOG" '^proot-distro')"
 
 newenv a8 $ALL_DEPS
-envrun env STUB_PROOT_INSTALL_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --setup > "$E/out.log" 2>&1
+envrun env STUB_PROOT_INSTALL_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys > "$E/out.log" 2>&1
 check "A8 proot-distro install schlägt fehl: Abbruch"           1 "$?"
 check "A8 proot-distro install schlägt fehl: Meldung"           1 "$(count "$E/out.log" 'proot-distro install ubuntu ist fehlgeschlagen')"
 check "A8 proot-distro install schlägt fehl: kein Gast-Skript"  0 "$(count "$LOG" 'staged')"
 
 newenv a9 $ALL_DEPS
-envrun env STUB_SETUP_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --setup > "$E/out.log" 2>&1
+envrun env STUB_SETUP_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys > "$E/out.log" 2>&1
 check "A9 setup-guest schlägt fehl: Abbruch"                    1 "$?"
 check "A9 setup-guest schlägt fehl: install-guest läuft nicht"  0 "$(count "$LOG" 'install-guest.sh')"
 

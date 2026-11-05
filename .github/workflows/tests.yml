@@ -21,7 +21,7 @@ jobs:
         run: bash tests/test_session_exit.sh
       - name: --autonomous defaults to yes, no / ask / invalid values (guest installer and install.sh, stubbed proot-distro)
         run: bash tests/test_autonomous.sh
-      - name: install.sh --setup on a fresh device and setup-guest.sh (stubbed pkg / proot-distro / apt-get / curl)
+      - name: automatic setup of a fresh device and setup-guest.sh (stubbed pkg / proot-distro / apt-get / curl)
         run: bash tests/test_setup.sh
       - name: Remote Control name (install.sh / install-guest.sh, stubbed proot-distro)
         run: bash tests/test_remote_name.sh

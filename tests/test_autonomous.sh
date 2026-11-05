@@ -75,7 +75,7 @@ export STUB_LOG="$T/proot.log" STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$GUEST_ROOT"
 rinstall() {
     rm -rf "$GUEST_ROOT"; : > "$STUB_LOG"
     HOME="$H" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H/.rootbridge" \
-        bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-colors "$@" > "$T/install.log" 2>&1
+        bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-colors --no-setup "$@" > "$T/install.log" 2>&1
 }
 
 rinstall
@@ -89,7 +89,7 @@ check "install.sh no: Schalter nicht gesetzt"            - "$(flag "$GUEST_ROOT"
 
 rm -rf "$GUEST_ROOT"; : > "$STUB_LOG"
 HOME="$H" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H/.rootbridge" \
-    bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-colors --autonomous maybe > "$T/install.log" 2>&1
+    bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-colors --no-setup --autonomous maybe > "$T/install.log" 2>&1
 check "install.sh: ungültiger Wert wird abgelehnt (Code 2)" 2 "$?"
 check "install.sh: ungültiger Wert: Gast nicht angefasst" 0 "$(wc -c < "$STUB_LOG" | tr -d ' ')"
 

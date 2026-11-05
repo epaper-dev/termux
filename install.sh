@@ -5,13 +5,15 @@
 #   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors] [--no-widgets]
 #                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME] [--no-extra-keys]
 #                   [--apt-upgrade daily|always|off | --no-apt-upgrade]
-#                   [--claude-update daily|always|off | --no-claude-update] [--setup]
+#                   [--claude-update daily|always|off | --no-claude-update] [--no-setup]
 #
-# --setup: set up a fresh device first: the Termux packages that are missing (pkg install), the
-#   Ubuntu guest if there is none (proot-distro install, a download of a few hundred MB),
-#   python3/curl/certificates in the guest and Claude Code (official installer). No questions. Without
-#   --setup the installer only checks and tells you what is missing. Still manual afterwards: the root
-#   grant, Termux:Boot once, the widget on the home screen, the Claude login.
+# Setup (automatic, nothing to ask for): what is missing gets installed first: the Termux packages
+#   (pkg install), the Ubuntu guest (proot-distro install, a download of a few hundred MB),
+#   python3/curl/certificates in the guest and Claude Code (official installer). A device that has it
+#   all just gets the normal installation. --no-setup only checks and tells you what is missing
+#   (--no-deps-check skips the package part, --no-guest the guest part). --setup is still accepted and
+#   changes nothing. Still manual afterwards: the root grant, Termux:Boot once, the widget on the home
+#   screen, the Claude login.
 #
 # --autonomous yes|no|ask: yes (default) sets skipDangerousModePermissionPrompt in the guest, so Claude
 #   Code shows no warning dialog when you switch to bypass mode (Shift+Tab). Claude still starts in the
@@ -49,7 +51,7 @@ STAMP="$(date +%Y%m%d%H%M%S)"
 BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
-DO_SETUP=0; DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=yes
+DO_SETUP=1; SETUP_DID=0; DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=yes
 CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 APT_MODE=""; APT_MODE_SET=0
@@ -58,7 +60,8 @@ NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 APT_RE='^(daily|always|off)$'
 while [ $# -gt 0 ]; do
     case "$1" in
-        --setup) DO_SETUP=1 ;;
+        --setup) DO_SETUP=1 ;;   # the default, kept for older command lines
+        --no-setup) DO_SETUP=0 ;;
         --no-guest) DO_GUEST=0 ;;
         --no-boot) DO_BOOT=0 ;;
         --no-migrate) DO_MIGRATE=0 ;;
@@ -78,7 +81,7 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--claude-update braucht daily, always oder off" >&2; exit 2; }
             CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift ;;
         --no-claude-update) CLAUDE_UPD_MODE=off; CLAUDE_UPD_SET=1 ;;
-        -h|--help) sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -113,7 +116,7 @@ if [ -z "${ROOTBRIDGE_ALLOW_GUEST:-}" ] && [ "$(id -u)" -eq 0 ] \
     die "Du bist im Ubuntu-Gast. Bitte in einer normalen Termux-Shell ausführen (nicht in proot-distro)."
 fi
 
-# --setup, part 1: the Termux packages that are missing. pkg_for maps a command to its Termux package.
+# Setup, part 1: the Termux packages that are missing. pkg_for maps a command to its Termux package.
 pkg_for() {
     case "$1" in
         python3) echo python ;;
@@ -123,9 +126,7 @@ pkg_for() {
         *) echo "$1" ;;
     esac
 }
-if [ "$DO_SETUP" = 1 ]; then
-    say "== 0/5 Einrichtung: Termux-Pakete"
-    command -v pkg >/dev/null 2>&1 || die "--setup braucht 'pkg' (Termux). Die Pakete von Hand installieren: tmux proot-distro python coreutils util-linux termux-api"
+if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; then
     need_pkgs=""
     for c in tmux proot-distro python3 sha256sum stat timeout setsid termux-open-url; do
         command -v "$c" >/dev/null 2>&1 && continue
@@ -133,13 +134,13 @@ if [ "$DO_SETUP" = 1 ]; then
         case " $need_pkgs " in *" $p "*) ;; *) need_pkgs="$need_pkgs $p" ;; esac
     done
     if [ -n "$need_pkgs" ]; then
+        say "== 0/5 Einrichtung: Termux-Pakete"
         say "  pkg install -y$need_pkgs"
         # shellcheck disable=SC2086   # $need_pkgs is a list of package names on purpose
         DEBIAN_FRONTEND=noninteractive pkg install -y -o Dpkg::Options::=--force-confold $need_pkgs \
-            || die "pkg install$need_pkgs ist fehlgeschlagen (Netz? pkg update?). Erneut starten: bash install.sh --setup"
+            || die "pkg install$need_pkgs ist fehlgeschlagen (Netz? pkg update?). Erneut starten: bash install.sh"
         hash -r
-    else
-        say "  alle Pakete sind da"
+        SETUP_DID=1
     fi
 fi
 
@@ -467,19 +468,29 @@ if [ "$DO_GUEST" = 1 ]; then
     done
     if [ -z "$GROOT" ] && [ "$DO_SETUP" = 1 ]; then
         say "  Gast '$DISTRO' fehlt: proot-distro install $DISTRO (Download, das dauert)"
-        proot-distro install "$DISTRO" || die "proot-distro install $DISTRO ist fehlgeschlagen (Netz? Speicherplatz?). Erneut starten: bash install.sh --setup"
+        proot-distro install "$DISTRO" || die "proot-distro install $DISTRO ist fehlgeschlagen (Netz? Speicherplatz?). Erneut starten: bash install.sh"
+        SETUP_DID=1
         for c in "$PREFIX/var/lib/proot-distro/containers/$DISTRO/rootfs" \
                  "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
             [ -d "$c" ] && GROOT="$c" && break
         done
     fi
-    [ -n "$GROOT" ] || die "Gast '$DISTRO' nicht gefunden (proot-distro list). Mit --setup einrichten oder mit --no-guest überspringen."
+    [ -n "$GROOT" ] || die "Gast '$DISTRO' nicht gefunden (proot-distro list). Ohne --no-setup legt install.sh ihn an; oder mit --no-guest überspringen."
     STAGE="$GROOT/var/tmp/termux-root-bridge-install"
     rm -rf "$STAGE"; mkdir -p "$STAGE"
     cp -r "$REPO/guest/." "$STAGE/"
-    if [ "$DO_SETUP" = 1 ]; then
+    # Setup, part 3: python3 / curl / certificates and Claude Code in the guest. Looked up from outside
+    # (a link that points outside the guest only counts as missing: setup-guest.sh then looks properly)
+    guest_ready() {
+        local h="${ROOTBRIDGE_GUEST_HOME:-/root}"
+        [ -e "$GROOT/usr/bin/python3" ] && [ -e "$GROOT/usr/bin/curl" ] && [ -s "$GROOT/etc/ssl/certs/ca-certificates.crt" ] \
+            && { [ -x "$GROOT$h/.local/bin/claude" ] || [ -x "$GROOT/usr/local/bin/claude" ] || [ -x "$GROOT/usr/bin/claude" ]; }
+    }
+    if [ "$DO_SETUP" = 1 ] && ! guest_ready; then
+        say "  Gast: Voraussetzungen und Claude Code einrichten"
         proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/setup-guest.sh \
-            || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh --setup"
+            || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh"
+        SETUP_DID=1
     fi
     GUEST_ARGS=(--src /var/tmp/termux-root-bridge-install --autonomous "$AUTONOMOUS")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
@@ -499,7 +510,7 @@ say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie
 say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
 say "Normale Termux-Fenster bleiben reine Shells; Claude Code startet nicht mehr automatisch."
 say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."
-if [ "$DO_SETUP" = 1 ]; then
+if [ "$SETUP_DID" = 1 ]; then
     say "Noch von Hand: Root-Freigabe für Termux bestätigen (Root-Manager fragt bei der ersten Anfrage), Termux:Boot einmal öffnen,"
     say "das Widget 'Claude' auf den Homescreen legen, beim ersten Start in Claude Code anmelden (/login, der Browser öffnet sich)."
 fi

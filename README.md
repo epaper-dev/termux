@@ -47,7 +47,7 @@ androidsu ── request + ticket ───────────────�
 ## Requirements
 
 * Android with Termux (F-Droid/GitHub build), `proot-distro` with an Ubuntu guest, Claude Code installed in the guest
-  (`curl -fsSL https://claude.ai/install.sh | bash`)
+  (`curl -fsSL https://claude.ai/install.sh | bash`); `install.sh` sets up what is missing of this and of the packages below
 * A working `su` (Magisk, KernelSU, ...) — without it, only the login features work
 * Termux packages: `tmux proot-distro python coreutils util-linux`; optional `termux-api` (+ the Termux:API app)
   for the clipboard
@@ -59,27 +59,19 @@ androidsu ── request + ticket ───────────────�
 In a **Termux** shell (not inside proot):
 
 ```bash
-pkg install git tmux proot-distro python coreutils util-linux termux-api
+pkg install -y git
 git clone https://github.com/hisense-a9/termux-root-bridge
 cd termux-root-bridge
 bash install.sh
 ```
 
-**On a fresh device** (new Termux, no Ubuntu yet) let the installer set up everything it needs:
-
-```bash
-pkg install -y git
-git clone https://github.com/hisense-a9/termux-root-bridge
-cd termux-root-bridge
-bash install.sh --setup
-```
-
-`--setup` installs the missing Termux packages (`pkg install`), the Ubuntu guest if there is none (`proot-distro install`,
-a download of a few hundred MB), `python3`, `curl` and the certificates in the guest, and Claude Code with the official
-installer. It asks nothing, and you can run it again after a
-failure. Still manual: the root grant for Termux (your root manager asks on the first request), opening Termux:Boot once,
-putting the **Claude** widget on the home screen, and the Claude login (`/login`; the browser opens by itself). Without
-`--setup` the installer changes none of this and only tells you what is missing.
+The installer sets up what is missing, by itself and without asking: the Termux packages (`pkg install`), the Ubuntu guest
+(`proot-distro install`, a download of a few hundred MB), `python3`, `curl` and the certificates in the guest, and Claude Code
+with the official installer. On a device that has it all, only the normal installation runs. Run it again after a failure.
+Still manual: the root grant for Termux (your root manager asks on the first request), opening Termux:Boot once, putting the
+**Claude** widget on the home screen, and the Claude login (`/login`; the browser opens by itself). `--no-setup` changes
+none of this and only tells you what is missing (`--no-deps-check` skips the package part, `--no-guest` the guest part).
+`--setup`, the option of earlier versions, is still accepted and does nothing extra.
 
 **Autonomous mode is on by default** (`--autonomous yes`): the installer sets `skipDangerousModePermissionPrompt` in the guest's
 `~/.claude/settings.json`, so Claude Code shows no warning dialog when you switch to bypass mode with Shift+Tab. That is
@@ -96,7 +88,7 @@ session is created in the background after a reboot (`rootbridge start --no-atta
 mode** (from your `settings.json`); press **Shift+Tab** to switch to *bypass permissions* (on a phone use the **S-TAB** key
 the installer adds to the Termux extra keys row, see below).
 
-Options: `--setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+Options: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. The installer is idempotent, backs up what it changes, and
 migrates the old v1 popup bridge if it finds one.
 
