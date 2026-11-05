@@ -151,11 +151,14 @@ use_local_shared() {   # use_local_shared <plugin> <plugin dir> <commit>
     elif [ "$SHARED_LOCAL_HASH" != "$hash" ]; then
         die "$name needs termux-shared $hash but $SHARED_LOCAL_HASH is already published locally under the same version"
     fi
-    ver="$(sed -n "s/^[[:space:]]*version = '\([^']*\)'.*/\1/p" "$WORK/termux-app-$SHARED_LOCAL_HASH/termux-shared/build.gradle" | head -n 1)"
-    [ -n "$ver" ] || die "$name: could not read the termux-shared version"
-    sed -i "s|com.termux.termux-app:termux-shared:$hash|com.termux:termux-shared:$ver|" "$dir/app/build.gradle"
+    # every library of that commit a plugin names (termux-shared, terminal-view, terminal-emulator) moves to the local copy
+    for mod in termux-shared terminal-view terminal-emulator; do
+        ver="$(sed -n "s/^[[:space:]]*version = '\([^']*\)'.*/\1/p" "$WORK/termux-app-$SHARED_LOCAL_HASH/$mod/build.gradle" | head -n 1)"
+        [ -n "$ver" ] || die "$name: could not read the $mod version"
+        sed -i "s|com.termux.termux-app:$mod:$hash|com.termux:$mod:$ver|" "$dir/app/build.gradle"
+    done
     sed -i 's|^\([[:space:]]*\)//mavenLocal()|\1mavenLocal()|' "$dir/build.gradle"
-    grep -q "com.termux:termux-shared:$ver" "$dir/app/build.gradle" || die "$name: could not switch the termux-shared dependency"
+    if grep -q "com.termux.termux-app:[a-z-]*:$hash" "$dir/app/build.gradle"; then die "$name: still a JitPack dependency on $hash after the switch"; fi
     grep -qE '^[[:space:]]*mavenLocal\(\)' "$dir/build.gradle" || die "$name: could not enable mavenLocal() in build.gradle"
 }
 
@@ -174,7 +177,7 @@ build_plugin() {
     say "$name: release $tag from $owner/$name, task $TASK"
     SOURCE_NOTES="${SOURCE_NOTES}$name $tag from \`$owner/$name\`; "
     retry git clone --quiet --depth 1 --branch "$tag" "https://github.com/$owner/$name.git" "$dir" || die "$name: git clone failed"
-    dep="$(grep -oE 'com\.termux\.termux-app:termux-shared:[0-9a-f]+' "$dir/app/build.gradle" | head -n 1 | sed 's/.*://' || true)"
+    dep="$(grep -oE 'com\.termux\.termux-app:[a-z-]+:[0-9a-f]+' "$dir/app/build.gradle" | head -n 1 | sed 's/.*://' || true)"
     if [ -n "$dep" ]; then use_local_shared "$name" "$dir" "$dep"; fi
     ( cd "$dir" && retry ./gradlew --no-daemon "$TASK" ) || die "$name: the Gradle build failed"
     collect "$name" "$dir/app/build/outputs/apk/$KIND"
