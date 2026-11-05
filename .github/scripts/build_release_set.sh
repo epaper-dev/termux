@@ -119,13 +119,52 @@ build_app() {
     collect app "app/build/outputs/apk/$KIND"
 }
 
+# Most plugins depend on `com.termux.termux-app:termux-shared:<commit>` from JitPack. JitPack no longer has the
+# commit the latest releases were built against (HTTP 404), so termux-shared is built from that commit of termux-app
+# and published to the local Maven repository, the way F-Droid builds these apps (app/build.gradle names the
+# coordinates `com.termux:termux-shared:<version>` and build.gradle has `mavenLocal()` commented out for this).
+SHARED_LOCAL_HASH=""
+SHARED_NOTES=""
+use_local_shared() {   # use_local_shared <plugin> <plugin dir> <commit>
+    local name="$1" dir="$2" hash="$3" code full src ver
+    code="$(curl -s -o /dev/null -m 90 -w '%{http_code}' "https://jitpack.io/com/termux/termux-app/termux-shared/$hash/termux-shared-$hash.pom" || true)"
+    if [ "$code" = 200 ]; then
+        say "$name: termux-shared $hash comes from JitPack"
+        return 0
+    fi
+    say "$name: termux-shared $hash is not on JitPack (HTTP ${code:-?}), building it from termux-app"
+    full="$(gh api "repos/termux/termux-app/commits/$hash" --jq .sha)"
+    [ -n "$full" ] || die "$name: termux-app has no commit $hash"
+    src="$WORK/termux-app-$hash"
+    if [ -z "$SHARED_LOCAL_HASH" ]; then
+        mkdir -p "$src"
+        ( cd "$src" && git init -q && retry git fetch -q --depth 1 https://github.com/termux/termux-app.git "$full" && git checkout -q FETCH_HEAD ) \
+            || die "$name: could not fetch termux-app $hash"
+        # the libraries (terminal-emulator, terminal-view, termux-shared) are published together
+        ( cd "$src" && retry ./gradlew --no-daemon publishReleasePublicationToMavenLocal ) \
+            || die "$name: building termux-shared $hash failed"
+        SHARED_LOCAL_HASH="$hash"
+        SHARED_NOTES="${SHARED_NOTES}termux-shared built from termux-app \`${full:0:10}\`; "
+    elif [ "$SHARED_LOCAL_HASH" != "$hash" ]; then
+        die "$name needs termux-shared $hash but $SHARED_LOCAL_HASH is already published locally under the same version"
+    fi
+    ver="$(sed -n "s/^[[:space:]]*version = '\([^']*\)'.*/\1/p" "$WORK/termux-app-$SHARED_LOCAL_HASH/termux-shared/build.gradle" | head -n 1)"
+    [ -n "$ver" ] || die "$name: could not read the termux-shared version"
+    sed -i "s|com.termux.termux-app:termux-shared:$hash|com.termux:termux-shared:$ver|" "$dir/app/build.gradle"
+    sed -i 's|^\([[:space:]]*\)//mavenLocal()|\1mavenLocal()|' "$dir/build.gradle"
+    grep -q "com.termux:termux-shared:$ver" "$dir/app/build.gradle" || die "$name: could not switch the termux-shared dependency"
+    grep -qE '^[[:space:]]*mavenLocal\(\)' "$dir/build.gradle" || die "$name: could not enable mavenLocal() in build.gradle"
+}
+
 build_plugin() {
-    local name="$1" tag dir
+    local name="$1" tag dir dep
     tag="$(gh api "repos/termux/$name/releases/latest" --jq .tag_name)"
     [ -n "$tag" ] || die "$name: could not find the latest release"
     say "$name: release $tag, task $TASK"
     dir="$WORK/$name"
     retry git clone --quiet --depth 1 --branch "$tag" "https://github.com/termux/$name.git" "$dir" || die "$name: git clone failed"
+    dep="$(grep -oE 'com\.termux\.termux-app:termux-shared:[0-9a-f]+' "$dir/app/build.gradle" | head -n 1 | sed 's/.*://' || true)"
+    if [ -n "$dep" ]; then use_local_shared "$name" "$dir" "$dep"; fi
     ( cd "$dir" && retry ./gradlew --no-daemon "$TASK" ) || die "$name: the Gradle build failed"
     collect "$name" "$dir/app/build/outputs/apk/$KIND"
 }
@@ -180,6 +219,7 @@ done
     echo
     echo "Signing certificate (SHA-256): \`${first_cert:-none}\`"
     echo
+    [ -z "$SHARED_NOTES" ] || { echo "Build notes: ${SHARED_NOTES%; }."; echo; }
     if [ "$problems" -eq 0 ]; then echo "All APKs verify, share one certificate and use sharedUserId \`com.termux\`."
     else echo "**$problems problem(s), see the log.**"; fi
     case "$SIGNING" in
