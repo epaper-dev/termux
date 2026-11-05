@@ -8,7 +8,9 @@
 #
 #   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
-#   --autonomous      write skipDangerousModePermissionPrompt into ~/.claude/settings.json
+#   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
+#                     (no warning dialog when you switch to bypass mode; every Android-root command still
+#                     asks); no: leave it as it is (an earlier value stays); ask: ask on a terminal
 #   --theme NAME      set the Claude Code theme in ~/.claude/settings.json (dark, light,
 #                     light-daltonized, dark-daltonized, light-ansi, dark-ansi); other keys stay
 #   --remote-name N   name shown in the Remote Control view (claude.ai/code): sets
@@ -29,7 +31,7 @@ set -eu
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT=""
-AUTONOMOUS=ask
+AUTONOMOUS=yes
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 THEME=""; THEME_SET=0
 APT_MODE=""; APT_MODE_SET=0
@@ -85,6 +87,11 @@ if [ "$CLAUDE_UPD_SET" = 1 ]; then
            exit 2 ;;
     esac
 fi
+
+case "$AUTONOMOUS" in
+    yes|no|ask) ;;
+    *) echo "--autonomous: ungültiger Wert '$AUTONOMOUS' (erlaubt: yes, no, ask)" >&2; exit 2 ;;
+esac
 
 STAMP="$(date +%Y%m%d%H%M%S)"
 LIBDIR=/usr/local/lib/termux-root-bridge

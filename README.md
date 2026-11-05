@@ -62,7 +62,7 @@ In a **Termux** shell (not inside proot):
 pkg install git tmux proot-distro python coreutils util-linux termux-api
 git clone https://github.com/hisense-a9/termux-root-bridge
 cd termux-root-bridge
-bash install.sh            # asks one question about autonomous mode
+bash install.sh
 ```
 
 **On a fresh device** (new Termux, no Ubuntu yet) let the installer set up everything it needs:
@@ -71,15 +71,21 @@ bash install.sh            # asks one question about autonomous mode
 pkg install -y git
 git clone https://github.com/hisense-a9/termux-root-bridge
 cd termux-root-bridge
-bash install.sh --setup --autonomous no
+bash install.sh --setup
 ```
 
 `--setup` installs the missing Termux packages (`pkg install`), the Ubuntu guest if there is none (`proot-distro install`,
 a download of a few hundred MB), `python3`, `curl` and the certificates in the guest, and Claude Code with the official
-installer. It asks nothing (the autonomous-mode question is answered by `--autonomous`), and you can run it again after a
+installer. It asks nothing, and you can run it again after a
 failure. Still manual: the root grant for Termux (your root manager asks on the first request), opening Termux:Boot once,
 putting the **Claude** widget on the home screen, and the Claude login (`/login`; the browser opens by itself). Without
 `--setup` the installer changes none of this and only tells you what is missing.
+
+**Autonomous mode is on by default** (`--autonomous yes`): the installer sets `skipDangerousModePermissionPrompt` in the guest's
+`~/.claude/settings.json`, so Claude Code shows no warning dialog when you switch to bypass mode with Shift+Tab. That is
+the only change. Claude still starts in the mode of your settings, bypass mode runs inside the proot guest, and every
+Android-root command still asks for confirmation (also in bypass mode). `--autonomous no` leaves the setting alone (a value
+set earlier stays), `--autonomous ask` asks on a terminal.
 
 Then start Claude Code with the **Claude** widget, or type `ubuntu` (alias for `rootbridge attach`) in a Termux
 shell. The first start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +

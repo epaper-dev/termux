@@ -9,10 +9,14 @@
 #
 # --setup: set up a fresh device first: the Termux packages that are missing (pkg install), the
 #   Ubuntu guest if there is none (proot-distro install, a download of a few hundred MB),
-#   python3/curl/certificates in the guest and Claude Code (official installer). No questions, except
-#   the one about autonomous mode: answer it ahead with --autonomous yes|no. Without --setup the
-#   installer only checks and tells you what is missing. Still manual afterwards: the root grant,
-#   Termux:Boot once, the widget on the home screen, the Claude login.
+#   python3/curl/certificates in the guest and Claude Code (official installer). No questions. Without
+#   --setup the installer only checks and tells you what is missing. Still manual afterwards: the root
+#   grant, Termux:Boot once, the widget on the home screen, the Claude login.
+#
+# --autonomous yes|no|ask: yes (default) sets skipDangerousModePermissionPrompt in the guest, so Claude
+#   Code shows no warning dialog when you switch to bypass mode (Shift+Tab). Claude still starts in the
+#   mode of your settings, and every Android-root command still asks. no leaves the setting alone (an
+#   earlier value stays), ask asks on a terminal.
 #
 # What it does (idempotent, with backups):
 #   1. installs rootbridge + rootbridge-daemon into $PREFIX/bin
@@ -45,7 +49,7 @@ STAMP="$(date +%Y%m%d%H%M%S)"
 BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
-DO_SETUP=0; DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=ask
+DO_SETUP=0; DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=yes
 CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 APT_MODE=""; APT_MODE_SET=0
@@ -74,11 +78,16 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--claude-update braucht daily, always oder off" >&2; exit 2; }
             CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift ;;
         --no-claude-update) CLAUDE_UPD_MODE=off; CLAUDE_UPD_SET=1 ;;
-        -h|--help) sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
 done
+
+case "$AUTONOMOUS" in
+    yes|no|ask) ;;
+    *) echo "--autonomous: ungültiger Wert '$AUTONOMOUS' (erlaubt: yes, no, ask)" >&2; exit 2 ;;
+esac
 
 if [ "$REMOTE_NAME_SET" = 1 ] && ! [[ "$REMOTE_NAME" =~ $NAME_RE ]]; then
     echo "--remote-name: ungültiger Name '$REMOTE_NAME' (erlaubt: Buchstaben, Ziffern, . _ -; max. 64 Zeichen; nicht mit - beginnen)" >&2

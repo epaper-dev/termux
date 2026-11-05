@@ -4,6 +4,12 @@
 
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
+### Changed
+* `--autonomous` now defaults to `yes` (before: `ask`, which meant `no` without a terminal): the installer sets
+  `skipDangerousModePermissionPrompt`, so Claude Code shows no warning dialog when you switch to bypass mode. Every
+  Android-root command still asks. `no` leaves the setting alone, `ask` asks on a terminal; other values are rejected.
+  `tests/test_autonomous.sh`.
+
 ### Added
 * `install.sh --setup` for a fresh device: installs the missing Termux packages (`pkg install -y`, only those that are
   missing), the Ubuntu guest if there is none (`proot-distro install`), and, through the new `guest/setup-guest.sh`,

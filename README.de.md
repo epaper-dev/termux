@@ -59,7 +59,7 @@ In einer **Termux**-Shell (nicht in proot):
 pkg install git tmux proot-distro python coreutils util-linux termux-api
 git clone https://github.com/hisense-a9/termux-root-bridge
 cd termux-root-bridge
-bash install.sh            # stellt eine Frage zum autonomen Modus
+bash install.sh
 ```
 
 **Auf einem frischen Gerät** (neues Termux, noch kein Ubuntu) richtet der Installer alles Nötige selbst ein:
@@ -68,15 +68,21 @@ bash install.sh            # stellt eine Frage zum autonomen Modus
 pkg install -y git
 git clone https://github.com/hisense-a9/termux-root-bridge
 cd termux-root-bridge
-bash install.sh --setup --autonomous no
+bash install.sh --setup
 ```
 
 `--setup` installiert die fehlenden Termux-Pakete (`pkg install`), den Ubuntu-Gast, falls es keinen gibt (`proot-distro install`,
 ein Download von einigen hundert MB), `python3`, `curl` und die Zertifikate im Gast sowie Claude Code mit dem offiziellen
-Installer. Es stellt keine Fragen (die zum autonomen Modus beantwortet `--autonomous`) und lässt sich nach einem Fehler
+Installer. Es stellt keine Fragen und lässt sich nach einem Fehler
 erneut starten. Weiter von Hand: die Root-Freigabe für Termux (dein Root-Manager fragt bei der ersten Anfrage), Termux:Boot
 einmal öffnen, das Widget **Claude** auf den Homescreen legen und die Claude-Anmeldung (`/login`; der Browser öffnet sich
 von selbst). Ohne `--setup` ändert der Installer nichts davon und nennt nur, was fehlt.
+
+**Der autonome Modus ist standardmäßig an** (`--autonomous yes`): Der Installer setzt `skipDangerousModePermissionPrompt` in der
+`~/.claude/settings.json` des Gasts, Claude Code zeigt dann keinen Warndialog, wenn du mit Umschalt+Tab in den Bypass-Modus
+wechselst. Mehr ändert sich nicht. Claude startet weiter im Modus deiner Einstellungen, der Bypass-Modus läuft im proot-Gast,
+und jeder Android-Root-Befehl fragt weiter nach (auch im Bypass-Modus). `--autonomous no` lässt die Einstellung unberührt (ein früher
+gesetzter Wert bleibt), `--autonomous ask` fragt in einem Terminal.
 
 Danach Claude Code über das Widget **Claude** starten oder in einer Termux-Shell `ubuntu` eingeben (Alias für
 `rootbridge attach`). Der erste Start legt die Sitzung an: Daemon starten, Pakete des Gasts aktualisieren
