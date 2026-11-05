@@ -68,6 +68,22 @@ cd termux-root-bridge
 bash install.sh            # hace una pregunta sobre el modo autónomo
 ```
 
+**En un dispositivo nuevo** (Termux recién instalado, sin Ubuntu) deja que el instalador prepare todo lo necesario:
+
+```bash
+pkg install -y git
+git clone https://github.com/hisense-a9/termux-root-bridge
+cd termux-root-bridge
+bash install.sh --setup --autonomous no
+```
+
+`--setup` instala los paquetes de Termux que faltan (`pkg install`), el invitado Ubuntu si no hay ninguno (`proot-distro
+install`, una descarga de unos cientos de MB), `python3`, `curl` y los certificados en el invitado, y Claude Code con el
+instalador oficial. No hace preguntas (la del modo autónomo la responde `--autonomous`) y se puede repetir tras un fallo.
+Sigue siendo manual: la autorización de root para Termux (tu gestor de root pregunta en la primera petición), abrir
+Termux:Boot una vez, poner el widget **Claude** en la pantalla de inicio y el inicio de sesión de Claude (`/login`; el
+navegador se abre solo). Sin `--setup` el instalador no cambia nada de esto y solo indica lo que falta.
+
 Después inicia Claude Code con el widget **Claude**, o escribe `ubuntu` (alias de `rootbridge attach`) en una shell de
 Termux. El primer arranque crea la sesión: inicia el daemon, actualiza los paquetes del invitado (`apt-get update` +
 `upgrade`, como máximo una vez al día, ver abajo), ejecuta `claude update` (también como máximo una vez al día) e
@@ -77,7 +93,7 @@ Termux:Boot la sesión se crea en segundo plano tras un reinicio (`rootbridge st
 **arrancando en modo plan** (según tu `settings.json`); pulsa **Shift+Tab** para cambiar a *bypass permissions* (en un
 teléfono, con la tecla **S-TAB** que el instalador añade a la fila de teclas extra de Termux, ver abajo).
 
-Opciones: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`,
+Opciones: `--setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`,
 `--remote-name NAME`, `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`,
 `--no-claude-update`. El instalador es idempotente, hace copia de seguridad de lo que modifica y migra el antiguo puente
 con ventana emergente de la v1 si lo encuentra.

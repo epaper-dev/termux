@@ -65,6 +65,22 @@ cd termux-root-bridge
 bash install.sh            # asks one question about autonomous mode
 ```
 
+**On a fresh device** (new Termux, no Ubuntu yet) let the installer set up everything it needs:
+
+```bash
+pkg install -y git
+git clone https://github.com/hisense-a9/termux-root-bridge
+cd termux-root-bridge
+bash install.sh --setup --autonomous no
+```
+
+`--setup` installs the missing Termux packages (`pkg install`), the Ubuntu guest if there is none (`proot-distro install`,
+a download of a few hundred MB), `python3`, `curl` and the certificates in the guest, and Claude Code with the official
+installer. It asks nothing (the autonomous-mode question is answered by `--autonomous`), and you can run it again after a
+failure. Still manual: the root grant for Termux (your root manager asks on the first request), opening Termux:Boot once,
+putting the **Claude** widget on the home screen, and the Claude login (`/login`; the browser opens by itself). Without
+`--setup` the installer changes none of this and only tells you what is missing.
+
 Then start Claude Code with the **Claude** widget, or type `ubuntu` (alias for `rootbridge attach`) in a Termux
 shell. The first start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +
 `upgrade`, at most once a day, see below), runs `claude update` (also at most once a day) and starts Claude Code; later
@@ -74,7 +90,7 @@ session is created in the background after a reboot (`rootbridge start --no-atta
 mode** (from your `settings.json`); press **Shift+Tab** to switch to *bypass permissions* (on a phone use the **S-TAB** key
 the installer adds to the Termux extra keys row, see below).
 
-Options: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+Options: `--setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. The installer is idempotent, backs up what it changes, and
 migrates the old v1 popup bridge if it finds one.
 

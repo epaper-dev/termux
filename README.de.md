@@ -62,6 +62,22 @@ cd termux-root-bridge
 bash install.sh            # stellt eine Frage zum autonomen Modus
 ```
 
+**Auf einem frischen Gerät** (neues Termux, noch kein Ubuntu) richtet der Installer alles Nötige selbst ein:
+
+```bash
+pkg install -y git
+git clone https://github.com/hisense-a9/termux-root-bridge
+cd termux-root-bridge
+bash install.sh --setup --autonomous no
+```
+
+`--setup` installiert die fehlenden Termux-Pakete (`pkg install`), den Ubuntu-Gast, falls es keinen gibt (`proot-distro install`,
+ein Download von einigen hundert MB), `python3`, `curl` und die Zertifikate im Gast sowie Claude Code mit dem offiziellen
+Installer. Es stellt keine Fragen (die zum autonomen Modus beantwortet `--autonomous`) und lässt sich nach einem Fehler
+erneut starten. Weiter von Hand: die Root-Freigabe für Termux (dein Root-Manager fragt bei der ersten Anfrage), Termux:Boot
+einmal öffnen, das Widget **Claude** auf den Homescreen legen und die Claude-Anmeldung (`/login`; der Browser öffnet sich
+von selbst). Ohne `--setup` ändert der Installer nichts davon und nennt nur, was fehlt.
+
 Danach Claude Code über das Widget **Claude** starten oder in einer Termux-Shell `ubuntu` eingeben (Alias für
 `rootbridge attach`). Der erste Start legt die Sitzung an: Daemon starten, Pakete des Gasts aktualisieren
 (`apt-get update` + `upgrade`, höchstens einmal am Tag, siehe unten), `claude update` ausführen (ebenfalls höchstens einmal am
@@ -71,7 +87,7 @@ nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart 
 **Umschalt+Tab** wechselst du in *bypass permissions* (am Handy mit der Taste **S-TAB**, die der Installer der
 Termux-Zusatztastenleiste hinzufügt, siehe unten).
 
-Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+Optionen: `--setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. Der Installer ist idempotent, sichert Geändertes und migriert die
 alte v1-Popup-Bridge.
 

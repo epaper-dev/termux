@@ -381,6 +381,8 @@ sed -i '/# rootbridge_bin$/d' "$B.new.$$"
 cat >> "$B.new.$$" <<EOF
 
 $BEGIN
+# The official Claude Code installer puts claude into ~/.local/bin.
+case ":\$PATH:" in *":\$HOME/.local/bin:"*) ;; *) export PATH="\$HOME/.local/bin:\$PATH" ;; esac
 # Browser hand-off for logins (/login, /mcp) and bypass mode selectable with Shift+Tab.
 # A Remote Control name set in CLAUDE_ARGS ($CONF) is applied here too (the name only, no other flags).
 claude() {

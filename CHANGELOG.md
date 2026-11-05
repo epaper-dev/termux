@@ -5,6 +5,13 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Added
+* `install.sh --setup` for a fresh device: installs the missing Termux packages (`pkg install -y`, only those that are
+  missing), the Ubuntu guest if there is none (`proot-distro install`), and, through the new `guest/setup-guest.sh`,
+  `python3` / `curl` / certificates in the guest (`apt-get`, only when one is missing) and Claude Code (official
+  installer, only when there is no `claude`). Idempotent, stops with a hint on every failure (`bash install.sh --setup`
+  again). Without `--setup` nothing changes: the installer still only checks. The guest `~/.bashrc` block now puts
+  `~/.local/bin` on the PATH. `tests/test_setup.sh` (76 checks, stubbed pkg / proot-distro / apt-get / curl on a PATH
+  made of symlinks, so the result does not depend on the machine; 6 mutation probes fail as expected).
 * Termux extra keys row: `install.sh` sets it in `~/.termux/termux.properties` (marked block, backup first, reload only
   on a change, mode 600; `termux/extra-keys.snippet`). Two rows of six: `ESC` `CTRL` `S-TAB` `BKSP` `↑` `ENTER` and `KEYBOARD`
   `/` `TAB` `←` `↓` `→`. S-TAB sends Shift+Tab (a phone keyboard has none, Claude Code switches its permission mode with

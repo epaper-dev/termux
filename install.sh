@@ -5,7 +5,14 @@
 #   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors] [--no-widgets]
 #                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME] [--no-extra-keys]
 #                   [--apt-upgrade daily|always|off | --no-apt-upgrade]
-#                   [--claude-update daily|always|off | --no-claude-update]
+#                   [--claude-update daily|always|off | --no-claude-update] [--setup]
+#
+# --setup: set up a fresh device first: the Termux packages that are missing (pkg install), the
+#   Ubuntu guest if there is none (proot-distro install, a download of a few hundred MB),
+#   python3/curl/certificates in the guest and Claude Code (official installer). No questions, except
+#   the one about autonomous mode: answer it ahead with --autonomous yes|no. Without --setup the
+#   installer only checks and tells you what is missing. Still manual afterwards: the root grant,
+#   Termux:Boot once, the widget on the home screen, the Claude login.
 #
 # What it does (idempotent, with backups):
 #   1. installs rootbridge + rootbridge-daemon into $PREFIX/bin
@@ -38,7 +45,7 @@ STAMP="$(date +%Y%m%d%H%M%S)"
 BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
-DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=ask
+DO_SETUP=0; DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=ask
 CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 APT_MODE=""; APT_MODE_SET=0
@@ -47,6 +54,7 @@ NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 APT_RE='^(daily|always|off)$'
 while [ $# -gt 0 ]; do
     case "$1" in
+        --setup) DO_SETUP=1 ;;
         --no-guest) DO_GUEST=0 ;;
         --no-boot) DO_BOOT=0 ;;
         --no-migrate) DO_MIGRATE=0 ;;
@@ -66,7 +74,7 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--claude-update braucht daily, always oder off" >&2; exit 2; }
             CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift ;;
         --no-claude-update) CLAUDE_UPD_MODE=off; CLAUDE_UPD_SET=1 ;;
-        -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -94,6 +102,36 @@ die() { echo "install.sh: $*" >&2; exit 1; }
 if [ -z "${ROOTBRIDGE_ALLOW_GUEST:-}" ] && [ "$(id -u)" -eq 0 ] \
         && [ -f /etc/os-release ] && grep -qi ubuntu /etc/os-release 2>/dev/null; then
     die "Du bist im Ubuntu-Gast. Bitte in einer normalen Termux-Shell ausführen (nicht in proot-distro)."
+fi
+
+# --setup, part 1: the Termux packages that are missing. pkg_for maps a command to its Termux package.
+pkg_for() {
+    case "$1" in
+        python3) echo python ;;
+        termux-open-url) echo termux-api ;;
+        sha256sum|stat|timeout) echo coreutils ;;
+        setsid) echo util-linux ;;
+        *) echo "$1" ;;
+    esac
+}
+if [ "$DO_SETUP" = 1 ]; then
+    say "== 0/5 Einrichtung: Termux-Pakete"
+    command -v pkg >/dev/null 2>&1 || die "--setup braucht 'pkg' (Termux). Die Pakete von Hand installieren: tmux proot-distro python coreutils util-linux termux-api"
+    need_pkgs=""
+    for c in tmux proot-distro python3 sha256sum stat timeout setsid termux-open-url; do
+        command -v "$c" >/dev/null 2>&1 && continue
+        p="$(pkg_for "$c")"
+        case " $need_pkgs " in *" $p "*) ;; *) need_pkgs="$need_pkgs $p" ;; esac
+    done
+    if [ -n "$need_pkgs" ]; then
+        say "  pkg install -y$need_pkgs"
+        # shellcheck disable=SC2086   # $need_pkgs is a list of package names on purpose
+        DEBIAN_FRONTEND=noninteractive pkg install -y -o Dpkg::Options::=--force-confold $need_pkgs \
+            || die "pkg install$need_pkgs ist fehlgeschlagen (Netz? pkg update?). Erneut starten: bash install.sh --setup"
+        hash -r
+    else
+        say "  alle Pakete sind da"
+    fi
 fi
 
 if [ "$DEPS" = 1 ]; then
@@ -418,10 +456,22 @@ if [ "$DO_GUEST" = 1 ]; then
              "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
         [ -d "$c" ] && GROOT="$c" && break
     done
-    [ -n "$GROOT" ] || die "Gast '$DISTRO' nicht gefunden (proot-distro list). Mit --no-guest überspringen."
+    if [ -z "$GROOT" ] && [ "$DO_SETUP" = 1 ]; then
+        say "  Gast '$DISTRO' fehlt: proot-distro install $DISTRO (Download, das dauert)"
+        proot-distro install "$DISTRO" || die "proot-distro install $DISTRO ist fehlgeschlagen (Netz? Speicherplatz?). Erneut starten: bash install.sh --setup"
+        for c in "$PREFIX/var/lib/proot-distro/containers/$DISTRO/rootfs" \
+                 "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
+            [ -d "$c" ] && GROOT="$c" && break
+        done
+    fi
+    [ -n "$GROOT" ] || die "Gast '$DISTRO' nicht gefunden (proot-distro list). Mit --setup einrichten oder mit --no-guest überspringen."
     STAGE="$GROOT/var/tmp/termux-root-bridge-install"
     rm -rf "$STAGE"; mkdir -p "$STAGE"
     cp -r "$REPO/guest/." "$STAGE/"
+    if [ "$DO_SETUP" = 1 ]; then
+        proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/setup-guest.sh \
+            || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh --setup"
+    fi
     GUEST_ARGS=(--src /var/tmp/termux-root-bridge-install --autonomous "$AUTONOMOUS")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
@@ -440,6 +490,10 @@ say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie
 say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
 say "Normale Termux-Fenster bleiben reine Shells; Claude Code startet nicht mehr automatisch."
 say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."
+if [ "$DO_SETUP" = 1 ]; then
+    say "Noch von Hand: Root-Freigabe für Termux bestätigen (Root-Manager fragt bei der ersten Anfrage), Termux:Boot einmal öffnen,"
+    say "das Widget 'Claude' auf den Homescreen legen, beim ersten Start in Claude Code anmelden (/login, der Browser öffnet sich)."
+fi
 if [ "$DO_EXTRAKEYS" = 1 ]; then
     say "Zusatztasten: S-TAB (Shift+Tab; Wisch nach oben = Tab) und KEYBOARD stehen in ~/.termux/termux.properties."
 fi
