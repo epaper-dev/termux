@@ -77,7 +77,8 @@ jobs:
       - name: Merge master into the product branch
         id: product
         run: |
-          set -uo pipefail
+          # the default shell is `bash -e`: a conflict makes `gh api` fail and has to be reported below, not abort here
+          set +e -u -o pipefail
           out="$(gh api -X POST "repos/$GH_REPO/merges" -f base="$PRODUCT" -f head="$MIRROR" \
             -f commit_message="Merge upstream $MIRROR into $PRODUCT" --include 2>&1)"
           code="$(printf '%s\n' "$out" | head -n 1 | awk '{print $2}')"
