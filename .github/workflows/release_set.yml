@@ -65,7 +65,9 @@ jobs:
       - name: Build, sign and check the set
         run: bash .github/scripts/build_release_set.sh
 
+      # also after a failed check: the report shows what is wrong. Publishing below only runs after a success.
       - name: Attach the APKs
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: termux-epaper-set-${{ inputs.signing }}-${{ github.run_number }}
@@ -73,6 +75,7 @@ jobs:
             ${{ env.OUT_DIR }}/apks/*.apk
             ${{ env.OUT_DIR }}/sha256sums.txt
             ${{ env.OUT_DIR }}/REPORT.md
+          if-no-files-found: ignore
           retention-days: ${{ inputs.signing == 'release-key' && 90 || 14 }}
 
       - name: Publish a pre-release

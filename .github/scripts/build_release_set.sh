@@ -202,8 +202,14 @@ problems=0
 for f in "$OUT_DIR"/apks/*.apk; do
     base="${f##*/}"
     verify="$("$BT/apksigner" verify --print-certs -v "$f" 2>&1)" || { echo "::error::$base: apksigner verify failed"; echo "$verify" | head -n 8; problems=$((problems + 1)); continue; }
-    cert="$(printf '%s\n' "$verify" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
-    schemes="$(printf '%s\n' "$verify" | grep -E '^Verified using v[0-9.]+ .*: true' | sed -E 's/^Verified using (v[0-9.]+) .*/\1/' | tr '\n' ' ')"
+    # apksigner words this line differently by version and scheme ("Signer #1 certificate SHA-256 digest: ..." or
+    # "Signer (minSdkVersion=24, maxSdkVersion=...) certificate SHA-256 digest: ..."): match on the common part
+    cert="$(printf '%s\n' "$verify" | sed -n 's/.*certificate SHA-256 digest: *//p' | head -n 1 | tr -d ' \r')"
+    if [ -z "$cert" ]; then
+        echo "::warning::$base: no certificate fingerprint in the apksigner output, which was:"
+        printf '%s\n' "$verify" | head -n 14 | sed 's/^/    /'
+    fi
+    schemes="$(printf '%s\n' "$verify" | grep -E '^Verified using v[0-9.]+ .*: true' | sed -E 's/^Verified using (v[0-9.]+) .*/\1/' | tr '\n' ' ' || true)"
     badging="$("$BT/aapt2" dump badging "$f" 2>/dev/null | head -n 1)"
     pkg="$(printf '%s\n' "$badging" | sed -n "s/.*package: name='\([^']*\)'.*/\1/p")"
     vcode="$(printf '%s\n' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
