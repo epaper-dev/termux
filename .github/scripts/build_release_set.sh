@@ -14,7 +14,9 @@
 #                             pipeline; the APKs are valid but must not be distributed)
 #               release-key   release builds, signed with the real key from the secrets below
 #   COMPONENTS  comma separated: app, termux-api, termux-boot, termux-widget, termux-styling, termux-float,
-#               termux-tasker (default: app,termux-api,termux-boot,termux-widget)
+#               termux-tasker (default: all of them)
+#   PLUGIN_OWNER  GitHub owner of the plugin forks the sources come from (default: epaper-dev; falls back to
+#               termux when a fork lacks the release tag)
 #   OUT_DIR     result directory (default: ./set-out)
 #   GH_TOKEN    used by `gh api` to find the latest release of each plugin
 #   SIGNING_KEYSTORE_BASE64, SIGNING_KEYSTORE_PASSWORD, SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD   (release-key)
@@ -22,7 +24,7 @@
 set -euo pipefail
 
 SIGNING="${SIGNING:-ephemeral-key}"
-COMPONENTS="${COMPONENTS:-app,termux-api,termux-boot,termux-widget}"
+COMPONENTS="${COMPONENTS:-app,termux-api,termux-boot,termux-widget,termux-styling,termux-float,termux-tasker}"
 OUT_DIR="${OUT_DIR:-$PWD/set-out}"
 PLUGINS="termux-api termux-boot termux-widget termux-styling termux-float termux-tasker"
 WORK="${RUNNER_TEMP:-/tmp}/release-set-work"
@@ -125,6 +127,7 @@ build_app() {
 # coordinates `com.termux:termux-shared:<version>` and build.gradle has `mavenLocal()` commented out for this).
 SHARED_LOCAL_HASH=""
 SHARED_NOTES=""
+SOURCE_NOTES=""
 use_local_shared() {   # use_local_shared <plugin> <plugin dir> <commit>
     local name="$1" dir="$2" hash="$3" code full src ver
     code="$(curl -s -o /dev/null -m 90 -w '%{http_code}' "https://jitpack.io/com/termux/termux-app/termux-shared/$hash/termux-shared-$hash.pom" || true)"
@@ -157,12 +160,20 @@ use_local_shared() {   # use_local_shared <plugin> <plugin dir> <commit>
 }
 
 build_plugin() {
-    local name="$1" tag dir dep
+    local name="$1" tag dir dep owner
     tag="$(gh api "repos/termux/$name/releases/latest" --jq .tag_name)"
     [ -n "$tag" ] || die "$name: could not find the latest release"
-    say "$name: release $tag, task $TASK"
     dir="$WORK/$name"
-    retry git clone --quiet --depth 1 --branch "$tag" "https://github.com/termux/$name.git" "$dir" || die "$name: git clone failed"
+    # the sources come from our fork of the plugin (PLUGIN_OWNER, default epaper-dev) at the tag of the latest
+    # upstream release; if the fork does not have that tag (not synced yet) upstream is used
+    owner="${PLUGIN_OWNER:-epaper-dev}"
+    if ! git ls-remote --exit-code --tags "https://github.com/$owner/$name.git" "refs/tags/$tag" >/dev/null 2>&1; then
+        echo "::warning::$owner/$name has no tag $tag, using termux/$name"
+        owner=termux
+    fi
+    say "$name: release $tag from $owner/$name, task $TASK"
+    SOURCE_NOTES="${SOURCE_NOTES}$name $tag from \`$owner/$name\`; "
+    retry git clone --quiet --depth 1 --branch "$tag" "https://github.com/$owner/$name.git" "$dir" || die "$name: git clone failed"
     dep="$(grep -oE 'com\.termux\.termux-app:termux-shared:[0-9a-f]+' "$dir/app/build.gradle" | head -n 1 | sed 's/.*://' || true)"
     if [ -n "$dep" ]; then use_local_shared "$name" "$dir" "$dep"; fi
     ( cd "$dir" && retry ./gradlew --no-daemon "$TASK" ) || die "$name: the Gradle build failed"
@@ -225,6 +236,7 @@ done
     echo
     echo "Signing certificate (SHA-256): \`${first_cert:-none}\`"
     echo
+    [ -z "$SOURCE_NOTES" ] || { echo "Sources: ${SOURCE_NOTES%; }."; echo; }
     [ -z "$SHARED_NOTES" ] || { echo "Build notes: ${SHARED_NOTES%; }."; echo; }
     if [ "$problems" -eq 0 ]; then echo "All APKs verify, share one certificate and use sharedUserId \`com.termux\`."
     else echo "**$problems problem(s), see the log.**"; fi
