@@ -323,7 +323,7 @@ export PROOT_LOG="$T/proot.log" STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$GUEST_ROOT
 rinstall() {  # rinstall <home> [args...]  (fake HOME/PREFIX, stub proot-distro, no migration, no deps check)
     local home="$1"; shift
     HOME="$home" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$home/.rootbridge" \
-        bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --autonomous no "$@" > "$T/install.log" 2>&1
+        bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-setup --autonomous no "$@" > "$T/install.log" 2>&1
 }
 CFG="$H/.config/termux-root-bridge/config"
 tval() { grep '^APT_UPGRADE=' "$CFG" 2>/dev/null || true; }

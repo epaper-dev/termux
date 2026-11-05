@@ -45,7 +45,7 @@ androidsu ── Anfrage + Ticket ───────────────�
 
 ## Voraussetzungen
 
-* Android mit Termux (F-Droid/GitHub-Build), `proot-distro` mit Ubuntu-Gast, Claude Code im Gast installiert
+* Android mit Termux (F-Droid/GitHub-Build), `proot-distro` mit Ubuntu-Gast, Claude Code im Gast installiert (`install.sh` richtet fehlende Teile davon und die Pakete unten selbst ein)
 * funktionierendes `su` (Magisk, KernelSU ...) – ohne `su` gehen nur die Login-Funktionen
 * Termux-Pakete: `tmux proot-distro python coreutils util-linux`, optional `termux-api` (+ Termux:API-App) für die Zwischenablage
 * Gast: `python3`, coreutils mit `sha256sum`, `od`, `timeout`
@@ -56,11 +56,25 @@ androidsu ── Anfrage + Ticket ───────────────�
 In einer **Termux**-Shell (nicht in proot):
 
 ```bash
-pkg install git tmux proot-distro python coreutils util-linux termux-api
+pkg install -y git
 git clone https://github.com/hisense-a9/termux-root-bridge
 cd termux-root-bridge
-bash install.sh            # stellt eine Frage zum autonomen Modus
+bash install.sh
 ```
+
+Der Installer richtet selbst und ohne Rückfrage ein, was fehlt: die Termux-Pakete (`pkg install`), den Ubuntu-Gast
+(`proot-distro install`, ein Download von einigen hundert MB), `python3`, `curl` und die Zertifikate im Gast sowie Claude Code
+mit dem offiziellen Installer. Hat das Gerät schon alles, läuft nur die normale Installation. Nach einem Fehler einfach noch
+einmal starten. Weiter von Hand: die Root-Freigabe für Termux (dein Root-Manager fragt bei der ersten Anfrage), Termux:Boot
+einmal öffnen, das Widget **Claude** auf den Homescreen legen und die Claude-Anmeldung (`/login`; der Browser öffnet sich
+von selbst). `--no-setup` ändert nichts davon und nennt nur, was fehlt (`--no-deps-check` überspringt den Paketteil,
+`--no-guest` den Gastteil). `--setup`, die Option früherer Versionen, wird weiter angenommen und tut nichts Zusätzliches.
+
+**Der autonome Modus ist standardmäßig an** (`--autonomous yes`): Der Installer setzt `skipDangerousModePermissionPrompt` in der
+`~/.claude/settings.json` des Gasts, Claude Code zeigt dann keinen Warndialog, wenn du mit Umschalt+Tab in den Bypass-Modus
+wechselst. Mehr ändert sich nicht. Claude startet weiter im Modus deiner Einstellungen, der Bypass-Modus läuft im proot-Gast,
+und jeder Android-Root-Befehl fragt weiter nach (auch im Bypass-Modus). `--autonomous no` lässt die Einstellung unberührt (ein früher
+gesetzter Wert bleibt), `--autonomous ask` fragt in einem Terminal.
 
 Danach Claude Code über das Widget **Claude** starten oder in einer Termux-Shell `ubuntu` eingeben (Alias für
 `rootbridge attach`). Der erste Start legt die Sitzung an: Daemon starten, Pakete des Gasts aktualisieren
@@ -71,7 +85,7 @@ nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart 
 **Umschalt+Tab** wechselst du in *bypass permissions* (am Handy mit der Taste **S-TAB**, die der Installer der
 Termux-Zusatztastenleiste hinzufügt, siehe unten).
 
-Optionen: `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+Optionen: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. Der Installer ist idempotent, sichert Geändertes und migriert die
 alte v1-Popup-Bridge.
 
