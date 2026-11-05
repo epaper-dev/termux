@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - master
+      - eink
       - 'github-releases/**'
   pull_request:
     branches:
       - master
+  workflow_dispatch:
 
 jobs:
   build:
