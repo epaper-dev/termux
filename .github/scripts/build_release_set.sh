@@ -30,6 +30,16 @@ SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 die() { echo "::error::$*"; exit 1; }
 say() { echo "== $*"; }
+# retry <command...>: downloads (Gradle distribution, dependencies, git) fail now and then with a 5xx; try 3 times
+retry() {
+    local n
+    for n in 1 2 3; do
+        "$@" && return 0
+        echo "::warning::'$*' failed (attempt $n of 3)"
+        [ "$n" -lt 3 ] && sleep $((n * 20))
+    done
+    return 1
+}
 
 case "$SIGNING" in test-key|ephemeral-key|release-key) ;; *) die "SIGNING must be test-key, ephemeral-key or release-key (got '$SIGNING')" ;; esac
 
@@ -102,7 +112,7 @@ build_app() {
     TERMUX_APP_VERSION_NAME="$ver+$sha" \
     TERMUX_APK_VERSION_TAG="v$ver+$sha-apt-android-7-epaper-$KIND" \
     TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS=1 \
-        ./gradlew --no-daemon "$TASK"
+        retry ./gradlew --no-daemon "$TASK" || die "app: the Gradle build failed"
     collect app "app/build/outputs/apk/$KIND"
 }
 
@@ -112,8 +122,8 @@ build_plugin() {
     [ -n "$tag" ] || die "$name: could not find the latest release"
     say "$name: release $tag, task $TASK"
     dir="$WORK/$name"
-    git clone --quiet --depth 1 --branch "$tag" "https://github.com/termux/$name.git" "$dir"
-    ( cd "$dir" && ./gradlew --no-daemon "$TASK" )
+    retry git clone --quiet --depth 1 --branch "$tag" "https://github.com/termux/$name.git" "$dir" || die "$name: git clone failed"
+    ( cd "$dir" && retry ./gradlew --no-daemon "$TASK" ) || die "$name: the Gradle build failed"
     collect "$name" "$dir/app/build/outputs/apk/$KIND"
 }
 
