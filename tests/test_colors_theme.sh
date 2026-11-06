@@ -41,7 +41,7 @@ settings() { printf '%s' "$1$ROOTBRIDGE_GUEST_HOME/.claude/settings.json"; }
 baks() { find "$1$ROOTBRIDGE_GUEST_HOME/.claude" -name 'settings.json.bak-*' 2>/dev/null | wc -l | tr -d ' '; }
 ginstall() {  # ginstall <stage> [args...]  (quiet; output in $T/guest.log)
     local stage="$1"; shift
-    bash "$GUEST" --root "$stage" --autonomous no "$@" > "$T/guest.log" 2>&1
+    bash "$GUEST" --root "$stage" --autonomous no --model none "$@" > "$T/guest.log" 2>&1
 }
 
 S="$T/g1"

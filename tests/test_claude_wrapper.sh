@@ -43,9 +43,9 @@ BASE="claude --allow-dangerously-skip-permissions"
 conf() { printf '%s\n' "$@" > "$T/test.conf"; export ROOTBRIDGE_CONF="$T/test.conf"; }
 
 conf 'WORKDIR=/root/workspace' 'CLAUDE_ARGS="--remote-control android --continue"'
-check "Name aus CLAUDE_ARGS: claude"                "$BASE --remote-control android"                "$(call)"
-check "--continue wird nicht übernommen"            "$BASE --remote-control android --continue"     "$(call --continue)"
-check "claude --resume bekommt den Namen"           "$BASE --remote-control android --resume"       "$(call --resume)"
+check "Name aus CLAUDE_ARGS: claude"                "$BASE --remote-control android"            "$(call)"
+check "--continue wird nicht übernommen"            "$BASE --remote-control android --continue" "$(call --continue)"
+check "claude --resume bekommt den Namen"           "$BASE --remote-control android --resume"   "$(call --resume)"
 check "-p: kein Remote Control"                     "$BASE -p hi"                                   "$(call -p hi)"
 check "--print: kein Remote Control"                "$BASE --print hi"                              "$(call --print hi)"
 check "--version: kein Remote Control"              "$BASE --version"                               "$(call --version)"
@@ -55,10 +55,10 @@ check "Unterbefehl update unverändert"              "claude update"            
 check "Unterbefehl mcp unverändert"                 "claude mcp list"                               "$(call mcp list)"
 
 conf 'CLAUDE_ARGS=--remote-control=node2'
-check "Schreibweise --remote-control=name"          "$BASE --remote-control node2"                  "$(call)"
+check "Schreibweise --remote-control=name"          "$BASE --remote-control node2"     "$(call)"
 
 conf 'CLAUDE_ARGS="--remote-control a"' 'CLAUDE_ARGS="--remote-control b"'
-check "mehrere Zeilen: die letzte gilt"             "$BASE --remote-control b"                      "$(call)"
+check "mehrere Zeilen: die letzte gilt"             "$BASE --remote-control b"             "$(call)"
 
 conf 'CLAUDE_ARGS="--continue"'
 check "CLAUDE_ARGS ohne Remote Control"             "$BASE"                                         "$(call)"

@@ -71,21 +71,27 @@ von selbst). `--no-setup` ändert nichts davon und nennt nur, was fehlt (`--no-d
 `--no-guest` den Gastteil). `--setup`, die Option früherer Versionen, wird weiter angenommen und tut nichts Zusätzliches.
 
 **Der autonome Modus ist standardmäßig an** (`--autonomous yes`): Der Installer setzt `skipDangerousModePermissionPrompt` in der
-`~/.claude/settings.json` des Gasts, Claude Code zeigt dann keinen Warndialog, wenn du mit Umschalt+Tab in den Bypass-Modus
-wechselst. Mehr ändert sich nicht. Claude startet weiter im Modus deiner Einstellungen, der Bypass-Modus läuft im proot-Gast,
-und jeder Android-Root-Befehl fragt weiter nach (auch im Bypass-Modus). `--autonomous no` lässt die Einstellung unberührt (ein früher
-gesetzter Wert bleibt), `--autonomous ask` fragt in einem Terminal.
+`~/.claude/settings.json` des Gasts, Claude Code zeigt dann keinen Warndialog für den Bypass-Modus, und `permissions.defaultMode`
+auf `bypassPermissions` (nur, wenn du noch keinen Standardmodus gesetzt hast), sodass Claude Code **im Bypass-Modus startet**.
+Der Bypass-Modus läuft im proot-Gast, und jeder Android-Root-Befehl fragt weiter nach (auch im Bypass-Modus). `--autonomous no`
+lässt beide Einstellungen unberührt (ein früher gesetzter Wert bleibt), `--autonomous ask` fragt in einem Terminal.
+
+Außerdem setzt der Installer das **Modell** auf `opusplan` (Opus plant, Sonnet arbeitet), ebenfalls nur, wenn die `settings.json`
+noch keins enthält. `--model NAME` schreibt das angegebene Modell immer, `--model none` lässt es unberührt. Und er legt den
+**Arbeitsordner `/root/work`** im Gast an, in dem Claude Code startet (`WORKDIR` in `/etc/termux-root-bridge.conf`; ein dort
+gesetzter Wert bleibt). Vorher wurde der Ordner nie angelegt, sodass eine frische Installation Claude Code in `/root` startete.
+Ein alter Standard `WORKDIR=/root/workspace` wird auf `/root/work` umgestellt, wenn der Ordner `/root/workspace` nicht existiert.
 
 Danach Claude Code über das Widget **Claude** starten oder in einer Termux-Shell `ubuntu` eingeben (Alias für
 `rootbridge attach`). Der erste Start legt die Sitzung an: Daemon starten, Pakete des Gasts aktualisieren
 (`apt-get update` + `upgrade`, höchstens einmal am Tag, siehe unten), `claude update` ausführen (ebenfalls höchstens einmal am
 Tag) und Claude Code starten; spätere Starts hängen sich nur an. **Normale Termux-Fenster bleiben reine Shells** (mit geladenen Farben),
 nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart im Hintergrund angelegt
-(`rootbridge start --no-attach`). Claude **startet weiter im Plan-Modus** (aus deiner `settings.json`); mit
-**Umschalt+Tab** wechselst du in *bypass permissions* (am Handy mit der Taste **S-TAB**, die der Installer der
+(`rootbridge start --no-attach`). Claude **startet im Bypass-Modus** (mit `--autonomous no`: im Modus deiner
+`settings.json`); mit **Umschalt+Tab** wechselst du den Modus (am Handy mit der Taste **S-TAB**, die der Installer der
 Termux-Zusatztastenleiste hinzufügt, siehe unten).
 
-Optionen: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+Optionen: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--model NAME|none`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. Der Installer ist idempotent, sichert Geändertes und migriert die
 alte v1-Popup-Bridge.
 
@@ -147,13 +153,14 @@ Termux-Shell führt `termux-reload-settings` aus, ebenso die Termux:Widget-Verkn
 sind also geladen, bevor `claude update` und Claude Code starten. Zum Ändern `termux/colors.properties` bearbeiten und
 `install.sh` erneut ausführen.
 
-**Fester Name in der Remote-Control-Ansicht** (claude.ai/code): `bash install.sh --remote-name android`. **Auf einem
-neuen Gerät** (oder nach einem Zurücksetzen von Termux) die Option bei der ersten Installation angeben, denn es gibt
-noch keine Termux-Konfig, die sich den Namen merken könnte. Danach steht er dort (`REMOTE_NAME`) und wird bei jeder
-späteren Installation ohne Option wiederverwendet, auch bei frischem Gast oder nach `uninstall.sh`; der Gast-Installer
-schreibt `CLAUDE_ARGS="--remote-control android --continue"`.
-Der Name gehört zur *Sitzung*: eine neue Sitzung bekommt ihn über das Flag, `--continue` behält Sitzung und Namen beim
-Neustart. Eine bestehende Sitzung mit anderem Namen benennt das Flag nicht um; einmal `/rename android` eingeben.
+**Fester Name in der Remote-Control-Ansicht** (claude.ai/code): Standard ist `android`, ein einfaches `bash install.sh`
+setzt ihn also. Anderer Name: `bash install.sh --remote-name NAME`. Dieser Name steht danach in der Termux-Konfig
+(`REMOTE_NAME`) und wird bei jeder späteren Installation ohne Option wiederverwendet, auch bei frischem Gast oder nach
+`uninstall.sh`; der Gast-Installer schreibt `CLAUDE_ARGS="--remote-control android --continue"`.
+`--remote-control NAME` schaltet Remote Control ein und betitelt die Sitzung in der Remote-Control-Ansicht. Diese
+Remote-Control-Sitzung wird über Neustarts und `/clear` wiederverwendet und behält ihren Namen, auch einen per
+`/rename` vergebenen. Für einen anderen Namen genügt ein einmaliges `/rename NAME`. Ein `--name` gibt es bewusst nicht:
+Es würde den Namen zusätzlich im Rahmen des Eingabefelds im Claude-Code-Fenster anzeigen.
 
 ## Bedienung
 

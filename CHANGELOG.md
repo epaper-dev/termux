@@ -5,6 +5,26 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* The Remote Control name defaults to `android`: a plain `install.sh` (no `--remote-name`) now writes
+  `CLAUDE_ARGS="--remote-control android --continue"` into the guest config, so Remote Control is on at
+  every start and the session is named. The guest installer also sets `remoteControlAtStartup: true` in
+  `~/.claude/settings.json` (only if not set yet). `--remote-name NAME` still picks another name and is remembered.
+  There is deliberately no `--name`: the Remote Control session is reused across restarts and `/clear` and keeps its
+  title (also one set with `/rename`), while `--name` would show the name in the frame of the input field as well.
+* `--autonomous yes` (the default) now also makes bypass mode the **start mode**: the installer sets
+  `permissions.defaultMode` to `bypassPermissions` in the guest's `settings.json`, but only if no default mode is set yet
+  (before, a fresh installation started in the normal mode and bypass was only selectable with Shift+Tab). Every
+  Android-root command still asks. `--autonomous no` leaves it alone.
+* New default model `opusplan` in the guest's `settings.json`, only if no model is set yet. New option
+  `--model NAME|none`: writes the given model, `none` leaves the model alone.
+* The guest installer **creates the working directory**: `WORKDIR` (default now `/root/work`, before `/root/workspace`).
+  It was never created, so `rootbridge-claude` fell back to `/root` on a fresh installation. A `WORKDIR` already in
+  `/etc/termux-root-bridge.conf` stays and is created; an unsafe one (`..`) falls back to `/root/work`.
+  The old default `WORKDIR=/root/workspace` (guest conf and Termux config) is moved to `/root/work` when the folder
+  `/root/workspace` does not exist (it never was created, so nobody uses it); an existing folder keeps its setting.
+* All `settings.json` changes of one installer run are written in **one** go (`settings_queue` / `settings_apply` instead of
+  one write per key): one backup at most, no intermediate versions, one warning for a broken file.
+  `tests/test_autonomous.sh` (58 checks) covers the start mode, model, working directory and the pass-through in `install.sh`.
 * `--autonomous` now defaults to `yes` (before: `ask`, which meant `no` without a terminal): the installer sets
   `skipDangerousModePermissionPrompt`, so Claude Code shows no warning dialog when you switch to bypass mode. Every
   Android-root command still asks. `no` leaves the setting alone, `ask` asks on a terminal; other values are rejected.
