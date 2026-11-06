@@ -5,6 +5,12 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* Colours follow the phone: `install.sh` installs the light scheme as `~/.termux/colors-light.properties` (before:
+  `colors.properties`). The E-Paper Termux build (`epaper-dev/termux`) uses it while the phone is in light mode; dark mode
+  keeps Termux' own default scheme or your `colors.properties`. A `colors.properties` that is exactly the light palette
+  of earlier versions is removed (any other stays), other Termux builds ignore the new file. The Claude Code theme is now
+  `auto` (it asks the terminal for its background colour) instead of `light-ansi`; `install-guest.sh --theme` accepts
+  `auto`. `tests/test_colors_theme.sh` now has 107 checks.
 * The apt upgrade and `claude update` at the session start now run at most once every **6 hours** (before: once per
   24 h). `APT_UPGRADE` and `CLAUDE_UPDATE` take `6h` (new default), any `<N>h` (1-999 hours), `daily` (= 24 h, as before),
   `always` or `off`; `install.sh --apt-upgrade` and `--claude-update` accept the same values. A value already in

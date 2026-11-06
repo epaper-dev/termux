@@ -13,8 +13,8 @@
 #                     permissions.defaultMode = bypassPermissions (Claude Code starts in bypass mode; every
 #                     Android-root command still asks); no: leave both as they are (an earlier value
 #                     stays); ask: ask on a terminal
-#   --theme NAME      set the Claude Code theme in ~/.claude/settings.json (dark, light,
-#                     light-daltonized, dark-daltonized, light-ansi, dark-ansi); other keys stay
+#   --theme NAME      set the Claude Code theme in ~/.claude/settings.json (auto = match the terminal,
+#                     dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi); other keys stay
 #   --model NAME      model in ~/.claude/settings.json. Default "opusplan" (Opus plans, Sonnet works), written
 #                     only if settings.json has no model yet; with the option the value is always written;
 #                     none leaves the model alone
@@ -76,8 +76,8 @@ fi
 
 if [ "$THEME_SET" = 1 ]; then
     case "$THEME" in
-        dark|light|light-daltonized|dark-daltonized|light-ansi|dark-ansi) ;;
-        *) echo "--theme: ungültiger Name '$THEME' (erlaubt: dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi)" >&2
+        auto|dark|light|light-daltonized|dark-daltonized|light-ansi|dark-ansi) ;;
+        *) echo "--theme: ungültiger Name '$THEME' (erlaubt: auto, dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi)" >&2
            exit 2 ;;
     esac
 fi

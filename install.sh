@@ -33,8 +33,9 @@
 #   2. config ~/.config/termux-root-bridge/config (the Remote Control name is "android" unless
 #      --remote-name NAME says otherwise; NAME is stored there as REMOTE_NAME and reused by every
 #      later install), tmux clipboard settings
-#   3. light colour scheme ~/.termux/colors.properties (--no-colors skips it and the
-#      Claude Code theme), a ~/.bashrc block (alias `ubuntu`, reloads the Termux settings
+#   3. light colour scheme ~/.termux/colors-light.properties (the E-Paper Termux build uses it
+#      while the phone is in light mode, dark mode keeps Termux' default scheme; --no-colors
+#      skips it and the Claude Code theme), a ~/.bashrc block (alias `ubuntu`, reloads the Termux settings
 #      in every new shell; ordinary Termux windows stay plain shells, Claude Code starts
 #      via the widgets, `ubuntu` or `rootbridge attach`), the Termux:Widget shortcuts
 #      "Claude" and "Ubuntu" with icons (an icon you already have stays; icons of the
@@ -44,7 +45,7 @@
 #      extra-keys line of your own stays; --no-extra-keys skips it)
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
-#      theme "light-ansi") via proot-distro. The guest runs apt-get update + upgrade
+#      theme "auto") via proot-distro. The guest runs apt-get update + upgrade
 #      at the start of the Claude Code session, at most once every 6 h (--apt-upgrade 12h
 #      or daily = 24 h changes the distance, --no-apt-upgrade turns it off, --apt-upgrade
 #      always runs it at every start; the choice is stored in the Termux config as
@@ -64,7 +65,7 @@ BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
 DO_SETUP=1; SETUP_DID=0; DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=yes
-CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
+CLAUDE_THEME=auto   # follows the terminal: Claude Code asks it for its background colour (light or dark scheme)
 REMOTE_NAME="android"; REMOTE_NAME_SET=0   # default name in the Remote Control view
 APT_MODE=""; APT_MODE_SET=0
 MODEL=""; MODEL_SET=0
@@ -97,7 +98,7 @@ while [ $# -gt 0 ]; do
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift ;;
-        -h|--help) sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,56p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -383,8 +384,23 @@ set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
 
 say "== 3/5 Farben, Shell-Block, Widgets"
 if [ "$DO_COLORS" = 1 ]; then
+    colors_changed=0
+    # Earlier versions installed the light scheme as colors.properties, the file every Termux build reads in both modes,
+    # so the terminal stayed light in dark mode. It is colors-light.properties now: a colors.properties that is still
+    # exactly that earlier file goes (nothing of yours is lost, it is in the repo), a changed one stays and keeps being the
+    # scheme of the dark mode.
+    LEGACY_COLORS_SHA256=3eaffea743c0ad78e60a98f5a2ccf57dfd31b3c8b6b71ae5a3dcef66b91bb54e
+    if [ -f "$HOME/.termux/colors.properties" ] \
+        && [ "$(sha256sum "$HOME/.termux/colors.properties" 2>/dev/null | cut -d' ' -f1)" = "$LEGACY_COLORS_SHA256" ]; then
+        rm -f "$HOME/.termux/colors.properties"
+        say "  entfernt: ~/.termux/colors.properties (die helle Palette früherer Versionen, jetzt colors-light.properties)"
+        colors_changed=1
+    elif [ -s "$HOME/.termux/colors.properties" ]; then
+        say "  ~/.termux/colors.properties bleibt (gilt im dunklen Modus); im hellen Modus gilt colors-light.properties."
+    fi
     # chmod 600: Termux itself creates the file that way
-    if put_data "$REPO/termux/colors.properties" "$HOME/.termux/colors.properties" 600; then
+    put_data "$REPO/termux/colors-light.properties" "$HOME/.termux/colors-light.properties" 600 && colors_changed=1
+    if [ "$colors_changed" = 1 ]; then
         command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
     fi
 else
@@ -557,5 +573,5 @@ if [ "$DO_EXTRAKEYS" = 1 ]; then
     say "Zusatztasten: S-TAB (Shift+Tab; Wisch nach oben = Tab) und KEYBOARD stehen in ~/.termux/termux.properties."
 fi
 if [ "$DO_COLORS" = 1 ]; then
-    say "Farben: ~/.termux/colors.properties wird in jeder neuen Termux-Shell und von den Widgets geladen; Claude Code nutzt das Theme '$CLAUDE_THEME'."
+    say "Farben: ~/.termux/colors-light.properties gilt im Hellmodus des E-Paper-Termux (dunkel bleibt der Termux-Standard) und wird in jeder neuen Termux-Shell und von den Widgets geladen; Claude Code nutzt das Theme '$CLAUDE_THEME'."
 fi
