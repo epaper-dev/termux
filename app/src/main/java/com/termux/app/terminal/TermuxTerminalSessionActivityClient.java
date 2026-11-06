@@ -26,6 +26,9 @@ import com.termux.shared.termux.TermuxConstants;
 import com.termux.app.TermuxService;
 import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.terminal.io.BellHandler;
+import com.termux.shared.termux.theme.TermuxThemeUtils;
+import com.termux.shared.theme.NightMode;
+import com.termux.shared.theme.ThemeUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.terminal.TerminalColors;
 import com.termux.terminal.TerminalSession;
@@ -493,7 +496,9 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     public void checkForFontAndColors() {
         try {
-            File colorsFile = TermuxConstants.TERMUX_COLOR_PROPERTIES_FILE;
+            // colors-light.properties or colors-dark.properties instead of colors.properties if the file for the theme exists
+            File colorsFile = TermuxThemeUtils.getTerminalColorsFile(
+                ThemeUtils.shouldEnableDarkTheme(mActivity, NightMode.getAppNightMode().getName()));
             File fontFile = TermuxConstants.TERMUX_FONT_FILE;
 
             final Properties props = new Properties();
