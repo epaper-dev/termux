@@ -5,6 +5,7 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.termux.shared.R;
 import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.settings.properties.TermuxSharedProperties;
@@ -12,6 +13,10 @@ import com.termux.shared.theme.NightMode;
 import com.termux.shared.theme.ThemeUtils;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
 
 public class TermuxThemeUtils {
 
@@ -42,6 +47,34 @@ public class TermuxThemeUtils {
         return getTerminalColorsFile(
             darkTheme ? TermuxConstants.TERMUX_COLOR_PROPERTIES_DARK_FILE : TermuxConstants.TERMUX_COLOR_PROPERTIES_LIGHT_FILE,
             TermuxConstants.TERMUX_COLOR_PROPERTIES_FILE);
+    }
+
+    /**
+     * Load the terminal colors for the theme in use, from the file returned by {@link #getTerminalColorsFile(boolean)}.
+     *
+     * If that file does not exist, the light theme uses the built-in light scheme
+     * ({@code res/raw/colors_light_default.properties}) and the dark theme the default colors of the terminal, which are
+     * dark, so the returned properties are empty then.
+     *
+     * @param context The {@link Context} to read the built-in scheme with.
+     * @param darkTheme If the dark theme is in use.
+     * @return Returns the colors {@link Properties}, to be used with {@code TerminalColorScheme.updateWith()}.
+     * @throws IOException If reading the file failed.
+     */
+    @NonNull
+    public static Properties getTerminalColors(@NonNull Context context, boolean darkTheme) throws IOException {
+        final Properties props = new Properties();
+        File colorsFile = getTerminalColorsFile(darkTheme);
+        if (colorsFile.isFile()) {
+            try (InputStream in = new FileInputStream(colorsFile)) {
+                props.load(in);
+            }
+        } else if (!darkTheme) {
+            try (InputStream in = context.getResources().openRawResource(R.raw.colors_light_default)) {
+                props.load(in);
+            }
+        }
+        return props;
     }
 
     /** Return {@code themeColorsFile} if it is a file, otherwise {@code colorsFile}. */
