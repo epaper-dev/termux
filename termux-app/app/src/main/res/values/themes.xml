@@ -21,7 +21,9 @@
         <item name="colorPrimary">@color/black</item>
         <item name="colorPrimaryVariant">@color/black</item>
 
-        <item name="android:windowBackground">@color/black</item>
+        <!-- White in the light theme, like the built-in light terminal color scheme, so that the
+             terminal does not flash black before it is drawn. The dark theme keeps black. -->
+        <item name="android:windowBackground">@color/white</item>
 
         <!-- Avoid action mode toolbar pushing down terminal content when
              selecting text on pre-6.0 (non-floating toolbar). -->
