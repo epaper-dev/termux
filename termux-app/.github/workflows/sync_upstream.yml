@@ -1,0 +1,180 @@
+name: Sync upstream
+
+# `master` is an unchanged copy of termux/termux-app, `main` is the E-Paper variant (upstream plus the
+# changes of the `eink` branch). This keeps `master` in step with upstream and merges it into `main`, so
+# upstream changes arrive and nothing of `main` is lost.
+#
+# Everything runs server side through the GitHub API with the built-in token. A plain `git push` of
+# upstream commits would be refused for GITHUB_TOKEN as soon as one of them touches .github/workflows,
+# the server side merge is not.
+#
+# A merge conflict (or any other problem) ends the run red with a summary and opens an issue with the
+# steps to fix it: merge `master` into `main` by hand, then run the workflow again. The issue closes
+# itself as soon as a run succeeds, and a second failing run does not open a second issue.
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      product_branch:
+        description: 'Branch that receives the merge of master (for tests, normally main)'
+        required: false
+        default: main
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  UPSTREAM_OWNER: termux
+  UPSTREAM_BRANCH: master
+  MIRROR: master
+  PRODUCT: ${{ inputs.product_branch || 'main' }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bring master up to date with upstream
+        id: mirror
+        run: |
+          set -euo pipefail
+          owner="${GH_REPO%%/*}"
+          read -r status ahead behind < <(gh api "repos/$GH_REPO/compare/$UPSTREAM_OWNER:$UPSTREAM_BRANCH...$owner:$MIRROR" --jq '[.status, .ahead_by, .behind_by] | @tsv')
+          echo "$MIRROR compared with upstream: $status (ahead $ahead, behind $behind)"
+          case "$status" in
+            identical)
+              echo "updated=false" >> "$GITHUB_OUTPUT"
+              echo "- \`$MIRROR\` is already identical to upstream." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            behind)
+              merge_type="$(gh api -X POST "repos/$GH_REPO/merge-upstream" -f branch="$MIRROR" --jq '.merge_type')"
+              echo "merge-upstream: $merge_type"
+              if [ "$merge_type" != "fast-forward" ]; then
+                echo "::error::Expected a fast-forward of $MIRROR, got '$merge_type'. $MIRROR must stay an unchanged copy of upstream."
+                exit 1
+              fi
+              echo "updated=true" >> "$GITHUB_OUTPUT"
+              echo "- \`$MIRROR\` fast-forwarded to upstream ($behind new commit(s))." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error::$MIRROR is $status relative to upstream. It should only ever follow upstream; fix it by hand (it must not contain commits of its own)."
+              {
+                echo "### \`$MIRROR\` does not follow upstream"
+                echo
+                echo "Compared with $UPSTREAM_OWNER:$UPSTREAM_BRANCH it is **$status** (ahead $ahead, behind $behind)."
+                echo "Nothing was changed. Move the commits of your own to \`main\` and reset \`$MIRROR\` to upstream."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+              ;;
+          esac
+
+      - name: Merge master into the product branch
+        id: product
+        run: |
+          # the default shell is `bash -e`: a conflict makes `gh api` fail and has to be reported below, not abort here
+          set +e -u -o pipefail
+          out="$(gh api -X POST "repos/$GH_REPO/merges" -f base="$PRODUCT" -f head="$MIRROR" \
+            -f commit_message="Merge upstream $MIRROR into $PRODUCT" --include 2>&1)"
+          code="$(printf '%s\n' "$out" | head -n 1 | awk '{print $2}')"
+          echo "merges API: HTTP ${code:-?}"
+          case "$code" in
+            201)
+              echo "merged=true" >> "$GITHUB_OUTPUT"
+              echo "- Merged \`$MIRROR\` into \`$PRODUCT\`." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            204)
+              echo "merged=false" >> "$GITHUB_OUTPUT"
+              echo "- \`$PRODUCT\` already contains \`$MIRROR\`, nothing to merge." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            409)
+              echo "merged=false" >> "$GITHUB_OUTPUT"
+              echo "::error::Merge conflict between $MIRROR and $PRODUCT. Merge $MIRROR into $PRODUCT by hand."
+              {
+                echo "### Merge conflict: \`$MIRROR\` into \`$PRODUCT\`"
+                echo
+                echo "Upstream changed lines that \`$PRODUCT\` changed as well. Resolve it locally:"
+                echo
+                echo '```sh'
+                echo "git fetch origin && git switch $PRODUCT && git merge origin/$MIRROR"
+                echo "# fix the conflicts, commit, then"
+                echo "git push origin $PRODUCT"
+                echo '```'
+                echo
+                echo "Then run this workflow again to start the build."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+              ;;
+            *)
+              echo "::error::Unexpected answer from the merges API (HTTP ${code:-?})."
+              printf '%s\n' "$out" | head -n 20
+              exit 1
+              ;;
+          esac
+
+      - name: Build the product branch
+        if: steps.product.outputs.merged == 'true' && env.PRODUCT == 'main'
+        run: |
+          gh workflow run debug_build.yml --ref "$PRODUCT"
+          echo "- Started the \`Build\` workflow on \`$PRODUCT\`." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open an issue about the failure
+        if: failure()
+        env:
+          MIRROR_OUTCOME: ${{ steps.mirror.outcome }}
+          PRODUCT_OUTCOME: ${{ steps.product.outcome }}
+        run: |
+          set +e -u -o pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ "$MIRROR_OUTCOME" = failure ]; then
+            title="Upstream sync: $MIRROR does not follow upstream"
+            body="$(printf '%s\n' \
+              "\`$MIRROR\` is not a plain copy of upstream (it is ahead of it or has diverged), so nothing was changed." \
+              "" \
+              "Move any commits of your own to \`$PRODUCT\` and reset \`$MIRROR\` to upstream, then run the \"Sync upstream\" workflow again. This issue closes itself when it succeeds." \
+              "" \
+              "Run: $run_url")"
+          else
+            title="Upstream sync: $MIRROR could not be merged into $PRODUCT"
+            body="$(printf '%s\n' \
+              "The sync could not merge \`$MIRROR\` into \`$PRODUCT\`, most likely a merge conflict between upstream and the E-Paper changes." \
+              "" \
+              "Resolve it locally:" \
+              "" \
+              '```sh' \
+              "git fetch origin && git switch $PRODUCT && git merge origin/$MIRROR" \
+              "# fix the conflicts, commit, then" \
+              "git push origin $PRODUCT" \
+              '```' \
+              "" \
+              "Then run the \"Sync upstream\" workflow again. This issue closes itself when it succeeds." \
+              "" \
+              "Run: $run_url")"
+          fi
+          existing="$(gh issue list --state open --limit 100 --json number,title | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -n 1)"
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing is already open, not opening another one."
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$body"
+
+      - name: Close the issue when the sync works again
+        if: success()
+        run: |
+          set +e -u -o pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          for title in "Upstream sync: $MIRROR does not follow upstream" "Upstream sync: $MIRROR could not be merged into $PRODUCT"; do
+            number="$(gh issue list --state open --limit 100 --json number,title | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -n 1)"
+            if [ -n "$number" ]; then
+              gh issue close "$number" --comment "Fixed: the sync works again. Run: $run_url"
+              echo "- Closed issue #$number." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
