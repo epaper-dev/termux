@@ -1,0 +1,87 @@
+name: Release set
+
+# Builds the Termux app and the Termux plugin apps of this repository (the subtrees termux-app/, termux-api/,
+# termux-boot/, termux-widget/, termux-styling/, termux-float/ and termux-tasker/) and signs them all with ONE key.
+# Script: .github/scripts/build_release_set.sh. The signing key is made by .github/scripts/make_signing_key.sh.
+#
+# The app and its plugins share the user id `com.termux`, so Android installs them side by side only when
+# every APK has the same signing certificate. Apps from F-Droid (signed by F-Droid) or from GitHub (public test
+# key) cannot be mixed with this set: switching means uninstalling every Termux app and installing the whole set.
+#
+# signing: test-key       debug builds with the public upstream test key (same as upstream's GitHub builds)
+#          ephemeral-key  release builds with a throwaway key made in the run (tests the pipeline, do not distribute)
+#          release-key    release builds with the real key from the repository secrets
+#                         SIGNING_KEYSTORE_BASE64, SIGNING_KEYSTORE_PASSWORD, SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD
+
+on:
+  workflow_dispatch:
+    inputs:
+      signing:
+        description: 'test-key (public upstream key) | ephemeral-key (throwaway key, pipeline test) | release-key (real key from the secrets)'
+        type: choice
+        options:
+          - ephemeral-key
+          - test-key
+          - release-key
+        default: ephemeral-key
+      components:
+        description: 'Comma separated: app, termux-api, termux-boot, termux-widget, termux-styling, termux-float, termux-tasker'
+        required: false
+        default: 'app,termux-api,termux-boot,termux-widget,termux-styling,termux-float,termux-tasker'
+      publish:
+        description: 'Create a GitHub pre-release with the APKs (only with release-key)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-set
+  cancel-in-progress: false
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SIGNING: ${{ inputs.signing }}
+      COMPONENTS: ${{ inputs.components }}
+      OUT_DIR: ${{ github.workspace }}/set-out
+      SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+      SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+
+      - name: Setup java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build, sign and check the set
+        run: bash .github/scripts/build_release_set.sh
+
+      # also after a failed check: the report shows what is wrong. Publishing below only runs after a success.
+      - name: Attach the APKs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: termux-epaper-set-${{ inputs.signing }}-${{ github.run_number }}
+          path: |
+            ${{ env.OUT_DIR }}/apks/*.apk
+            ${{ env.OUT_DIR }}/sha256sums.txt
+            ${{ env.OUT_DIR }}/REPORT.md
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.signing == 'release-key' && 90 || 14 }}
+
+      - name: Publish a pre-release
+        if: inputs.publish && inputs.signing == 'release-key'
+        run: |
+          tag="set-$(date -u +%Y%m%d)-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" --prerelease --title "Release set $tag" --notes-file "$OUT_DIR/REPORT.md" \
+            "$OUT_DIR"/apks/*.apk "$OUT_DIR/sha256sums.txt"
