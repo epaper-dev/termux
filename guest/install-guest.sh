@@ -3,8 +3,8 @@
 # Normally started by ../install.sh; can also be run by hand as root in the guest.
 #
 #   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
-#                    [--theme NAME] [--model NAME|none] [--apt-upgrade daily|always|off]
-#                    [--claude-update daily|always|off] [--uninstall]
+#                    [--theme NAME] [--model NAME|none] [--apt-upgrade 6h|<N>h|daily|always|off]
+#                    [--claude-update 6h|<N>h|daily|always|off] [--uninstall]
 #
 #   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
@@ -23,12 +23,12 @@
 #                     (other arguments stay; a new line also gets --continue) and, unless you set it
 #                     yourself, remoteControlAtStartup=true in ~/.claude/settings.json
 #   --apt-upgrade M   APT_UPGRADE in /etc/termux-root-bridge.conf: rootbridge-apt runs apt-get
-#                     update + upgrade at the start of the Claude Code session (daily = at most
-#                     once a day, always, off). Without the option an existing value stays and a
-#                     missing one becomes "daily".
+#                     update + upgrade at the start of the Claude Code session (6h = at most once
+#                     every 6 hours, <N>h = every N hours (1-999), daily = 24h, always, off).
+#                     Without the option an existing value stays and a missing one becomes "6h".
 #   --claude-update M CLAUDE_UPDATE in /etc/termux-root-bridge.conf: rootbridge-claude runs
-#                     `claude update` at the start of the session (daily = at most once a day
-#                     after a success, always, off). Same rules as --apt-upgrade.
+#                     `claude update` at the start of the session (6h = at most once every 6 hours
+#                     after a success, <N>h, daily = 24h, always, off). Same rules as --apt-upgrade.
 #   --uninstall      remove everything this script installed
 #
 # Idempotent. Existing files are backed up as *.bak-<timestamp>.
@@ -59,10 +59,10 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift 2 ;;
         --apt-upgrade)
-            [ $# -ge 2 ] || { echo "--apt-upgrade braucht daily, always oder off" >&2; exit 2; }
+            [ $# -ge 2 ] || { echo "--apt-upgrade braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
             APT_MODE="$2"; APT_MODE_SET=1; shift 2 ;;
         --claude-update)
-            [ $# -ge 2 ] || { echo "--claude-update braucht daily, always oder off" >&2; exit 2; }
+            [ $# -ge 2 ] || { echo "--claude-update braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
             CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift 2 ;;
         --uninstall) UNINSTALL=1; shift ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
@@ -89,19 +89,17 @@ if [ "$MODEL_SET" = 1 ] && ! [[ "$MODEL" =~ $MODEL_RE ]]; then
 fi
 
 if [ "$APT_MODE_SET" = 1 ]; then
-    case "$APT_MODE" in
-        daily|always|off) ;;
-        *) echo "--apt-upgrade: ungültiger Wert '$APT_MODE' (erlaubt: daily, always, off)" >&2
-           exit 2 ;;
-    esac
+    [[ "$APT_MODE" =~ ^(always|off|daily|[1-9][0-9]{0,2}h)$ ]] || {
+        echo "--apt-upgrade: ungültiger Wert '$APT_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
+        exit 2
+    }
 fi
 
 if [ "$CLAUDE_UPD_SET" = 1 ]; then
-    case "$CLAUDE_UPD_MODE" in
-        daily|always|off) ;;
-        *) echo "--claude-update: ungültiger Wert '$CLAUDE_UPD_MODE' (erlaubt: daily, always, off)" >&2
-           exit 2 ;;
-    esac
+    [[ "$CLAUDE_UPD_MODE" =~ ^(always|off|daily|[1-9][0-9]{0,2}h)$ ]] || {
+        echo "--claude-update: ungültiger Wert '$CLAUDE_UPD_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
+        exit 2
+    }
 fi
 
 case "$AUTONOMOUS" in
@@ -345,7 +343,7 @@ mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"
 for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/work" \
           "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" "TTY_CONFIRM=1" \
-          "APT_UPGRADE=daily" "APT_TIMEOUT=600" "CLAUDE_UPDATE=daily" "NOFILE_LIMIT=2048" \
+          "APT_UPGRADE=6h" "APT_TIMEOUT=600" "CLAUDE_UPDATE=6h" "NOFILE_LIMIT=2048" \
           "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"; do
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"

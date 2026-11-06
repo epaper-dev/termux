@@ -118,16 +118,61 @@ check "unbekannter Wert: kein claude update"          0 "$(calls)"
 check "unbekannter Wert: Hinweis"                     1 "$(out_has 'unbekannter Wert CLAUDE_UPDATE=banana')"
 check "unbekannter Wert: kein Stempel"                nein "$(stamp_exists)"
 
-# --- missing key / empty value / missing file: default daily
+# --- missing key / empty value / missing file: default 6h
 reset_state; mkconf "WORKDIR=/root/workspace"; run_update
-check "ohne CLAUDE_UPDATE-Zeile: Standard daily, läuft" 1 "$(calls)"
+check "ohne CLAUDE_UPDATE-Zeile: Standard 6h, läuft"   1 "$(calls)"
 reset_state; mkconf "CLAUDE_UPDATE="; run_update
-check "leerer Wert: Standard daily, läuft"            1 "$(calls)"
+check "leerer Wert: Standard 6h, läuft"               1 "$(calls)"
 reset_state; CONFFILE="$T/gibt-es-nicht.conf"; run_update
-check "ohne Konfig-Datei: Standard daily, läuft"      1 "$(calls)"
+check "ohne Konfig-Datei: Standard 6h, läuft"         1 "$(calls)"
 set_stamp "$((now - 60))"; : > "$STUB_LOG"; run_update
 check "ohne Konfig-Datei: frischer Stempel gilt"      0 "$(calls)"
 CONFFILE="$T/test.conf"
+
+# --- interval: 6h is the default, <N>h sets the distance, daily = 24 h
+H=3600
+ran() { calls; }   # 1 = claude update ran, 0 = skipped
+reset_state; mkconf "CLAUDE_UPDATE=6h"
+set_stamp "$((now - 5 * H))"; : > "$STUB_LOG"; run_update
+check "6h, Stempel 5 h alt: übersprungen"             0 "$(ran)"
+check "6h, Stempel 5 h alt: Hinweis nennt 6h"         1 "$(out_has 'übersprungen (CLAUDE_UPDATE=6h)')"
+check "6h, Stempel 5 h alt: 'vor 5 h'"                1 "$(out_has 'vor 5 h erfolgreich')"
+set_stamp "$((now - 7 * H))"; : > "$STUB_LOG"; run_update
+check "6h, Stempel 7 h alt: läuft"                    1 "$(ran)"
+check "6h, Stempel 7 h alt: neuer Stempel"            1 "$([ "$(cat "$STAMPF")" -ge "$now" ] && echo 1 || echo 0)"
+mkconf "WORKDIR=/x"
+set_stamp "$((now - 5 * H))"; : > "$STUB_LOG"; run_update
+check "Standard ohne Zeile = 6h: Stempel 5 h alt übersprungen" 0 "$(ran)"
+set_stamp "$((now - 7 * H))"; : > "$STUB_LOG"; run_update
+check "Standard ohne Zeile = 6h: Stempel 7 h alt läuft" 1 "$(ran)"
+mkconf "CLAUDE_UPDATE=daily"
+set_stamp "$((now - 23 * H))"; : > "$STUB_LOG"; run_update
+check "daily, Stempel 23 h alt: übersprungen"         0 "$(ran)"
+set_stamp "$((now - 25 * H))"; : > "$STUB_LOG"; run_update
+check "daily, Stempel 25 h alt: läuft"                1 "$(ran)"
+mkconf "CLAUDE_UPDATE=12h"
+set_stamp "$((now - 11 * H))"; : > "$STUB_LOG"; run_update
+check "12h, Stempel 11 h alt: übersprungen"           0 "$(ran)"
+set_stamp "$((now - 13 * H))"; : > "$STUB_LOG"; run_update
+check "12h, Stempel 13 h alt: läuft"                  1 "$(ran)"
+mkconf "CLAUDE_UPDATE=1h"
+set_stamp "$((now - 1800))"; : > "$STUB_LOG"; run_update
+check "1h, Stempel 30 min alt: übersprungen"          0 "$(ran)"
+set_stamp "$((now - 2 * H))"; : > "$STUB_LOG"; run_update
+check "1h, Stempel 2 h alt: läuft"                    1 "$(ran)"
+mkconf "CLAUDE_UPDATE=6h"
+set_stamp "$((now + 99999))"; : > "$STUB_LOG"; run_update
+check "6h, Stempel in der Zukunft: läuft"             1 "$(ran)"
+set_stamp "abc"; : > "$STUB_LOG"; run_update
+check "6h, kaputter Stempel: läuft"                   1 "$(ran)"
+reset_state; run_update
+check "6h, ohne Stempel: läuft"                       1 "$(ran)"
+for bad in 0h 6 h 1000h 6H 06h "6 h" -6h; do
+    reset_state; mkconf "CLAUDE_UPDATE=$bad"; run_update
+    check "ungültig '$bad': kein claude update, kein Stempel" "0 nein" "$(ran) $(stamp_exists)"
+    check "ungültig '$bad': Warnung"                  1 "$(out_has 'unbekannter Wert CLAUDE_UPDATE=')"
+    check "ungültig '$bad': Exit 0"                   "rc=0" "$(printf '%s\n' "$OUT" | tail -n 1)"
+done
 
 # --- quotes and several lines
 reset_state; set_stamp "$((now - 60))"; mkconf 'CLAUDE_UPDATE="daily"'; run_update
@@ -181,7 +226,7 @@ cbak() { find "$1/etc" -name 'termux-root-bridge.conf.bak-*' 2>/dev/null | wc -l
 S="$T/g1"
 ginstall "$S"
 check "Gast ohne Option: Installer läuft"             0 "$?"
-check "Gast: CLAUDE_UPDATE=daily als Standard"        "CLAUDE_UPDATE=daily" "$(gval "$S" CLAUDE_UPDATE)"
+check "Gast: CLAUDE_UPDATE=6h als Standard"           "CLAUDE_UPDATE=6h" "$(gval "$S" CLAUDE_UPDATE)"
 check "Gast: genau eine Zeile"                        1 "$(gcount "$S" CLAUDE_UPDATE)"
 check "Gast: rootbridge-claude hat update_claude"     1 "$(grep -c '^update_claude$' "$S/usr/local/bin/rootbridge-claude")"
 
@@ -193,7 +238,7 @@ check "Gast zweiter Lauf: keine neue Sicherung"       "$b0" "$(cbak "$S")"
 ginstall "$S" --claude-update off
 check "Gast --claude-update off"                      "CLAUDE_UPDATE=off" "$(gval "$S" CLAUDE_UPDATE)"
 check "Gast --claude-update off: genau eine Zeile"    1 "$(gcount "$S" CLAUDE_UPDATE)"
-check "Gast --claude-update off: APT_UPGRADE bleibt"  "APT_UPGRADE=daily" "$(gval "$S" APT_UPGRADE)"
+check "Gast --claude-update off: APT_UPGRADE bleibt"  "APT_UPGRADE=6h" "$(gval "$S" APT_UPGRADE)"
 check "Gast --claude-update off: WORKDIR bleibt"      "WORKDIR=/root/work" "$(gval "$S" WORKDIR)"
 before="$(cksum < "$(gconf "$S")")"; b0="$(cbak "$S")"
 ginstall "$S" --claude-update off
@@ -205,6 +250,11 @@ ginstall "$S" --claude-update always
 check "Gast --claude-update always"                   "CLAUDE_UPDATE=always" "$(gval "$S" CLAUDE_UPDATE)"
 ginstall "$S" --claude-update daily
 check "Gast --claude-update daily"                    "CLAUDE_UPDATE=daily" "$(gval "$S" CLAUDE_UPDATE)"
+ginstall "$S" --claude-update 12h
+check "Gast --claude-update 12h"                      "CLAUDE_UPDATE=12h" "$(gval "$S" CLAUDE_UPDATE)"
+ginstall "$S" --claude-update 6h
+check "Gast --claude-update 6h"                       "CLAUDE_UPDATE=6h" "$(gval "$S" CLAUDE_UPDATE)"
+check "Gast --claude-update 6h: genau eine Zeile"     1 "$(gcount "$S" CLAUDE_UPDATE)"
 ginstall "$S" --apt-upgrade off --claude-update always
 check "beide Optionen: APT_UPGRADE=off"               "APT_UPGRADE=off" "$(gval "$S" APT_UPGRADE)"
 check "beide Optionen: CLAUDE_UPDATE=always"          "CLAUDE_UPDATE=always" "$(gval "$S" CLAUDE_UPDATE)"
@@ -219,9 +269,9 @@ check "Eigene Werte bleiben: WORKDIR"                 "WORKDIR=/srv/mine" "$(gva
 
 S="$T/g2b"; mkdir -p "$S/etc"; printf '%s\n' "WORKDIR=/srv/mine" "APT_UPGRADE=always" > "$(gconf "$S")"
 ginstall "$S"
-check "Konfig ohne Schlüssel: CLAUDE_UPDATE=daily ergänzt" "CLAUDE_UPDATE=daily" "$(gval "$S" CLAUDE_UPDATE)"
+check "Konfig ohne Schlüssel: CLAUDE_UPDATE=6h ergänzt" "CLAUDE_UPDATE=6h" "$(gval "$S" CLAUDE_UPDATE)"
 
-for bad in "" Daily banana "on" "daily;id" "-x"; do
+for bad in "" Daily banana "on" "daily;id" "-x" 0h 6 h 1000h 6H 06h "6 h" -6h; do
     S="$T/bad"; rm -rf "$S"
     bash "$GUEST" --root "$S" --autonomous no --claude-update "$bad" > /dev/null 2>&1
     code=$?
@@ -317,11 +367,11 @@ rinstall "$H2"
 check "Ohne Option und Konfig: Installer läuft"       0 "$?"
 check "Ohne Option und Konfig: nichts an den Gast"    0 "$(grep -c -- '--claude-update' "$PROOT_LOG")"
 check "Ohne Option und Konfig: keine Zeile in Termux" 0 "$(grep -c '^CLAUDE_UPDATE=' "$H2/.config/termux-root-bridge/config")"
-check "Ohne Option und Konfig: Gast-Standard daily"   "CLAUDE_UPDATE=daily" "$(gv)"
-check "Neue Termux-Konfig nennt CLAUDE_UPDATE (Kommentar)" 1 "$(grep -c '^# CLAUDE_UPDATE=daily' "$H2/.config/termux-root-bridge/config")"
+check "Ohne Option und Konfig: Gast-Standard 6h"      "CLAUDE_UPDATE=6h" "$(gv)"
+check "Neue Termux-Konfig nennt CLAUDE_UPDATE (Kommentar)" 1 "$(grep -c '^# CLAUDE_UPDATE=6h' "$H2/.config/termux-root-bridge/config")"
 
 # invalid option values: abort with 2 before anything is written
-for bad in banana Daily "" "-x"; do
+for bad in banana Daily "" "-x" 0h 1000h 6H; do
     H3="$T/home3"; rm -rf "$H3"; mkdir -p "$H3"
     HOME="$H3" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 bash "$INSTALL" --no-deps-check --claude-update "$bad" > /dev/null 2>&1
     check "install.sh --claude-update '$bad': Abbruch mit 2" 2 "$?"

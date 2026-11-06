@@ -5,6 +5,12 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* The apt upgrade and `claude update` at the session start now run at most once every **6 hours** (before: once per
+  24 h). `APT_UPGRADE` and `CLAUDE_UPDATE` take `6h` (new default), any `<N>h` (1-999 hours), `daily` (= 24 h, as before),
+  `always` or `off`; `install.sh --apt-upgrade` and `--claude-update` accept the same values. A value already in
+  `/etc/termux-root-bridge.conf` stays, so switch an older `daily` once: `bash install.sh --apt-upgrade 6h --claude-update 6h`.
+  npm is not part of this: `apt-get upgrade` covers everything installed with `apt` (`nodejs`/`npm` too, if added), global
+  `npm -g` packages are not updated, and Claude Code is a native binary that `claude update` replaces.
 * The Remote Control name defaults to `android`: a plain `install.sh` (no `--remote-name`) now writes
   `CLAUDE_ARGS="--remote-control android --continue"` into the guest config, so Remote Control is on at
   every start and the session is named. The guest installer also sets `remoteControlAtStartup: true` in

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# rootbridge-apt - apt-get update + upgrade for the guest, at most once a day.
+# rootbridge-apt - apt-get update + upgrade for the guest, at most once every 6 hours (default).
 # Started by rootbridge-claude before `claude update`; can also be run by hand.
 # It never blocks the start: every problem is reported and the exit code is always 0.
 #
 # Config (/etc/termux-root-bridge.conf, read as data):
-#   APT_UPGRADE=daily|always|off   daily (default): at most once per 24 h after a success;
-#                                  always: at every start; off: do nothing
+#   APT_UPGRADE=6h|<N>h|daily|always|off
+#                                  6h (default): at most once per 6 h after a success; <N>h: the same with
+#                                  N hours (1-999); daily: same as 24h; always: at every start; off: do nothing
 #   APT_TIMEOUT=600                seconds allowed for `apt-get upgrade` (60-3600)
 #   APT_HOLD="rust-coreutils ..."  installed packages that are held back from the upgrade
 #                                  (default: the uutils/GNU coreutils packages; empty = none)
@@ -37,12 +38,19 @@ conf_raw() {
 }
 
 mode="$(conf_raw APT_UPGRADE || true)"
-mode="${mode:-daily}"
+mode="${mode:-6h}"
+# interval = minimum distance in seconds between two successful runs (0 = no limit)
+interval=0
 case "$mode" in
     off) exit 0 ;;
-    daily|always) ;;
-    *) echo "apt: unbekannter Wert APT_UPGRADE=$mode (erlaubt: daily, always, off) - übersprungen" >&2
-       exit 0 ;;
+    always) ;;
+    daily) interval=86400 ;;
+    *) if [[ "$mode" =~ ^[1-9][0-9]{0,2}h$ ]]; then
+           interval=$(( ${mode%h} * 3600 ))
+       else
+           echo "apt: unbekannter Wert APT_UPGRADE=$mode (erlaubt: 6h (Stunden, 1-999), daily, always, off) - übersprungen" >&2
+           exit 0
+       fi ;;
 esac
 
 if [ "$(id -u)" -ne 0 ] && [ -z "${ROOTBRIDGE_APT_ALLOW_NONROOT:-}" ]; then
@@ -51,10 +59,10 @@ if [ "$(id -u)" -ne 0 ] && [ -z "${ROOTBRIDGE_APT_ALLOW_NONROOT:-}" ]; then
 fi
 
 now="$(date +%s)"
-if [ "$mode" = daily ] && [ -r "$STAMP" ]; then
+if [ "$interval" -gt 0 ] && [ -r "$STAMP" ]; then
     last="$(head -n 1 "$STAMP" 2>/dev/null)"
-    if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt 86400 ]; then
-        echo "apt: vor $(( (now - last) / 3600 )) h erfolgreich aktualisiert - übersprungen (APT_UPGRADE=daily)"
+    if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt "$interval" ]; then
+        echo "apt: vor $(( (now - last) / 3600 )) h erfolgreich aktualisiert - übersprungen (APT_UPGRADE=$mode)"
         exit 0
     fi
 fi

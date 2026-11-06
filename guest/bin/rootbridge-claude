@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # rootbridge-claude - guest entry point (started by `rootbridge start`):
-#   1. apt-get update + upgrade (rootbridge-apt, at most once a day, never blocks the start)
-#   2. claude update (CLAUDE_UPDATE, at most once a day, never blocks the start)
+#   1. apt-get update + upgrade (rootbridge-apt, at most once every 6 h by default, never blocks the start)
+#   2. claude update (CLAUDE_UPDATE, at most once every 6 h by default, never blocks the start)
 #   3. Claude Code with autonomous mode available
 #
 # The start mode comes from settings.json (the installer sets bypassPermissions with --autonomous yes);
@@ -54,24 +54,30 @@ if command -v rootbridge-apt >/dev/null 2>&1; then
     rootbridge-apt || true
 fi
 
-# claude update. CLAUDE_UPDATE=daily (default) | always | off (/etc/termux-root-bridge.conf, like APT_UPGRADE).
-# daily: at most once per 24 h after a success (stamp /var/lib/termux-root-bridge/claude-update-last-success).
+# claude update. CLAUDE_UPDATE=6h (default) | <N>h | daily | always | off (/etc/termux-root-bridge.conf, like APT_UPGRADE).
+# 6h / <N>h (1-999 hours): at most once per N hours after a success; daily = 24h
+# (stamp /var/lib/termux-root-bridge/claude-update-last-success).
 # A failed or aborted update leaves no stamp, so the next start tries again. Never stops the start.
 update_claude() {
-    local mode stamp now last
-    mode="$(conf_get CLAUDE_UPDATE || echo daily)"
+    local mode stamp now last interval=0
+    mode="$(conf_get CLAUDE_UPDATE || echo 6h)"
     case "$mode" in
         off) return 0 ;;
-        daily|always) ;;
-        *) echo "claude update: unbekannter Wert CLAUDE_UPDATE=$mode (erlaubt: daily, always, off) - übersprungen" >&2
-           return 0 ;;
+        always) ;;
+        daily) interval=86400 ;;
+        *) if [[ "$mode" =~ ^[1-9][0-9]{0,2}h$ ]]; then
+               interval=$(( ${mode%h} * 3600 ))
+           else
+               echo "claude update: unbekannter Wert CLAUDE_UPDATE=$mode (erlaubt: 6h (Stunden, 1-999), daily, always, off) - übersprungen" >&2
+               return 0
+           fi ;;
     esac
     stamp="${ROOTBRIDGE_STATE_DIR:-/var/lib/termux-root-bridge}/claude-update-last-success"
     now="$(date +%s)"
-    if [ "$mode" = daily ] && [ -r "$stamp" ]; then
+    if [ "$interval" -gt 0 ] && [ -r "$stamp" ]; then
         last="$(head -n 1 "$stamp" 2>/dev/null)"
-        if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt 86400 ]; then
-            echo "claude update: vor $(( (now - last) / 3600 )) h erfolgreich - übersprungen (CLAUDE_UPDATE=daily)"
+        if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt "$interval" ]; then
+            echo "claude update: vor $(( (now - last) / 3600 )) h erfolgreich - übersprungen (CLAUDE_UPDATE=$mode)"
             return 0
         fi
     fi

@@ -151,6 +151,50 @@ reset_state; rm -f "$CONF"
 run_apt
 check "ohne Konfig-Datei: Standard daily, läuft"      "1 1" "$(calls 'apt-get .* update$') $(calls 'apt-get .* upgrade$')"
 
+# --- interval: 6h is the default, <N>h sets the distance, daily = 24 h
+H=3600
+stamp_ago() { printf '%s\n' "$(( $(date +%s) - $1 ))" > "$T/state/apt-last-success"; }   # stamp_ago <seconds>
+ran() { echo "$(calls 'apt-get .* update$') $(calls 'apt-get .* upgrade$')"; }              # "1 1" = it ran, "0 0" = skipped
+reset_state; mkconf "APT_UPGRADE=6h"
+stamp_ago $((5 * H)); run_apt
+check "6h, Stempel 5 h alt: übersprungen"             "0 0" "$(ran)"
+check "6h, Stempel 5 h alt: Hinweis nennt 6h"         1 "$(out_has 'übersprungen (APT_UPGRADE=6h)')"
+stamp_ago $((7 * H)); run_apt
+check "6h, Stempel 7 h alt: läuft"                    "1 1" "$(ran)"
+mkconf "WORKDIR=/x"
+stamp_ago $((5 * H)); run_apt
+check "Standard ohne Zeile = 6h: Stempel 5 h alt übersprungen" "0 0" "$(ran)"
+stamp_ago $((7 * H)); run_apt
+check "Standard ohne Zeile = 6h: Stempel 7 h alt läuft" "1 1" "$(ran)"
+mkconf "APT_UPGRADE=daily"
+stamp_ago $((23 * H)); run_apt
+check "daily, Stempel 23 h alt: übersprungen"         "0 0" "$(ran)"
+stamp_ago $((25 * H)); run_apt
+check "daily, Stempel 25 h alt: läuft"                "1 1" "$(ran)"
+mkconf "APT_UPGRADE=12h"
+stamp_ago $((11 * H)); run_apt
+check "12h, Stempel 11 h alt: übersprungen"           "0 0" "$(ran)"
+stamp_ago $((13 * H)); run_apt
+check "12h, Stempel 13 h alt: läuft"                  "1 1" "$(ran)"
+mkconf "APT_UPGRADE=1h"
+stamp_ago 1800; run_apt
+check "1h, Stempel 30 min alt: übersprungen"          "0 0" "$(ran)"
+stamp_ago $((2 * H)); run_apt
+check "1h, Stempel 2 h alt: läuft"                    "1 1" "$(ran)"
+mkconf "APT_UPGRADE=6h"
+stamp_ago -99999; run_apt
+check "6h, Stempel in der Zukunft: läuft"             "1 1" "$(ran)"
+printf 'abc\n' > "$T/state/apt-last-success"; run_apt
+check "6h, kaputter Stempel: läuft"                   "1 1" "$(ran)"
+reset_state; run_apt
+check "6h, ohne Stempel: läuft"                       "1 1" "$(ran)"
+check "6h: Log-Kopf nennt mode=6h"                    1 "$(grep -c '^=== .* apt (mode=6h)$' "$T/apt.log")"
+for bad in 0h 6 h 1000h 6H 06h "6 h" -6h; do
+    reset_state; mkconf "APT_UPGRADE=$bad"; run_apt
+    check "ungültig '$bad': Exit 0, kein apt-get"     "0 0 0" "$RC $(ran | cut -d' ' -f1) $(calls '^apt-get ')"
+    check "ungültig '$bad': Warnung"                  1 "$(out_has 'unbekannter Wert APT_UPGRADE=')"
+done
+
 # --- failures never stop the start and leave no stamp
 reset_state; mkconf "APT_UPGRADE=daily"
 run_apt STUB_UPDATE_RC=100
@@ -247,7 +291,7 @@ cbak() { find "$1/etc" -name 'termux-root-bridge.conf.bak-*' 2>/dev/null | wc -l
 S="$T/g1"
 ginstall "$S"
 check "Gast ohne Option: Installer läuft"             0 "$?"
-check "Gast: APT_UPGRADE=daily als Standard"          "APT_UPGRADE=daily" "$(gval "$S" APT_UPGRADE)"
+check "Gast: APT_UPGRADE=6h als Standard"             "APT_UPGRADE=6h" "$(gval "$S" APT_UPGRADE)"
 check "Gast: APT_TIMEOUT=600"                         "APT_TIMEOUT=600" "$(gval "$S" APT_TIMEOUT)"
 check "Gast: APT_HOLD mit den coreutils-Paketen"      "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" "$(gval "$S" APT_HOLD)"
 check "Gast: rootbridge-apt installiert"              ja "$([ -x "$S/usr/local/bin/rootbridge-apt" ] && echo ja || echo nein)"
@@ -273,6 +317,11 @@ ginstall "$S" --apt-upgrade always
 check "Gast --apt-upgrade always"                     "APT_UPGRADE=always" "$(gval "$S" APT_UPGRADE)"
 ginstall "$S" --apt-upgrade daily
 check "Gast --apt-upgrade daily"                      "APT_UPGRADE=daily" "$(gval "$S" APT_UPGRADE)"
+ginstall "$S" --apt-upgrade 12h
+check "Gast --apt-upgrade 12h"                        "APT_UPGRADE=12h" "$(gval "$S" APT_UPGRADE)"
+ginstall "$S" --apt-upgrade 6h
+check "Gast --apt-upgrade 6h"                         "APT_UPGRADE=6h" "$(gval "$S" APT_UPGRADE)"
+check "Gast --apt-upgrade 6h: genau eine Zeile"       1 "$(gcount "$S" APT_UPGRADE)"
 
 S="$T/g2"; mkdir -p "$S/etc"; printf '%s\n' "WORKDIR=/srv/mine" "APT_UPGRADE=always" "APT_TIMEOUT=900" > "$(gconf "$S")"
 ginstall "$S"
@@ -280,7 +329,7 @@ check "Eigene Werte bleiben: APT_UPGRADE"             "APT_UPGRADE=always" "$(gv
 check "Eigene Werte bleiben: APT_TIMEOUT"             "APT_TIMEOUT=900" "$(gval "$S" APT_TIMEOUT)"
 check "Eigene Werte bleiben: WORKDIR"                 "WORKDIR=/srv/mine" "$(gval "$S" WORKDIR)"
 
-for bad in "" Daily banana "on" "daily;id" "-x"; do
+for bad in "" Daily banana "on" "daily;id" "-x" 0h 6 h 1000h 6H 06h "6 h" -6h; do
     S="$T/bad"; rm -rf "$S"
     bash "$GUEST" --root "$S" --autonomous no --apt-upgrade "$bad" > /dev/null 2>&1
     code=$?
@@ -368,10 +417,10 @@ rinstall "$H2"
 check "Ohne Option und Konfig: Installer läuft"       0 "$?"
 check "Ohne Option und Konfig: nichts an den Gast"    0 "$(grep -c -- '--apt-upgrade' "$PROOT_LOG")"
 check "Ohne Option und Konfig: keine Zeile in Termux" 0 "$(grep -c '^APT_UPGRADE=' "$H2/.config/termux-root-bridge/config")"
-check "Ohne Option und Konfig: Gast-Standard daily"   "APT_UPGRADE=daily" "$(gv)"
+check "Ohne Option und Konfig: Gast-Standard 6h"      "APT_UPGRADE=6h" "$(gv)"
 
 # invalid option values: abort with 2 before anything is written
-for bad in banana Daily "" "-x"; do
+for bad in banana Daily "" "-x" 0h 1000h 6H; do
     H3="$T/home3"; rm -rf "$H3"; mkdir -p "$H3"
     HOME="$H3" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 bash "$INSTALL" --no-deps-check --apt-upgrade "$bad" > /dev/null 2>&1
     check "install.sh --apt-upgrade '$bad': Abbruch mit 2" 2 "$?"
