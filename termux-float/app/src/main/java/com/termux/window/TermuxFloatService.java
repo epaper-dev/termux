@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.Build;
 import android.os.IBinder;
@@ -45,6 +46,16 @@ public class TermuxFloatService extends Service {
         runStartForeground();
         TermuxFloatApplication.setLogConfig(this, false);
         Logger.logVerbose(LOG_TAG, "onCreate");
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        // The terminal colors depend on the light or dark theme of the system, so load them again, see
+        // TermuxFloatSessionClient.checkForFontAndColors()
+        if (mFloatingWindow != null)
+            mFloatingWindow.reloadViewStyling();
     }
 
     @Override
