@@ -36,8 +36,6 @@ import com.termux.terminal.TerminalSessionClient;
 import com.termux.terminal.TextStyle;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Properties;
 
@@ -508,17 +506,12 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     public void checkForFontAndColors() {
         try {
-            // colors-light.properties or colors-dark.properties instead of colors.properties if the file for the theme exists
-            File colorsFile = TermuxThemeUtils.getTerminalColorsFile(
-                ThemeUtils.shouldEnableDarkTheme(mActivity, NightMode.getAppNightMode().getName()));
             File fontFile = TermuxConstants.TERMUX_FONT_FILE;
 
-            final Properties props = new Properties();
-            if (colorsFile.isFile()) {
-                try (InputStream in = new FileInputStream(colorsFile)) {
-                    props.load(in);
-                }
-            }
+            // colors-light.properties or colors-dark.properties instead of colors.properties if the file for the theme
+            // exists, and the built-in light scheme in the light theme if there is no file at all
+            final Properties props = TermuxThemeUtils.getTerminalColors(mActivity,
+                ThemeUtils.shouldEnableDarkTheme(mActivity, NightMode.getAppNightMode().getName()));
 
             final int[] previousDefaultColors = TerminalColors.COLOR_SCHEME.mDefaultColors.clone();
             try {
