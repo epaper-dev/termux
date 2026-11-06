@@ -38,6 +38,7 @@ import com.termux.terminal.TextStyle;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.Properties;
 
 /** The {@link TerminalSessionClient} implementation that may require an {@link Activity} for its interface methods. */
@@ -50,6 +51,14 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     private SoundPool mBellSoundPool;
 
     private int mBellSoundId;
+
+    /**
+     * If the color scheme has changed and the colors of the terminal sessions have not been reset to
+     * it yet. The terminal sessions outlive the activity and each has its own copy of the colors, so
+     * this is also set when the activity is created after the scheme changed, like when the dark mode
+     * of the system was changed, at which time the {@link TermuxService} is not available yet.
+     */
+    private boolean mSessionColorsOutdated;
 
     private static final String LOG_TAG = "TermuxTerminalSessionActivityClient";
 
@@ -296,6 +305,9 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     public void setCurrentSession(TerminalSession session) {
         if (session == null) return;
 
+        // The service is available now, which may not have been the case when the colors were checked.
+        resetColorsOfSessionsIfOutdated();
+
         if (mActivity.getTerminalView().attachSession(session)) {
             // notify about switched session if not already displaying the session
             notifyOfSessionChange();
@@ -508,17 +520,42 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
                 }
             }
 
-            TerminalColors.COLOR_SCHEME.updateWith(props);
+            final int[] previousDefaultColors = TerminalColors.COLOR_SCHEME.mDefaultColors.clone();
+            try {
+                TerminalColors.COLOR_SCHEME.updateWith(props);
+            } finally {
+                if (!Arrays.equals(previousDefaultColors, TerminalColors.COLOR_SCHEME.mDefaultColors))
+                    mSessionColorsOutdated = true;
+            }
             TerminalSession session = mActivity.getCurrentSession();
             if (session != null && session.getEmulator() != null) {
                 session.getEmulator().mColors.reset();
             }
+            resetColorsOfSessionsIfOutdated();
             updateBackgroundColor();
 
             final Typeface newTypeface = (fontFile.exists() && fontFile.length() > 0) ? Typeface.createFromFile(fontFile) : Typeface.MONOSPACE;
             mActivity.getTerminalView().setTypeface(newTypeface);
         } catch (Exception e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Error in checkForFontAndColors()", e);
+        }
+    }
+
+    /**
+     * Reset the colors of all terminal sessions to the current color scheme if it has changed since
+     * they were set, so that colors set by programs with OSC sequences are kept otherwise. Does nothing
+     * until the {@link TermuxService} is available and is called again by {@link #setCurrentSession(TerminalSession)}.
+     */
+    private void resetColorsOfSessionsIfOutdated() {
+        TermuxService service = mActivity.getTermuxService();
+        if (!mSessionColorsOutdated || service == null) return;
+
+        mSessionColorsOutdated = false;
+        for (int i = 0, size = service.getTermuxSessionsSize(); i < size; i++) {
+            TermuxSession termuxSession = service.getTermuxSession(i);
+            TerminalSession session = termuxSession != null ? termuxSession.getTerminalSession() : null;
+            if (session != null && session.getEmulator() != null)
+                session.getEmulator().mColors.reset();
         }
     }
 
