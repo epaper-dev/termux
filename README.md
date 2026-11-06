@@ -87,7 +87,7 @@ stays). Before, the folder was never created, so a fresh installation started Cl
 
 Then start Claude Code with the **Claude** widget, or type `ubuntu` (alias for `rootbridge attach`) in a Termux
 shell. The first start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +
-`upgrade`, at most once a day, see below), runs `claude update` (also at most once a day) and starts Claude Code; later
+`upgrade`, at most once every 6 hours, see below), runs `claude update` (likewise) and starts Claude Code; later
 starts just attach to it.
 **Ordinary Termux windows stay plain shells** (with the colours loaded), nothing starts by itself. With Termux:Boot the
 session is created in the background after a reboot (`rootbridge start --no-attach`). Claude **starts in bypass
@@ -95,7 +95,7 @@ mode** (with `--autonomous no`: in the mode of your `settings.json`); press **Sh
 the installer adds to the Termux extra keys row, see below).
 
 Options: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--model NAME|none`, `--remote-name NAME`,
-`--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. The installer is idempotent, backs up what it changes, and
+`--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`, `--no-claude-update`. The installer is idempotent, backs up what it changes, and
 migrates the old v1 popup bridge if it finds one.
 
 **Widgets.** With the Termux:Widget app you get two shortcuts: **Claude** (attach to the Claude Code session) and
@@ -120,7 +120,7 @@ returns, and the Termux window opened by the **Claude** widget closes with it. Y
 ends with an error code does the guest shell stay open, with a note, so the message stays readable (also when `claude` is not installed).
 
 **Package updates in the guest.** On by default: when the Claude Code session starts, `rootbridge-apt` runs
-`apt-get update` and `apt-get -y upgrade` — at most once per 24 h after a success (`APT_UPGRADE=daily`), never blocking
+`apt-get update` and `apt-get -y upgrade` — at most once per 6 h after a success (`APT_UPGRADE=6h`; `12h` and so on set another distance, `daily` = 24 h), never blocking
 the start (no network, an error or a timeout just print a note and Claude Code starts; the next start tries again). Two
 safeguards matter on proot-distro with Ubuntu 26.04: dpkg gets `-o DPkg::Path` including `/usr/local/bin`, because the
 uutils coreutils need the GNU-named symlinks there (otherwise maintainer scripts abort with "Security violation"), and
@@ -128,12 +128,15 @@ the coreutils packages (`APT_HOLD`) are held back, because upgrading the multica
 `/var/log/termux-root-bridge-apt.log` in the guest — every run ends with a `Ende: ok` (or the reason) line, a run
 without it was interrupted; held packages: `apt-mark showhold`. Turn it off with
 `bash install.sh --no-apt-upgrade` (stored in the Termux config as `APT_UPGRADE`, so later installs keep it, also with a
-fresh guest), or run it at every start with `--apt-upgrade always`. Run it by hand: `rootbridge-apt` in the guest.
+fresh guest), or run it at every start with `--apt-upgrade always`. Run it by hand: `rootbridge-apt` in the guest. Everything installed with `apt` is covered, `nodejs` and `npm` included
+if you add them; global packages from `npm -g` are not. Claude Code itself is a native binary that `claude update`
+replaces, no npm involved. A value already in `/etc/termux-root-bridge.conf` stays when you run the installer without
+the option; switch an older `daily` once with `bash install.sh --apt-upgrade 6h --claude-update 6h`.
 
-**`claude update`.** Same rules as the package updates (`CLAUDE_UPDATE=daily|always|off`, default `daily`): the session
-start runs `claude update` at most once per 24 h after a success (stamp
+**`claude update`.** Same rules as the package updates (`CLAUDE_UPDATE=6h|<N>h|daily|always|off`, default `6h`): the session
+start runs `claude update` at most once per 6 h after a success (stamp
 `/var/lib/termux-root-bridge/claude-update-last-success` in the guest). A failed or aborted update leaves no stamp, prints a
-note and Claude Code starts anyway; the next start tries again. With `daily` Claude Code can be up to a day behind the
+note and Claude Code starts anyway; the next start tries again. With the default Claude Code can be up to 6 hours behind the
 newest version. `bash install.sh --no-claude-update` turns it off, `--claude-update always` runs it at every start (stored in
 the Termux config as `CLAUDE_UPDATE`, so later installs keep it, also with a fresh guest). A `claude update` you run by
 hand does not set the stamp.
@@ -186,8 +189,8 @@ Short version (details and troubleshooting: [docs/LOGIN.md](docs/LOGIN.md)):
 Termux: `~/.config/termux-root-bridge/config` (parsed as data, never executed): `DISTRO`, `WORKDIR`, `SESSION`,
 `TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE` and `CLAUDE_UPDATE` (all read by `install.sh`).
 Guest: `/etc/termux-root-bridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
-`TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
-upgrade, default 600), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`daily`, `always`, `off`), `NOFILE_LIMIT` (see below).
+`TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
+upgrade, default 600), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `NOFILE_LIMIT` (see below).
 
 `NOFILE_LIMIT` (default `2048`, `0` = leave the limit alone) is the file-descriptor limit Claude Code is started with.
 Claude Code closes every descriptor up to that limit after each fork, and under proot every `close()` is a trapped

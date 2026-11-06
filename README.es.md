@@ -84,7 +84,7 @@ ajuste como está (un valor anterior se mantiene), `--autonomous ask` pregunta e
 
 Después inicia Claude Code con el widget **Claude**, o escribe `ubuntu` (alias de `rootbridge attach`) en una shell de
 Termux. El primer arranque crea la sesión: inicia el daemon, actualiza los paquetes del invitado (`apt-get update` +
-`upgrade`, como máximo una vez al día, ver abajo), ejecuta `claude update` (también como máximo una vez al día) e
+`upgrade`, como máximo una vez cada 6 h, ver abajo), ejecuta `claude update` (también como máximo una vez cada 6 h) e
 inicia Claude Code; los arranques posteriores solo se conectan a ella.
 **Las ventanas normales de Termux siguen siendo shells simples** (con los colores cargados): nada se inicia solo. Con
 Termux:Boot la sesión se crea en segundo plano tras un reinicio (`rootbridge start --no-attach`). Claude sigue
@@ -92,7 +92,7 @@ Termux:Boot la sesión se crea en segundo plano tras un reinicio (`rootbridge st
 teléfono, con la tecla **S-TAB** que el instalador añade a la fila de teclas extra de Termux, ver abajo).
 
 Opciones: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`,
-`--remote-name NAME`, `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`,
+`--remote-name NAME`, `--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`,
 `--no-claude-update`. El instalador es idempotente, hace copia de seguridad de lo que modifica y migra el antiguo puente
 con ventana emergente de la v1 si lo encuentra.
 
@@ -121,8 +121,8 @@ la shell de Ubuntu. Solo si Claude Code termina con un código de error, la shel
 aviso, para que el mensaje siga siendo legible (también cuando `claude` no está instalado).
 
 **Actualizaciones de paquetes en el invitado.** Activadas por defecto: al iniciar la sesión de Claude Code,
-`rootbridge-apt` ejecuta `apt-get update` y `apt-get -y upgrade`, como máximo una vez cada 24 h tras un éxito
-(`APT_UPGRADE=daily`), y nunca bloquea el arranque (sin red, un error o un tiempo de espera agotado solo muestran un
+`rootbridge-apt` ejecuta `apt-get update` y `apt-get -y upgrade`, como máximo una vez cada 6 h tras un éxito
+(`APT_UPGRADE=6h`; p. ej. `12h` cambia el intervalo, `daily` = 24 h), y nunca bloquea el arranque (sin red, un error o un tiempo de espera agotado solo muestran un
 aviso y Claude Code arranca; el siguiente arranque lo intenta de nuevo). Dos salvaguardas importan en proot-distro con
 Ubuntu 26.04: dpkg recibe `-o DPkg::Path` incluyendo `/usr/local/bin`, porque los coreutils de uutils necesitan allí los
 enlaces simbólicos con nombres GNU (si no, los scripts de mantenimiento abortan con «Security violation»), y los
@@ -131,13 +131,16 @@ invitado. Registro: `/var/log/termux-root-bridge-apt.log` en el invitado; cada e
 `Ende: ok` (o el motivo), y una ejecución sin ella fue interrumpida; paquetes retenidos: `apt-mark showhold`. Se
 desactiva con `bash install.sh --no-apt-upgrade` (se guarda en la configuración de Termux como `APT_UPGRADE`, de modo
 que las instalaciones posteriores lo conservan, también con un invitado nuevo), o se ejecuta en cada arranque con
-`--apt-upgrade always`. A mano: `rootbridge-apt` en el invitado.
+`--apt-upgrade always`. A mano: `rootbridge-apt` en el invitado. Todo lo instalado con `apt` queda cubierto, también `nodejs` y `npm` si los
+añades; los paquetes globales de `npm -g` no. Claude Code es un binario nativo que `claude update` sustituye sin npm. Un
+valor que ya está en `/etc/termux-root-bridge.conf` se conserva al instalar sin la opción; cambia un `daily` anterior una
+vez con `bash install.sh --apt-upgrade 6h --claude-update 6h`.
 
-**`claude update`.** Mismas reglas que las actualizaciones de paquetes (`CLAUDE_UPDATE=daily|always|off`, por defecto
-`daily`): el inicio de la sesión ejecuta `claude update` como máximo una vez cada 24 h tras un éxito (marca
+**`claude update`.** Mismas reglas que las actualizaciones de paquetes (`CLAUDE_UPDATE=6h|<N>h|daily|always|off`, por defecto
+`6h`): el inicio de la sesión ejecuta `claude update` como máximo una vez cada 6 h tras un éxito (marca
 `/var/lib/termux-root-bridge/claude-update-last-success` en el invitado). Una actualización fallida o interrumpida no
-deja marca, muestra un aviso y Claude Code arranca igualmente; el siguiente arranque lo intenta de nuevo. Con `daily`,
-Claude Code puede ir hasta un día por detrás de la última versión. `bash install.sh --no-claude-update` lo desactiva y
+deja marca, muestra un aviso y Claude Code arranca igualmente; el siguiente arranque lo intenta de nuevo. Con el valor por defecto,
+Claude Code puede ir hasta 6 horas por detrás de la última versión. `bash install.sh --no-claude-update` lo desactiva y
 `--claude-update always` lo ejecuta en cada arranque (se guarda en la configuración de Termux como `CLAUDE_UPDATE`, de
 modo que las instalaciones posteriores lo conservan, también con un invitado nuevo). Un `claude update` que ejecutes a
 mano no crea la marca.
@@ -192,9 +195,9 @@ Termux: `~/.config/termux-root-bridge/config` (se interpreta como datos, nunca s
 `SESSION`, `TICKET_TTL`, `SU_ARGS` (`-c` o `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE` y `CLAUDE_UPDATE`
 (todos los lee `install.sh`).
 Invitado: `/etc/termux-root-bridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
-`TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
-la actualización, por defecto 600), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`daily`,
-`always`, `off`), `NOFILE_LIMIT` (ver abajo).
+`TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
+la actualización, por defecto 600), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
+`daily`, `always`, `off`), `NOFILE_LIMIT` (ver abajo).
 
 `NOFILE_LIMIT` (por defecto `2048`, `0` = dejar el límite como está) es el límite de descriptores de archivo con el que
 se inicia Claude Code. Claude Code cierra todos los descriptores hasta ese límite tras cada fork, y bajo proot cada

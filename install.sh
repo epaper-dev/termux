@@ -4,8 +4,8 @@
 #
 #   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors] [--no-widgets]
 #                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME] [--no-extra-keys]
-#                   [--apt-upgrade daily|always|off | --no-apt-upgrade]
-#                   [--claude-update daily|always|off | --no-claude-update] [--no-setup]
+#                   [--apt-upgrade 6h|<N>h|daily|always|off | --no-apt-upgrade]
+#                   [--claude-update 6h|<N>h|daily|always|off | --no-claude-update] [--no-setup]
 #                   [--model NAME|none]
 #
 # Setup (automatic, nothing to ask for): what is missing gets installed first: the Termux packages
@@ -45,11 +45,14 @@
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
 #      theme "light-ansi") via proot-distro. The guest runs apt-get update + upgrade
-#      at the start of the Claude Code session, at most once a day (--no-apt-upgrade
-#      turns it off, --apt-upgrade always runs it at every start; the choice is stored
-#      in the Termux config as APT_UPGRADE and reused by every later install). `claude
-#      update` follows the same rules: once a day by default (--no-claude-update turns it
-#      off, --claude-update always runs it at every start; stored as CLAUDE_UPDATE)
+#      at the start of the Claude Code session, at most once every 6 h (--apt-upgrade 12h
+#      or daily = 24 h changes the distance, --no-apt-upgrade turns it off, --apt-upgrade
+#      always runs it at every start; the choice is stored in the Termux config as
+#      APT_UPGRADE and reused by every later install). A value already in
+#      /etc/termux-root-bridge.conf stays when you run the installer without the option,
+#      so switch an older "daily" once with --apt-upgrade 6h --claude-update 6h. `claude
+#      update` follows the same rules: every 6 h by default (--claude-update 12h|daily|
+#      always, --no-claude-update turns it off; stored as CLAUDE_UPDATE)
 
 set -eu
 
@@ -67,7 +70,7 @@ APT_MODE=""; APT_MODE_SET=0
 MODEL=""; MODEL_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
-APT_RE='^(daily|always|off)$'
+APT_RE='^(always|off|daily|[1-9][0-9]{0,2}h)$'
 while [ $# -gt 0 ]; do
     case "$1" in
         --setup) DO_SETUP=1 ;;   # the default, kept for older command lines
@@ -84,17 +87,17 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--remote-name braucht einen Namen" >&2; exit 2; }
             REMOTE_NAME="$2"; REMOTE_NAME_SET=1; shift ;;
         --apt-upgrade)
-            [ $# -ge 2 ] || { echo "--apt-upgrade braucht daily, always oder off" >&2; exit 2; }
+            [ $# -ge 2 ] || { echo "--apt-upgrade braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
             APT_MODE="$2"; APT_MODE_SET=1; shift ;;
         --no-apt-upgrade) APT_MODE=off; APT_MODE_SET=1 ;;
         --claude-update)
-            [ $# -ge 2 ] || { echo "--claude-update braucht daily, always oder off" >&2; exit 2; }
+            [ $# -ge 2 ] || { echo "--claude-update braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
             CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift ;;
         --no-claude-update) CLAUDE_UPD_MODE=off; CLAUDE_UPD_SET=1 ;;
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift ;;
-        -h|--help) sed -n '2,52p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -117,12 +120,12 @@ if [ "$REMOTE_NAME_SET" = 1 ] && ! [[ "$REMOTE_NAME" =~ $NAME_RE ]]; then
 fi
 
 if [ "$APT_MODE_SET" = 1 ] && ! [[ "$APT_MODE" =~ $APT_RE ]]; then
-    echo "--apt-upgrade: ungültiger Wert '$APT_MODE' (erlaubt: daily, always, off)" >&2
+    echo "--apt-upgrade: ungültiger Wert '$APT_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
     exit 2
 fi
 
 if [ "$CLAUDE_UPD_SET" = 1 ] && ! [[ "$CLAUDE_UPD_MODE" =~ $APT_RE ]]; then
-    echo "--claude-update: ungültiger Wert '$CLAUDE_UPD_MODE' (erlaubt: daily, always, off)" >&2
+    echo "--claude-update: ungültiger Wert '$CLAUDE_UPD_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
     exit 2
 fi
 
@@ -308,8 +311,8 @@ TICKET_TTL=1800
 # SU_ARGS=-mm -c      # global mount namespace (Magisk), if paths look empty
 AUTOSTART_DELAY=3
 # REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); default android, change with install.sh --remote-name
-# APT_UPGRADE=daily     # apt-get update + upgrade in the guest at session start: daily | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
-# CLAUDE_UPDATE=daily   # claude update in the guest at session start: daily | always | off; set with install.sh --claude-update / --no-claude-update
+# APT_UPGRADE=6h        # apt-get update + upgrade in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
+# CLAUDE_UPDATE=6h      # claude update in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --claude-update / --no-claude-update
 EOF
     say "  neu: $CFG"
 fi
