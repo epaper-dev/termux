@@ -27,6 +27,8 @@ import com.termux.app.TermuxService;
 import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.terminal.io.BellHandler;
 import com.termux.shared.logger.Logger;
+import com.termux.shared.theme.NightMode;
+import com.termux.shared.theme.ThemeUtils;
 import com.termux.terminal.TerminalColors;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
@@ -496,6 +498,15 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             File colorsFile = TermuxConstants.TERMUX_COLOR_PROPERTIES_FILE;
             File fontFile = TermuxConstants.TERMUX_FONT_FILE;
 
+            // E-Paper: while the app is in dark mode (the phone's dark mode with `night-mode = system`, or
+            // `night-mode = true`) the colors come from colors-night.properties next to colors.properties,
+            // if that file exists. Android recreates the activity when the phone switches the mode, which
+            // runs this method again.
+            if (ThemeUtils.shouldEnableDarkTheme(mActivity, NightMode.getAppNightMode().getName())) {
+                File nightColorsFile = new File(TermuxConstants.TERMUX_DATA_HOME_DIR_PATH, "colors-night.properties");
+                if (nightColorsFile.isFile()) colorsFile = nightColorsFile;
+            }
+
             final Properties props = new Properties();
             if (colorsFile.isFile()) {
                 try (InputStream in = new FileInputStream(colorsFile)) {
@@ -507,6 +518,18 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             TerminalSession session = mActivity.getCurrentSession();
             if (session != null && session.getEmulator() != null) {
                 session.getEmulator().mColors.reset();
+            }
+            // E-Paper: the other sessions take the new scheme too (a mode switch changes it for all of them),
+            // so that a program in one of them that asks for the background color (OSC 11) gets the right one
+            TermuxService service = mActivity.getTermuxService();
+            if (service != null) {
+                for (int i = 0, size = service.getTermuxSessionsSize(); i < size; i++) {
+                    TermuxSession termuxSession = service.getTermuxSession(i);
+                    TerminalSession other = termuxSession == null ? null : termuxSession.getTerminalSession();
+                    if (other != null && other != session && other.getEmulator() != null) {
+                        other.getEmulator().mColors.reset();
+                    }
+                }
             }
             updateBackgroundColor();
 
