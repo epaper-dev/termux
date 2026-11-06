@@ -96,9 +96,10 @@ Optionen: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`
 alte v1-Popup-Bridge.
 
 **Widgets.** Mit der App Termux:Widget gibt es zwei Verknüpfungen: **Claude** (an die Claude-Code-Sitzung anhängen)
-und **Ubuntu** (normale Ubuntu-Shell). Der Installer legt sie zusammen mit neutralen `>_`-Icons in `~/.shortcuts`
-ab (`~/.shortcuts/icons/<Name>.png`, keine Logos; neu erzeugen mit `tools/make-shortcut-icons.py`). Ein schon
-vorhandenes Icon wird nie ersetzt, du kannst also ein eigenes PNG dorthin legen; bei früheren Namen („Claude Code“ / „Ubuntu Shell“, „Claude >_“ / „Ubuntu >_“) wandert ein vorhandenes Icon auf den neuen Namen, und die alten Skripte werden entfernt. Sicherungen von
+und **Ubuntu** (normale Ubuntu-Shell). Der Installer legt sie zusammen mit dem Widget-Icon in `~/.shortcuts` ab
+(`termux/shortcuts/icons/widget.png`, kopiert nach `~/.shortcuts/icons/<Name>.png`, für beide dasselbe). Die neutralen
+`>_`-Icons früherer Versionen (`termux/shortcuts/icons/legacy`) werden dadurch ersetzt, jedes andere vorhandene Icon wird
+nie ersetzt, du kannst also ein eigenes PNG dorthin legen; bei früheren Namen („Claude Code“ / „Ubuntu Shell“, „Claude >_“ / „Ubuntu >_“) wandert ein vorhandenes Icon auf den neuen Namen, und die alten Skripte werden entfernt. Sicherungen von
 Widget- und Boot-Skripten landen in `~/.rootbridge/backups` (Termux:Widget listet jede Datei in `~/.shortcuts`,
 Termux:Boot führt jede Datei in `~/.termux/boot` aus). `--no-widgets` überspringt das Ganze.
 

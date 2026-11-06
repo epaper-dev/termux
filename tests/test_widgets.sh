@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Test: Termux:Widget shortcuts "Claude" / "Ubuntu" and their icons (install.sh / uninstall.sh).
-#   - installed under the new names, with default icons (neutral, no logos) only where no icon exists
+#   - installed under the new names, with the default icon (one for both widgets) where no icon exists or the icon is
+#     a default icon of an earlier version (icons/legacy); an icon the user chose stays
 #   - upgrade from the earlier names "Claude Code" / "Ubuntu Shell" and "Claude >_" / "Ubuntu >_": the user's
 #     icons are carried over, our old scripts and their *.bak-* files leave the widget list (Termux:Widget
 #     lists EVERY file there)
 #   - backups of ~/.shortcuts and ~/.termux/boot files go to $BRIDGE_DIR/backups (Termux:Boot runs EVERY file)
 #   - --no-widgets, idempotence, uninstall keeps an icon the user chose
-#   - the committed PNGs are valid and match tools/make-shortcut-icons.py
+#   - the committed PNGs (widget.png and the legacy ones) are valid
 # Nothing real is touched: fake HOME/PREFIX/BRIDGE_DIR; `rootbridge` (uninstall.sh calls `rootbridge stop`!),
 # `tmux`, `pkill` and `pgrep` are logging stubs, --no-guest --no-migrate.
 #   bash tests/test_widgets.sh
@@ -57,14 +58,14 @@ check "frisch: '$W1' ist ausführbar"                   ja "$([ -x "$SC/$W1" ] &
 check "frisch: '$W1' ruft rootbridge attach"           1 "$(grep -c '^exec rootbridge attach$' "$SC/$W1")"
 check "frisch: '$W2' ruft rootbridge shell"            1 "$(grep -c '^exec rootbridge shell$' "$SC/$W2")"
 check "frisch: Termux-Shebang"                         "#!$P/bin/bash" "$(head -n 1 "$SC/$W1")"
-check "frisch: Icon '$W1.png' angelegt"                0 "$(cmp -s "$ICONS/claude.png" "$SC/icons/$W1.png"; echo $?)"
-check "frisch: Icon '$W2.png' angelegt"                0 "$(cmp -s "$ICONS/ubuntu.png" "$SC/icons/$W2.png"; echo $?)"
+check "frisch: Icon '$W1.png' angelegt"                0 "$(cmp -s "$ICONS/widget.png" "$SC/icons/$W1.png"; echo $?)"
+check "frisch: Icon '$W2.png' angelegt"                0 "$(cmp -s "$ICONS/widget.png" "$SC/icons/$W2.png"; echo $?)"
 check "frisch: keine alten Namen"                      nein "$(has "$SC/Claude Code")"
 
 before="$(files "$H1")"
 rinstall "$H1"
 check "zweiter Lauf: Dateien unverändert"              "$before" "$(files "$H1")"
-check "zweiter Lauf: Icon bleibt"                      0 "$(cmp -s "$ICONS/claude.png" "$SC/icons/$W1.png"; echo $?)"
+check "zweiter Lauf: Icon bleibt"                      0 "$(cmp -s "$ICONS/widget.png" "$SC/icons/$W1.png"; echo $?)"
 
 # ---------------------------------------- 2. upgrade from the old names, with the user's own icons
 H2="$T/h2"; mkdir -p "$H2/.shortcuts/icons" "$H2/.termux/boot"
@@ -147,7 +148,21 @@ H4="$T/h4"; mkdir -p "$H4/.shortcuts/icons"
 printf 'MY-ICON' > "$H4/.shortcuts/icons/$W1.png"
 rinstall "$H4"
 check "vorhandenes Icon bleibt unangetastet"           MY-ICON "$(cat "$H4/.shortcuts/icons/$W1.png")"
-check "fehlendes Icon (Ubuntu) kommt als Standard"     0 "$(cmp -s "$ICONS/ubuntu.png" "$H4/.shortcuts/icons/$W2.png"; echo $?)"
+check "fehlendes Icon (Ubuntu) kommt als Standard"     0 "$(cmp -s "$ICONS/widget.png" "$H4/.shortcuts/icons/$W2.png"; echo $?)"
+
+# the default icons of earlier versions are replaced by the new one, also under the older names; run twice: no change
+H9="$T/h9"; mkdir -p "$H9/.shortcuts/icons"
+cp "$ICONS/legacy/claude.png" "$H9/.shortcuts/icons/$W1.png"
+cp "$ICONS/legacy/ubuntu.png" "$H9/.shortcuts/icons/Ubuntu >_.png"
+rinstall "$H9"
+check "frühere Standard-Icons: '$W1.png' ersetzt"       0 "$(cmp -s "$ICONS/widget.png" "$H9/.shortcuts/icons/$W1.png"; echo $?)"
+check "frühere Standard-Icons: '>_' wandert und wird ersetzt" 0 "$(cmp -s "$ICONS/widget.png" "$H9/.shortcuts/icons/$W2.png"; echo $?)"
+check "frühere Standard-Icons: alter Name ist weg"       nein "$(has "$H9/.shortcuts/icons/Ubuntu >_.png")"
+check "frühere Standard-Icons: Meldung"                  2 "$(grep -c '^  Icon: ' "$T/install.log")"
+before="$(cksum < "$H9/.shortcuts/icons/$W1.png")"
+rinstall "$H9"
+check "zweiter Lauf: Icon unverändert"                   "$before" "$(cksum < "$H9/.shortcuts/icons/$W1.png")"
+check "zweiter Lauf: keine Icon-Meldung"                 0 "$(grep -c '^  Icon: ' "$T/install.log")"
 
 # ------------------------------------------------------------------------- 5. --no-widgets
 H5="$T/h5"; mkdir -p "$H5"
@@ -168,7 +183,7 @@ H8="$T/h8"; mkdir -p "$H8/.shortcuts/icons"
 printf '#!/bin/bash\necho my own widget\n' > "$H8/.shortcuts/Claude"
 printf '#!/bin/bash\nexec rootbridge shell\n' > "$H8/.shortcuts/Ubuntu >_"
 printf '#!/bin/bash\nexec rootbridge attach\n' > "$H8/.shortcuts/Claude Code"
-cp "$ICONS/ubuntu.png" "$H8/.shortcuts/icons/Ubuntu >_.png"
+cp "$ICONS/legacy/ubuntu.png" "$H8/.shortcuts/icons/Ubuntu >_.png"
 runinstall_uninstall "$H8"
 check "uninstall: fremdes Skript 'Claude' bleibt"      ja "$(has "$H8/.shortcuts/Claude")"
 check "uninstall: 'Ubuntu >_' (unseres) ist weg"       nein "$(has "$H8/.shortcuts/Ubuntu >_")"
@@ -176,7 +191,7 @@ check "uninstall: 'Claude Code' (unseres) ist weg"     nein "$(has "$H8/.shortcu
 check "uninstall: Standard-Icon der >_-Generation weg" nein "$(has "$H8/.shortcuts/icons/Ubuntu >_.png")"
 
 # ----------------------------------------------------------------------------- 7. the icons
-for n in claude ubuntu; do
+for n in widget legacy/claude legacy/ubuntu; do
     info="$(python3 -I - "$ICONS/$n.png" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read()
@@ -187,28 +202,7 @@ PY
 )"
     check "Icon $n.png: gültiges PNG, 192x192, 8 Bit RGBA" "True 192 192 8 6 True" "$info"
 done
-
-# the committed PNGs are what the generator produces (compare the decoded pixels: the compressed bytes
-# may differ between zlib builds)
-mkdir -p "$T/regen"
-python3 -I "$ROOT/tools/make-shortcut-icons.py" "$T/regen" > /dev/null
-for n in claude ubuntu; do
-    same="$(python3 -I - "$ICONS/$n.png" "$T/regen/$n.png" <<'PY'
-import struct, sys, zlib
-def pixels(path):
-    d = open(path, "rb").read()
-    pos, idat = 8, b""
-    while pos < len(d):
-        n, kind = struct.unpack(">I4s", d[pos:pos + 8])
-        if kind == b"IDAT":
-            idat += d[pos + 8:pos + 8 + n]
-        pos += 12 + n
-    return zlib.decompress(idat)
-print(pixels(sys.argv[1]) == pixels(sys.argv[2]))
-PY
-)"
-    check "Icon $n.png entspricht tools/make-shortcut-icons.py" True "$same"
-done
+check "Das neue Icon unterscheidet sich von den früheren" 0 "$(cmp -s "$ICONS/widget.png" "$ICONS/legacy/claude.png" && echo 1 || echo 0)"
 
 check "Test hat nie das echte rootbridge/tmux/pkill gestartet" 0 "$(grep -c '^tmux\|^pkill' "$STUB_LOG")"
 

@@ -62,10 +62,12 @@ for n in "Claude" "Ubuntu" "Claude >_" "Ubuntu >_" "Claude Code" "Ubuntu Shell";
     fi
 done
 # icons: only the default ones this project installed (an icon you chose stays)
-for pair in "claude:Claude" "claude:Claude >_" "ubuntu:Ubuntu" "ubuntu:Ubuntu >_"; do
-    if cmp -s "$REPO/termux/shortcuts/icons/${pair%%:*}.png" "$HOME/.shortcuts/icons/${pair#*:}.png" 2>/dev/null; then
-        rm -f "$HOME/.shortcuts/icons/${pair#*:}.png"
-    fi
+for name in "Claude" "Claude >_" "Ubuntu" "Ubuntu >_"; do
+    icon="$HOME/.shortcuts/icons/$name.png"
+    [ -f "$icon" ] || continue
+    for default in "$REPO/termux/shortcuts/icons/widget.png" "$REPO"/termux/shortcuts/icons/legacy/*.png; do
+        if cmp -s "$default" "$icon" 2>/dev/null; then rm -f "$icon"; break; fi
+    done
 done
 say "Programme, Widgets und Boot-Skript entfernt."
 say "Bleibt erhalten: ~/.rootbridge (Audit-Log, Sicherungen), ~/.config/termux-root-bridge,"

@@ -97,9 +97,10 @@ Opciones: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`
 con ventana emergente de la v1 si lo encuentra.
 
 **Widgets.** Con la app Termux:Widget tienes dos accesos directos: **Claude** (conectarse a la sesión de Claude Code) y
-**Ubuntu** (una shell Ubuntu simple). El instalador los coloca en `~/.shortcuts` junto con iconos neutros `>_`
-(`~/.shortcuts/icons/<nombre>.png`, sin logotipos; se regeneran con `tools/make-shortcut-icons.py`). Un icono que ya
-existe nunca se reemplaza, así que puedes poner allí tu propio PNG; con los nombres anteriores («Claude Code» /
+**Ubuntu** (una shell Ubuntu simple). El instalador los coloca en `~/.shortcuts` junto con el icono del widget
+(`termux/shortcuts/icons/widget.png`, copiado a `~/.shortcuts/icons/<nombre>.png`, el mismo para ambos). Los iconos
+neutros `>_` de versiones anteriores (`termux/shortcuts/icons/legacy`) se reemplazan por él; cualquier otro icono que ya
+exista nunca se reemplaza, así que puedes poner allí tu propio PNG; con los nombres anteriores («Claude Code» /
 «Ubuntu Shell», «Claude >_» / «Ubuntu >_») un icono existente pasa al nombre nuevo y se eliminan los scripts antiguos.
 Las copias de seguridad de los scripts de widgets y de arranque van a `~/.rootbridge/backups` (Termux:Widget lista cada
 archivo de `~/.shortcuts` y Termux:Boot ejecuta cada archivo de `~/.termux/boot`). `--no-widgets` omite todo esto.
