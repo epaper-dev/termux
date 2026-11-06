@@ -5,6 +5,12 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* New widget icon: `termux/shortcuts/icons/widget.png` (192x192, one icon for the **Claude** and the **Ubuntu** widget)
+  replaces the neutral `>_` icons. `install.sh` installs it where no icon exists and in place of an icon that is exactly a
+  default icon of an earlier version (kept as `termux/shortcuts/icons/legacy/{claude,ubuntu}.png` for this comparison; also
+  under the earlier names "Claude >_" / "Ubuntu >_"); an icon you chose stays. `uninstall.sh` removes the new and the old
+  default icons only. `tools/make-shortcut-icons.py` is gone (the legacy PNGs are fixed files now).
+  `tests/test_widgets.sh` has 68 checks.
 * Colours follow the phone: `install.sh` installs the light scheme as `~/.termux/colors-light.properties` (before:
   `colors.properties`). The E-Paper Termux build (`epaper-dev/termux`) uses it while the phone is in light mode; dark mode
   keeps Termux' own default scheme or your `colors.properties`. A `colors.properties` that is exactly the light palette

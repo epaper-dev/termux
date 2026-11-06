@@ -38,7 +38,7 @@
 #      skips it and the Claude Code theme), a ~/.bashrc block (alias `ubuntu`, reloads the Termux settings
 #      in every new shell; ordinary Termux windows stay plain shells, Claude Code starts
 #      via the widgets, `ubuntu` or `rootbridge attach`), the Termux:Widget shortcuts
-#      "Claude" and "Ubuntu" with icons (an icon you already have stays; icons of the
+#      "Claude" and "Ubuntu" with the widget icon (an icon you chose stays; icons of the
 #      earlier names "Claude Code" / "Ubuntu Shell" / "Claude >_" / "Ubuntu >_" are carried
 #      over; --no-widgets skips all this), optional boot script, an extra keys row in
 #      ~/.termux/termux.properties (S-TAB = Shift+Tab, KEYBOARD = soft keyboard on/off; an
@@ -459,10 +459,20 @@ if [ "$DO_WIDGETS" = 1 ]; then
     for pair in "claude:Claude" "ubuntu:Ubuntu"; do
         src="${pair%%:*}"; name="${pair#*:}"
         inst "$REPO/termux/shortcuts/$src" "$SC/$name"
-        # the default icon only if there is none: an icon the user chose stays
-        if [ ! -e "$SC/icons/$name.png" ]; then
-            cp "$REPO/termux/shortcuts/icons/$src.png" "$SC/icons/$name.png"
-            say "  Icon: $SC/icons/$name.png"
+        # One default icon for both widgets: installed if there is none, and in place of an icon that is exactly a default
+        # icon of an earlier version (termux/shortcuts/icons/legacy). An icon the user chose stays.
+        icon="$SC/icons/$name.png"
+        replace=0
+        if [ ! -e "$icon" ]; then
+            replace=1
+        else
+            for old in "$REPO"/termux/shortcuts/icons/legacy/*.png; do
+                cmp -s "$old" "$icon" 2>/dev/null && replace=1
+            done
+        fi
+        if [ "$replace" = 1 ] && ! cmp -s "$REPO/termux/shortcuts/icons/widget.png" "$icon" 2>/dev/null; then
+            cp "$REPO/termux/shortcuts/icons/widget.png" "$icon"
+            say "  Icon: $icon"
         fi
     done
 else
