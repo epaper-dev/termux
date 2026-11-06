@@ -1,0 +1,130 @@
+name: Sync upstream
+
+# `master` is an unchanged copy of the seven upstream repositories (termux/termux-app, termux-api, termux-boot,
+# termux-widget, termux-styling, termux-float, termux-tasker), each below its own directory. `main` is the
+# E-Paper product: master plus our own changes. This takes new upstream commits into master, merges master into
+# main and then builds and publishes a release set. Details and the branch model: .github/scripts/sync_upstream.sh
+#
+# Runs every 6 hours. A run without new upstream commits changes nothing and builds nothing.
+#
+# A merge conflict between upstream and main ends the run red, opens an issue with the steps to fix it (merge
+# master into main by hand, push) and leaves main as it was; master is up to date anyway. The issue closes itself
+# as soon as a run succeeds, and a second failing run does not open a second issue.
+#
+# After a successful merge into main the workflow `Release set` is started with the release key and publishes the
+# APKs as a GitHub release. Set the repository variable RELEASE_AFTER_SYNC to `false` to stop that (Settings >
+# Secrets and variables > Actions > Variables).
+#
+# Optional secret SYNC_TOKEN (a personal access token with the `repo` and `workflow` scopes): used for the push
+# instead of the built-in token. Only needed if GitHub refuses the push of upstream workflow files.
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      product_branch:
+        description: 'Branch that receives the merge of master (for tests, normally main)'
+        required: false
+        default: main
+      components:
+        description: 'Space separated subset to sync (default: all seven)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PRODUCT: ${{ inputs.product_branch || 'main' }}
+    steps:
+      - name: Clone repository (all branches, full history)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      # The script switches branches, and master does not have it: run a copy from outside the working tree
+      - name: Sync master with upstream and merge it into the product branch
+        id: sync
+        env:
+          COMPONENTS: ${{ inputs.components }}
+        run: |
+          cp .github/scripts/sync_upstream.sh "$RUNNER_TEMP/sync_upstream.sh"
+          [ -n "$COMPONENTS" ] || unset COMPONENTS
+          bash "$RUNNER_TEMP/sync_upstream.sh"
+
+      - name: Build and publish a release set
+        if: steps.sync.outputs.merged == 'true' && env.PRODUCT == 'main' && vars.RELEASE_AFTER_SYNC != 'false'
+        run: |
+          # the merge succeeded: a problem here must not be reported as a failed sync
+          if gh workflow run release_set.yml --ref main -f signing=release-key -f publish=true; then
+            echo "- Started the \`Release set\` workflow (release key, publish)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::The merge worked, but the Release set workflow could not be started. Start it by hand (signing=release-key, publish)."
+            echo "- **The Release set workflow could not be started.** Start it by hand: signing \`release-key\`, publish." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Open an issue about the failure
+        if: failure()
+        env:
+          CONFLICT: ${{ steps.sync.outputs.conflict }}
+        run: |
+          set +e -u -o pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ "$CONFLICT" = true ]; then
+            title="Upstream sync: master could not be merged into $PRODUCT"
+            body="$(printf '%s\n' \
+              "The sync could not merge \`master\` (upstream) into \`$PRODUCT\`: upstream changed lines that the E-Paper changes changed as well. \`master\` is up to date, \`$PRODUCT\` is unchanged." \
+              "" \
+              "Resolve it locally:" \
+              "" \
+              '```sh' \
+              "git fetch origin && git switch $PRODUCT && git pull --ff-only" \
+              "git merge origin/master" \
+              "# fix the conflicts, commit, then" \
+              "git push origin $PRODUCT" \
+              '```' \
+              "" \
+              "Then run the \"Sync upstream\" workflow again (or wait for the next scheduled run). This issue closes itself when it succeeds." \
+              "" \
+              "Run (the conflicting files are in its summary): $run_url")"
+          else
+            title="Upstream sync: failed"
+            body="$(printf '%s\n' \
+              "The upstream sync failed. Nothing was merged into \`$PRODUCT\`. The log of the run says why (a network error, or \`master\` is not an unchanged copy of upstream any more, or a push was refused)." \
+              "" \
+              "This issue closes itself when a later run succeeds." \
+              "" \
+              "Run: $run_url")"
+          fi
+          existing="$(gh issue list --state open --limit 100 --json number,title | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -n 1)"
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing is already open, not opening another one."
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$body"
+
+      - name: Close the issue when the sync works again
+        if: success()
+        run: |
+          set +e -u -o pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          for title in "Upstream sync: master could not be merged into $PRODUCT" "Upstream sync: failed"; do
+            number="$(gh issue list --state open --limit 100 --json number,title | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -n 1)"
+            if [ -n "$number" ]; then
+              gh issue close "$number" --comment "Fixed: the sync works again. Run: $run_url"
+              echo "- Closed issue #$number." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done

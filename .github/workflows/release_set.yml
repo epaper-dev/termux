@@ -29,7 +29,7 @@ on:
         required: false
         default: 'app,termux-api,termux-boot,termux-widget,termux-styling,termux-float,termux-tasker'
       publish:
-        description: 'Create a GitHub pre-release with the APKs (only with release-key)'
+        description: 'Create a GitHub release with the APKs as single files (only with release-key)'
         type: boolean
         default: false
 
@@ -79,9 +79,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: ${{ inputs.signing == 'release-key' && 90 || 14 }}
 
-      - name: Publish a pre-release
+      # The APKs go to the release as single files (not zipped like the workflow artifact above), the report is the
+      # release text. Only after a successful build and check, and only with the real key.
+      - name: Publish a release
         if: inputs.publish && inputs.signing == 'release-key'
         run: |
           tag="set-$(date -u +%Y%m%d)-${GITHUB_RUN_NUMBER}"
-          gh release create "$tag" --prerelease --title "Release set $tag" --notes-file "$OUT_DIR/REPORT.md" \
-            "$OUT_DIR"/apks/*.apk "$OUT_DIR/sha256sums.txt"
+          gh release create "$tag" --target "$GITHUB_SHA" --latest --title "Termux E-Paper release set $tag" \
+            --notes-file "$OUT_DIR/REPORT.md" "$OUT_DIR"/apks/*.apk "$OUT_DIR/sha256sums.txt"
+          echo "Release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$tag" | tee -a "$GITHUB_STEP_SUMMARY"
