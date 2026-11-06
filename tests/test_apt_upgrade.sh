@@ -262,7 +262,7 @@ check "Gast zweiter Lauf: keine neue Sicherung"       "$b0" "$(cbak "$S")"
 ginstall "$S" --apt-upgrade off
 check "Gast --apt-upgrade off"                        "APT_UPGRADE=off" "$(gval "$S" APT_UPGRADE)"
 check "Gast --apt-upgrade off: genau eine Zeile"      1 "$(gcount "$S" APT_UPGRADE)"
-check "Gast --apt-upgrade off: WORKDIR bleibt"        "WORKDIR=/root/workspace" "$(gval "$S" WORKDIR)"
+check "Gast --apt-upgrade off: WORKDIR bleibt"        "WORKDIR=/root/work" "$(gval "$S" WORKDIR)"
 before="$(cksum < "$(gconf "$S")")"; b0="$(cbak "$S")"
 ginstall "$S" --apt-upgrade off
 check "Gast --apt-upgrade off wiederholt: unverändert" "$before" "$(cksum < "$(gconf "$S")")"

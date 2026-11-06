@@ -155,9 +155,10 @@ están cargados antes de que arranquen `claude update` y Claude Code. Para cambi
 dispositivo nuevo** (o tras borrar Termux) pasa la opción en la primera instalación, porque aún no hay una
 configuración de Termux que pueda recordar el nombre. Después queda guardado allí (`REMOTE_NAME`), así que cada
 instalación posterior lo reutiliza sin la opción (también con un invitado nuevo o tras `uninstall.sh`), y el instalador
-del invitado escribe `CLAUDE_ARGS="--remote-control android --continue"`. El nombre pertenece a la *sesión*: una sesión
-nueva lo recibe del flag, y `--continue` conserva esa sesión (y su nombre) entre reinicios. Una sesión que ya existe
-con otro nombre no se renombra con el flag; renómbrala una vez con `/rename android`.
+del invitado escribe `CLAUDE_ARGS="--remote-control android --continue"`. `--remote-control NOMBRE` activa Remote
+Control y titula la sesión en la vista Remote Control. Esa sesión de Remote Control se reutiliza tras reinicios y
+`/clear` y conserva su nombre, también uno puesto con `/rename`. Para otro nombre basta un único `/rename NOMBRE`.
+A propósito no hay `--name`: mostraría el nombre además en el marco del campo de entrada de la ventana de Claude Code.
 
 ## Uso diario
 

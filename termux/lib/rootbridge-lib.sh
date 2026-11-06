@@ -8,7 +8,7 @@ BRIDGE_DIR="${BRIDGE_DIR:-$HOME/.rootbridge}"
 RB_CONFIG="${ROOTBRIDGE_CONFIG:-$HOME/.config/termux-root-bridge/config}"
 
 DISTRO="ubuntu"
-WORKDIR="/root/workspace"
+WORKDIR="/root/work"
 SESSION="ubuntu"
 TICKET_TTL=1800
 STALE_TIMEOUT=70        # requests older than this were abandoned by androidsu

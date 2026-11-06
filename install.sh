@@ -6,6 +6,7 @@
 #                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME] [--no-extra-keys]
 #                   [--apt-upgrade daily|always|off | --no-apt-upgrade]
 #                   [--claude-update daily|always|off | --no-claude-update] [--no-setup]
+#                   [--model NAME|none]
 #
 # Setup (automatic, nothing to ask for): what is missing gets installed first: the Termux packages
 #   (pkg install), the Ubuntu guest (proot-distro install, a download of a few hundred MB),
@@ -16,14 +17,22 @@
 #   screen, the Claude login.
 #
 # --autonomous yes|no|ask: yes (default) sets skipDangerousModePermissionPrompt in the guest, so Claude
-#   Code shows no warning dialog when you switch to bypass mode (Shift+Tab). Claude still starts in the
-#   mode of your settings, and every Android-root command still asks. no leaves the setting alone (an
-#   earlier value stays), ask asks on a terminal.
+#   Code shows no warning dialog for bypass mode, and makes bypass mode the start mode
+#   (permissions.defaultMode = bypassPermissions, only if settings.json has no default mode yet).
+#   Every Android-root command still asks. no leaves both settings alone (an earlier value stays),
+#   ask asks on a terminal.
+#
+# --model NAME|none: model in the guest's ~/.claude/settings.json. Default "opusplan" (Opus plans,
+#   Sonnet works), written only if settings.json has no model yet; --model always writes it, none
+#   leaves the model alone.
+#
+# Claude Code starts in /root/work in the guest (WORKDIR; the installer creates the folder).
 #
 # What it does (idempotent, with backups):
 #   1. installs rootbridge + rootbridge-daemon into $PREFIX/bin
-#   2. config ~/.config/termux-root-bridge/config (--remote-name NAME is stored there as
-#      REMOTE_NAME and reused by every later install), tmux clipboard settings
+#   2. config ~/.config/termux-root-bridge/config (the Remote Control name is "android" unless
+#      --remote-name NAME says otherwise; NAME is stored there as REMOTE_NAME and reused by every
+#      later install), tmux clipboard settings
 #   3. light colour scheme ~/.termux/colors.properties (--no-colors skips it and the
 #      Claude Code theme), a ~/.bashrc block (alias `ubuntu`, reloads the Termux settings
 #      in every new shell; ordinary Termux windows stay plain shells, Claude Code starts
@@ -53,8 +62,9 @@ END='# <<< termux-root-bridge <<<'
 
 DO_SETUP=1; SETUP_DID=0; DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=yes
 CLAUDE_THEME=light-ansi   # ANSI-only: uses the 16 colours of colors.properties, readable in Termux
-REMOTE_NAME=""; REMOTE_NAME_SET=0
+REMOTE_NAME="android"; REMOTE_NAME_SET=0   # default name in the Remote Control view
 APT_MODE=""; APT_MODE_SET=0
+MODEL=""; MODEL_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 APT_RE='^(daily|always|off)$'
@@ -81,7 +91,10 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--claude-update braucht daily, always oder off" >&2; exit 2; }
             CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift ;;
         --no-claude-update) CLAUDE_UPD_MODE=off; CLAUDE_UPD_SET=1 ;;
-        -h|--help) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --model)
+            [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
+            MODEL="$2"; MODEL_SET=1; shift ;;
+        -h|--help) sed -n '2,52p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -91,6 +104,12 @@ case "$AUTONOMOUS" in
     yes|no|ask) ;;
     *) echo "--autonomous: ungültiger Wert '$AUTONOMOUS' (erlaubt: yes, no, ask)" >&2; exit 2 ;;
 esac
+
+MODEL_RE='^(none|[A-Za-z0-9][]A-Za-z0-9._:[-]{0,63})$'
+if [ "$MODEL_SET" = 1 ] && ! [[ "$MODEL" =~ $MODEL_RE ]]; then
+    echo "--model: ungültiger Name '$MODEL' (erlaubt: Buchstaben, Ziffern, . _ : - [ ]; max. 64 Zeichen; oder none)" >&2
+    exit 2
+fi
 
 if [ "$REMOTE_NAME_SET" = 1 ] && ! [[ "$REMOTE_NAME" =~ $NAME_RE ]]; then
     echo "--remote-name: ungültiger Name '$REMOTE_NAME' (erlaubt: Buchstaben, Ziffern, . _ -; max. 64 Zeichen; nicht mit - beginnen)" >&2
@@ -283,16 +302,28 @@ if [ ! -e "$CFG" ]; then
     cat > "$CFG" <<'EOF'
 # termux-root-bridge - read as data (no shell code is executed)
 DISTRO=ubuntu
-WORKDIR=/root/workspace
+WORKDIR=/root/work
 SESSION=ubuntu
 TICKET_TTL=1800
 # SU_ARGS=-mm -c      # global mount namespace (Magisk), if paths look empty
 AUTOSTART_DELAY=3
-# REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); set with install.sh --remote-name
+# REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); default android, change with install.sh --remote-name
 # APT_UPGRADE=daily     # apt-get update + upgrade in the guest at session start: daily | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
 # CLAUDE_UPDATE=daily   # claude update in the guest at session start: daily | always | off; set with install.sh --claude-update / --no-claude-update
 EOF
     say "  neu: $CFG"
+fi
+# The old default WORKDIR=/root/workspace was never created. If the folder is not in the guest nobody uses it:
+# move to the new default /root/work (an existing /root/workspace and any other value stay).
+if grep -qx 'WORKDIR=/root/workspace' "$CFG"; then
+    d="$(sed -n 's/^DISTRO=//p' "$CFG" | tail -n 1)"; d="${d:-ubuntu}"
+    if [ ! -e "$PREFIX/var/lib/proot-distro/containers/$d/rootfs/root/workspace" ] \
+       && [ ! -e "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root/workspace" ]; then
+        tmp="$CFG.new.$$"
+        sed 's|^WORKDIR=/root/workspace$|WORKDIR=/root/work|' "$CFG" > "$tmp"
+        backup "$CFG"; mv -f "$tmp" "$CFG"
+        say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
+    fi
 fi
 if [ "$REMOTE_NAME_SET" = 1 ]; then
     # store the name in the Termux config: it survives a reinstall of the guest
@@ -309,7 +340,8 @@ else
     # no option given: reuse the name stored by an earlier install
     v="$(sed -n 's/^REMOTE_NAME=//p' "$CFG" | tail -n 1)"
     v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; say "  Remote-Control-Name aus der Konfig: $REMOTE_NAME"; fi
+    if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; say "  Remote-Control-Name aus der Konfig: $REMOTE_NAME"
+    else say "  Remote-Control-Name (Standard): $REMOTE_NAME"; fi
 fi
 if [ "$APT_MODE_SET" = 1 ]; then
     # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
@@ -494,6 +526,7 @@ if [ "$DO_GUEST" = 1 ]; then
     fi
     GUEST_ARGS=(--src /var/tmp/termux-root-bridge-install --autonomous "$AUTONOMOUS")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
+    if [ "$MODEL_SET" = 1 ]; then GUEST_ARGS+=(--model "$MODEL"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
     if [ -n "$APT_MODE" ]; then GUEST_ARGS+=(--apt-upgrade "$APT_MODE"); fi
     if [ -n "$CLAUDE_UPD_MODE" ]; then GUEST_ARGS+=(--claude-update "$CLAUDE_UPD_MODE"); fi
@@ -509,6 +542,9 @@ say "  rootbridge status        # Zustand prüfen"
 say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude')"
 say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
 say "Normale Termux-Fenster bleiben reine Shells; Claude Code startet nicht mehr automatisch."
+if [ "$DO_GUEST" = 1 ] && [ "$AUTONOMOUS" = yes ]; then
+    say "Claude Code startet im Bypass-Modus im Ordner /root/work; Android-Root-Befehle fragen weiter nach."
+fi
 say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."
 if [ "$SETUP_DID" = 1 ]; then
     say "Noch von Hand: Root-Freigabe für Termux bestätigen (Root-Manager fragt bei der ersten Anfrage), Termux:Boot einmal öffnen,"

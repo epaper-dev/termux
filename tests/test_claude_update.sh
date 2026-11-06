@@ -194,7 +194,7 @@ ginstall "$S" --claude-update off
 check "Gast --claude-update off"                      "CLAUDE_UPDATE=off" "$(gval "$S" CLAUDE_UPDATE)"
 check "Gast --claude-update off: genau eine Zeile"    1 "$(gcount "$S" CLAUDE_UPDATE)"
 check "Gast --claude-update off: APT_UPGRADE bleibt"  "APT_UPGRADE=daily" "$(gval "$S" APT_UPGRADE)"
-check "Gast --claude-update off: WORKDIR bleibt"      "WORKDIR=/root/workspace" "$(gval "$S" WORKDIR)"
+check "Gast --claude-update off: WORKDIR bleibt"      "WORKDIR=/root/work" "$(gval "$S" WORKDIR)"
 before="$(cksum < "$(gconf "$S")")"; b0="$(cbak "$S")"
 ginstall "$S" --claude-update off
 check "Gast --claude-update off wiederholt: unverändert" "$before" "$(cksum < "$(gconf "$S")")"

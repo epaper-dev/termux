@@ -4,8 +4,9 @@
 #   2. claude update (CLAUDE_UPDATE, at most once a day, never blocks the start)
 #   3. Claude Code with autonomous mode available
 #
-# Plan mode stays the start mode (settings.json); Shift+Tab switches to
-# "bypass permissions" because --allow-dangerously-skip-permissions is set.
+# The start mode comes from settings.json (the installer sets bypassPermissions with --autonomous yes);
+# Shift+Tab switches between the modes, "bypass permissions" included, because
+# --allow-dangerously-skip-permissions is set.
 # Root-related commands are still confirmed by the android-root-guard hook.
 
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
@@ -36,7 +37,7 @@ limit_nofile() {
     ulimit -n "$n" 2>/dev/null || true
 }
 
-workdir="$(conf_get WORKDIR || echo /root/workspace)"
+workdir="$(conf_get WORKDIR || echo /root/work)"
 cd "$workdir" 2>/dev/null || cd /root || exit 1
 
 export BROWSER=/usr/local/bin/rootbridge-open

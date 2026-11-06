@@ -74,21 +74,27 @@ none of this and only tells you what is missing (`--no-deps-check` skips the pac
 `--setup`, the option of earlier versions, is still accepted and does nothing extra.
 
 **Autonomous mode is on by default** (`--autonomous yes`): the installer sets `skipDangerousModePermissionPrompt` in the guest's
-`~/.claude/settings.json`, so Claude Code shows no warning dialog when you switch to bypass mode with Shift+Tab. That is
-the only change. Claude still starts in the mode of your settings, bypass mode runs inside the proot guest, and every
-Android-root command still asks for confirmation (also in bypass mode). `--autonomous no` leaves the setting alone (a value
-set earlier stays), `--autonomous ask` asks on a terminal.
+`~/.claude/settings.json`, so Claude Code shows no warning dialog for bypass mode, and `permissions.defaultMode` to
+`bypassPermissions` (only if you have not set a default mode yet), so Claude Code **starts in bypass mode**. Bypass mode runs
+inside the proot guest, and every Android-root command still asks for confirmation (also in bypass mode). `--autonomous no`
+leaves both settings alone (a value set earlier stays), `--autonomous ask` asks on a terminal.
+
+The installer also sets the **model** to `opusplan` (Opus plans, Sonnet works), again only if `settings.json` has no model
+yet. `--model NAME` always writes the given model, `--model none` leaves it alone. And it creates the **working directory
+`/root/work`** in the guest, where Claude Code starts (`WORKDIR` in `/etc/termux-root-bridge.conf`; a value you set there
+stays). Before, the folder was never created, so a fresh installation started Claude Code in `/root`. An old default
+`WORKDIR=/root/workspace` is moved to `/root/work` if the folder `/root/workspace` does not exist.
 
 Then start Claude Code with the **Claude** widget, or type `ubuntu` (alias for `rootbridge attach`) in a Termux
 shell. The first start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +
 `upgrade`, at most once a day, see below), runs `claude update` (also at most once a day) and starts Claude Code; later
 starts just attach to it.
 **Ordinary Termux windows stay plain shells** (with the colours loaded), nothing starts by itself. With Termux:Boot the
-session is created in the background after a reboot (`rootbridge start --no-attach`). Claude still **starts in plan
-mode** (from your `settings.json`); press **Shift+Tab** to switch to *bypass permissions* (on a phone use the **S-TAB** key
+session is created in the background after a reboot (`rootbridge start --no-attach`). Claude **starts in bypass
+mode** (with `--autonomous no`: in the mode of your `settings.json`); press **Shift+Tab** to switch modes (on a phone use the **S-TAB** key
 the installer adds to the Termux extra keys row, see below).
 
-Options: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--remote-name NAME`,
+Options: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--model NAME|none`, `--remote-name NAME`,
 `--apt-upgrade daily|always|off`, `--no-apt-upgrade`, `--claude-update daily|always|off`, `--no-claude-update`. The installer is idempotent, backs up what it changes, and
 migrates the old v1 popup bridge if it finds one.
 
@@ -140,14 +146,14 @@ any time with `/theme`. Every new interactive Termux shell runs
 `termux-reload-settings`, and so do the Termux:Widget shortcuts before they attach, so the colours are loaded before
 `claude update` and Claude Code start. To change the look, edit `termux/colors.properties` and run `install.sh` again.
 
-**Fixed name in the Remote Control view** (claude.ai/code): `bash install.sh --remote-name android`. **On a new
-device** (or after wiping Termux) pass the option on the first install, because there is no Termux config yet that
-could remember the name. It is then stored there (`REMOTE_NAME`), so every later install reuses it without the option
-— also with a fresh guest or after `uninstall.sh` — and the guest installer writes
-`CLAUDE_ARGS="--remote-control android --continue"`. The name belongs
-to the *session*: a new session gets it from the flag, `--continue` keeps that session (and its name) across
-restarts. A session that already exists with another name is not renamed by the flag; rename it once with
-`/rename android`.
+**Fixed name in the Remote Control view** (claude.ai/code): the default is `android`, so a plain `bash install.sh`
+sets it. Another name: `bash install.sh --remote-name NAME`. That name is stored in the Termux config (`REMOTE_NAME`), so
+every later install reuses it without the option — also with a fresh guest or after `uninstall.sh` — and the guest
+installer writes
+`CLAUDE_ARGS="--remote-control android --continue"`. `--remote-control NAME` turns Remote Control on and titles the
+session in the Remote Control view. That Remote Control session is reused across restarts and `/clear` and keeps its
+name, also one you set with `/rename`. For another name a single `/rename NAME` is enough. There is deliberately no
+`--name`: it would also show the name in the frame of the input field in the Claude Code window.
 
 ## Daily use
 
@@ -190,9 +196,9 @@ instead of well under a second. `rootbridge-claude` and the `claude()` function 
 it); the shell around it keeps its own limit.
 
 `CLAUDE_ARGS` in the guest file holds extra arguments for the session start (`rootbridge-claude`), e.g.
-`CLAUDE_ARGS="--remote-control android --continue"` to show the session as "android" in the Remote Control
-view and resume the last session (`install.sh --remote-name` writes and updates this line; other arguments in it
-stay). The `claude()` shell function reads only the Remote Control name from it (never `--continue`) and leaves it
+`CLAUDE_ARGS="--remote-control android --continue"` to show the session as "android" in the Remote
+Control view and resume the last session (`install.sh` writes and updates this line, name `android` by default; other
+arguments in it stay). The `claude()` shell function reads only the Remote Control name from it (never `--continue`) and leaves it
 out for `-p`, `--version` and `--help`.
 
 ## What is verified

@@ -3,19 +3,25 @@
 # Normally started by ../install.sh; can also be run by hand as root in the guest.
 #
 #   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
-#                    [--theme NAME] [--apt-upgrade daily|always|off]
+#                    [--theme NAME] [--model NAME|none] [--apt-upgrade daily|always|off]
 #                    [--claude-update daily|always|off] [--uninstall]
 #
 #   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
-#                     (no warning dialog when you switch to bypass mode; every Android-root command still
-#                     asks); no: leave it as it is (an earlier value stays); ask: ask on a terminal
+#                     (no warning dialog for bypass mode) and, if settings.json has no default mode yet,
+#                     permissions.defaultMode = bypassPermissions (Claude Code starts in bypass mode; every
+#                     Android-root command still asks); no: leave both as they are (an earlier value
+#                     stays); ask: ask on a terminal
 #   --theme NAME      set the Claude Code theme in ~/.claude/settings.json (dark, light,
 #                     light-daltonized, dark-daltonized, light-ansi, dark-ansi); other keys stay
+#   --model NAME      model in ~/.claude/settings.json. Default "opusplan" (Opus plans, Sonnet works), written
+#                     only if settings.json has no model yet; with the option the value is always written;
+#                     none leaves the model alone
 #   --remote-name N   name shown in the Remote Control view (claude.ai/code): sets
 #                     `--remote-control N` in CLAUDE_ARGS of /etc/termux-root-bridge.conf
-#                     (other arguments stay; a new line also gets --continue)
+#                     (other arguments stay; a new line also gets --continue) and, unless you set it
+#                     yourself, remoteControlAtStartup=true in ~/.claude/settings.json
 #   --apt-upgrade M   APT_UPGRADE in /etc/termux-root-bridge.conf: rootbridge-apt runs apt-get
 #                     update + upgrade at the start of the Claude Code session (daily = at most
 #                     once a day, always, off). Without the option an existing value stays and a
@@ -34,6 +40,7 @@ ROOT=""
 AUTONOMOUS=yes
 REMOTE_NAME=""; REMOTE_NAME_SET=0
 THEME=""; THEME_SET=0
+MODEL=opusplan; MODEL_SET=0
 APT_MODE=""; APT_MODE_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 UNINSTALL=0
@@ -48,6 +55,9 @@ while [ $# -gt 0 ]; do
         --theme)
             [ $# -ge 2 ] || { echo "--theme braucht einen Namen" >&2; exit 2; }
             THEME="$2"; THEME_SET=1; shift 2 ;;
+        --model)
+            [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
+            MODEL="$2"; MODEL_SET=1; shift 2 ;;
         --apt-upgrade)
             [ $# -ge 2 ] || { echo "--apt-upgrade braucht daily, always oder off" >&2; exit 2; }
             APT_MODE="$2"; APT_MODE_SET=1; shift 2 ;;
@@ -70,6 +80,12 @@ if [ "$THEME_SET" = 1 ]; then
         *) echo "--theme: ungültiger Name '$THEME' (erlaubt: dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi)" >&2
            exit 2 ;;
     esac
+fi
+
+MODEL_RE='^(none|[A-Za-z0-9][]A-Za-z0-9._:[-]{0,63})$'
+if [ "$MODEL_SET" = 1 ] && ! [[ "$MODEL" =~ $MODEL_RE ]]; then
+    echo "--model: ungültiger Name '$MODEL' (erlaubt: Buchstaben, Ziffern, . _ : - [ ]; max. 64 Zeichen; oder none)" >&2
+    exit 2
 fi
 
 if [ "$APT_MODE_SET" = 1 ]; then
@@ -175,16 +191,25 @@ with open(out, "w", encoding="utf-8") as fh:
 PY
 }
 
-# settings_set <key> <json-value>: set one key in the user's ~/.claude/settings.json.
-# All other keys stay; nothing is written (and nothing backed up) if the value is already
-# there; a file that is not valid JSON is left alone with a warning.
-settings_set() {
-    local s="$ROOT$HOME_DIR/.claude/settings.json" rc=0
+# settings_queue <key> <json-value> [missing]: remember one key for ~/.claude/settings.json.
+# settings_apply writes everything remembered in ONE go (one write, at most one backup; a fresh
+# installation does not leave intermediate versions behind).
+#   <key>   may be a dotted path (permissions.defaultMode)
+#   missing an existing value stays (a default, not a decision); without it the value is always written
+# All other keys stay; nothing is written (and nothing backed up) if everything is already there;
+# a file that is not valid JSON is left alone with a warning.
+SETTINGS_Q=()
+settings_queue() { SETTINGS_Q+=("$1" "$2" "${3:-}"); }
+settings_apply() {
+    [ "${#SETTINGS_Q[@]}" -gt 0 ] || return 0
+    local s="$ROOT$HOME_DIR/.claude/settings.json" rc=0 kind key raw mode i keys=""
+    local msgs="$s.msgs.$$"
     mkdir -p "$(dirname "$s")"
-    python3 -I - "$s" "$s.new.$$" "$1" "$2" <<'PY' || rc=$?
+    python3 -I - "$s" "$s.new.$$" "${SETTINGS_Q[@]}" > "$msgs" <<'PY' || rc=$?
 import json, sys
-path, out, key, raw = sys.argv[1:5]
-value = json.loads(raw)
+path, out = sys.argv[1:3]
+rest = sys.argv[3:]
+entries = [rest[i:i + 3] for i in range(0, len(rest), 3)]
 try:
     with open(path, encoding="utf-8") as fh:
         cur = json.load(fh)
@@ -194,19 +219,55 @@ except (OSError, ValueError):
     sys.exit(3)
 if not isinstance(cur, dict):
     sys.exit(3)
-if key in cur and cur[key] == value:
+changed = False
+for key, raw, mode in entries:
+    value = json.loads(raw)
+    node = cur
+    parts = key.split(".")
+    ok = True
+    for part in parts[:-1]:
+        node = node.setdefault(part, {})
+        if not isinstance(node, dict):
+            ok = False
+            break
+    if not ok:
+        print("BAD\t%s\t%s\t%s" % (key, raw, mode))
+        continue
+    last = parts[-1]
+    if last in node and (mode == "missing" or node[last] == value):
+        print("KEEP\t%s\t%s\t%s" % (key, raw, mode))
+        continue
+    node[last] = value
+    changed = True
+    print("SET\t%s\t%s\t%s" % (key, raw, mode))
+if not changed:
     sys.exit(4)
-cur[key] = value
 with open(out, "w", encoding="utf-8") as fh:
     json.dump(cur, fh, indent=2, ensure_ascii=False)
     fh.write("\n")
 PY
+    for ((i = 0; i < ${#SETTINGS_Q[@]}; i += 3)); do keys="$keys ${SETTINGS_Q[i]}"; done
+    SETTINGS_Q=()
     case "$rc" in
-        0) commit_file "$s.new.$$" "$s"; say "  ~/.claude/settings.json: $1=$2" ;;
-        4) say "  ~/.claude/settings.json: $1=$2 (schon gesetzt)" ;;
-        3) say "  Hinweis: ~/.claude/settings.json ist kein gültiges JSON-Objekt - $1 nicht gesetzt." ;;
-        *) rm -f "$s.new.$$"; echo "settings_set: Fehler ($rc)" >&2; return 1 ;;
+        0) commit_file "$s.new.$$" "$s" ;;
+        4) ;;
+        3) rm -f "$msgs"
+           say "  Hinweis: ~/.claude/settings.json ist kein gültiges JSON-Objekt - nicht gesetzt:$keys"
+           return 0 ;;
+        *) rm -f "$s.new.$$" "$msgs"; echo "settings_apply: Fehler ($rc)" >&2; return 1 ;;
     esac
+    while IFS=$'\t' read -r kind key raw mode; do
+        case "$kind" in
+            SET)  say "  ~/.claude/settings.json: $key=$raw" ;;
+            KEEP) if [ "$mode" = missing ]; then
+                      say "  ~/.claude/settings.json: $key ist bereits belegt - bleibt unverändert"
+                  else
+                      say "  ~/.claude/settings.json: $key=$raw (schon gesetzt)"
+                  fi ;;
+            BAD)  say "  Hinweis: ~/.claude/settings.json: $key nicht gesetzt (ein übergeordneter Eintrag ist kein Objekt)." ;;
+        esac
+    done < "$msgs"
+    rm -f "$msgs"
 }
 
 unmerge_managed() {
@@ -282,7 +343,7 @@ fi
 # configuration (keep user edits, add missing keys)
 mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"
-for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/workspace" \
+for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/work" \
           "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" "TTY_CONFIRM=1" \
           "APT_UPGRADE=daily" "APT_TIMEOUT=600" "CLAUDE_UPDATE=daily" "NOFILE_LIMIT=2048" \
           "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"; do
@@ -306,7 +367,10 @@ if [ "$CLAUDE_UPD_SET" = 1 ]; then
     say "  CLAUDE_UPDATE=$CLAUDE_UPD_MODE"
 fi
 # Remote Control name -> CLAUDE_ARGS (other arguments stay; a new line also gets --continue,
-# because the name belongs to the session and --continue keeps that session)
+# because the name belongs to the session and --continue keeps that session).
+# --remote-control NAME turns Remote Control on and titles a new bridge session. The bridge session is reused
+# across restarts and /clear and keeps its title (also one set with /rename). Deliberately no --name: it would
+# also show the name in the frame of the input field.
 if [ -n "$REMOTE_NAME" ]; then
     python3 -I - "$ROOT$CONF" "$ROOT$CONF.new.$$" "$REMOTE_NAME" <<'PY'
 import sys
@@ -346,8 +410,27 @@ PY
     commit_file "$ROOT$CONF.new.$$" "$ROOT$CONF"
     say "  Remote-Control-Name: $REMOTE_NAME (CLAUDE_ARGS)"
 fi
+# The old default WORKDIR=/root/workspace was never created. If the folder is not there nobody uses it:
+# move to the new default /root/work (an existing /root/workspace and any other value stay).
+if grep -qx 'WORKDIR=/root/workspace' "$ROOT$CONF" && [ ! -e "$ROOT/root/workspace" ]; then
+    cp "$ROOT$CONF" "$ROOT$CONF.new.$$"
+    sed -i 's|^WORKDIR=/root/workspace$|WORKDIR=/root/work|' "$ROOT$CONF.new.$$"
+    commit_file "$ROOT$CONF.new.$$" "$ROOT$CONF"
+    say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
+fi
 chmod 644 "$ROOT$CONF"
 say "  Konfiguration: $CONF"
+
+# working directory of the Claude Code session: rootbridge-claude starts in it and falls back to /root
+# if it is missing, so it has to exist (WORKDIR from the config, a value you set earlier stays)
+wd="$(sed -n 's/^WORKDIR=//p' "$ROOT$CONF" | tail -n 1 | tr -d '\042\047')"
+case "$wd" in
+    *..*|"") wd=/root/work ;;
+    /[A-Za-z0-9._/-]*) ;;
+    *) wd=/root/work ;;
+esac
+mkdir -p "$ROOT$wd"
+say "  Arbeitsordner: $wd"
 
 # bridge directory must exist as a real node inside the guest (proot bind quirk)
 mkdir -p "$ROOT$BRIDGE_DIR" 2>/dev/null || say "  Hinweis: $BRIDGE_DIR nicht anlegbar (Termux-Home nicht gebunden?)"
@@ -370,13 +453,31 @@ if [ "$AUTONOMOUS" = ask ]; then
     fi
 fi
 if [ "$AUTONOMOUS" = yes ]; then
-    settings_set skipDangerousModePermissionPrompt true
+    settings_queue skipDangerousModePermissionPrompt true
+    # start in bypass mode (a default mode you chose yourself stays)
+    settings_queue permissions.defaultMode '"bypassPermissions"' missing
+fi
+
+# Remote Control on at every session start (user scope; a value you set yourself stays). The
+# `--remote-control NAME` flag in CLAUDE_ARGS does the same for sessions started by rootbridge-claude.
+if [ -n "$REMOTE_NAME" ]; then
+    settings_queue remoteControlAtStartup true missing
+fi
+
+# model: "opusplan" (Opus plans, Sonnet works) unless you already have one; --model always writes
+if [ "$MODEL" != none ]; then
+    if [ "$MODEL_SET" = 1 ]; then
+        settings_queue model "\"$MODEL\""
+    else
+        settings_queue model "\"$MODEL\"" missing
+    fi
 fi
 
 # Claude Code theme (only when asked for: install.sh passes --theme unless --no-colors)
 if [ "$THEME_SET" = 1 ]; then
-    settings_set theme "\"$THEME\""
+    settings_queue theme "\"$THEME\""
 fi
+settings_apply
 
 # guest ~/.bashrc: claude() wrapper with browser hand-off and bypass availability
 B="$ROOT$HOME_DIR/.bashrc"

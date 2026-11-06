@@ -39,6 +39,7 @@ ginstall "$S" --remote-name android
 check "Gast neu: Installer läuft"                     0 "$?"
 check "Gast neu: CLAUDE_ARGS mit Name und --continue" 'CLAUDE_ARGS="--remote-control android --continue"' "$(gline "$S")"
 check "Gast neu: genau eine CLAUDE_ARGS-Zeile"        1 "$(gcount "$S")"
+check "Gast neu: remoteControlAtStartup=true"         1 "$(grep -c '"remoteControlAtStartup": *true' "$S"/home/tester/.claude/settings.json 2>/dev/null || true)"
 
 before="$(cksum < "$(gconf "$S")")"
 baks() { find "$S/etc" -name 'termux-root-bridge.conf.bak-*' | wc -l | tr -d ' '; }
@@ -70,6 +71,14 @@ check "--remote-control ohne Namen wird ersetzt"      'CLAUDE_ARGS="--remote-con
 S="$T/g5"; pre "$S" 'CLAUDE_ARGS="--remote-control=old --continue"'
 ginstall "$S" --remote-name android
 check "--remote-control=name wird ersetzt"            'CLAUDE_ARGS="--remote-control android --continue"' "$(gline "$S")"
+
+S="$T/g5a"; pre "$S" 'CLAUDE_ARGS="--remote-control old --name foo --continue"'
+ginstall "$S" --remote-name android
+check "eigenes --name bleibt erhalten"                'CLAUDE_ARGS="--remote-control android --name foo --continue"' "$(gline "$S")"
+
+S="$T/g5b"; pre "$S" 'CLAUDE_ARGS="--continue --model opus"'
+ginstall "$S" --remote-name android
+check "Neue Zeile enthält kein --name"                0 "$(gline "$S" | grep -c -- '--name')"
 
 S="$T/g6"; pre "$S" 'CLAUDE_ARGS="--continue --model opus"'
 ginstall "$S"
@@ -153,17 +162,18 @@ check "Name ändern: Gast-Konfig"                      'CLAUDE_ARGS="--remote-co
 sed -i 's|^REMOTE_NAME=.*|REMOTE_NAME="bad name"|' "$CFG"
 : > "$STUB_LOG"
 rinstall
-check "Ungültiger Wert in der Konfig wird ignoriert"  0 "$(grep -c -- '--remote-name' "$STUB_LOG")"
+check "Ungültiger Wert in der Konfig wird ignoriert"  0 "$(grep -c -- 'bad' "$STUB_LOG")"
+check "Ungültiger Wert: Standard android stattdessen" 1 "$(grep -c -- '--remote-name android' "$STUB_LOG")"
 
-# no config, no option: nothing is passed on and no REMOTE_NAME is invented
+# no config, no option: the default name "android" is passed on, but not stored as REMOTE_NAME
 H2="$T/home2"; mkdir -p "$H2"
 : > "$STUB_LOG"; rm -rf "$GUEST_ROOT"
 HOME="$H2" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H2/.rootbridge" \
     bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-setup --autonomous no > "$T/install.log" 2>&1
 check "Ohne Name: Installer läuft"                    0 "$?"
-check "Ohne Name: nichts an den Gast übergeben"       0 "$(grep -c -- '--remote-name' "$STUB_LOG")"
+check "Ohne Name: Standard android an den Gast"       1 "$(grep -c -- '--remote-name android' "$STUB_LOG")"
 check "Ohne Name: keine REMOTE_NAME-Zeile"            0 "$(grep -c '^REMOTE_NAME=' "$H2/.config/termux-root-bridge/config")"
-check "Ohne Name: keine CLAUDE_ARGS im Gast"          0 "$(grep -c '^CLAUDE_ARGS=' "$GUEST_ROOT/etc/termux-root-bridge.conf")"
+check "Ohne Name: CLAUDE_ARGS mit android im Gast"    'CLAUDE_ARGS="--remote-control android --continue"' "$(grep '^CLAUDE_ARGS=' "$GUEST_ROOT/etc/termux-root-bridge.conf")"
 
 # invalid option value: abort before anything is written
 H3="$T/home3"; mkdir -p "$H3"
