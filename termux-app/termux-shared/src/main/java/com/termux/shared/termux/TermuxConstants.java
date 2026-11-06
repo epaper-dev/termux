@@ -12,7 +12,7 @@ import java.util.Formatter;
 import java.util.List;
 
 /*
- * Version: v0.54.0
+ * Version: v0.53.0
  * SPDX-License-Identifier: MIT
  *
  * Changelog
@@ -282,10 +282,6 @@ import java.util.List;
  * - 0.53.0 (2025-01-12)
  *      - Renamed `TERMUX_API`, `TERMUX_STYLING`, `TERMUX_TASKER`, `TERMUX_WIDGET` classes with `_APP` suffix added.
  *      - Added `TERMUX_*_MAIN_ACTIVITY_NAME` and `TERMUX_*_LAUNCHER_ACTIVITY_NAME` constants to each app class.
- *
- * - 0.54.0 (2026-11-06)
- *      - Added `TERMUX_COLOR_PROPERTIES_LIGHT_FILE_PATH`, `TERMUX_COLOR_PROPERTIES_LIGHT_FILE`,
- *          `TERMUX_COLOR_PROPERTIES_DARK_FILE_PATH`, `TERMUX_COLOR_PROPERTIES_DARK_FILE`.
  */
 
 /**
@@ -770,18 +766,6 @@ public final class TermuxConstants {
     public static final String TERMUX_COLOR_PROPERTIES_FILE_PATH = TERMUX_DATA_HOME_DIR_PATH + "/colors.properties"; // Default: "/data/data/com.termux/files/home/.termux/colors.properties"
     /** Termux app and Termux:Styling colors.properties file */
     public static final File TERMUX_COLOR_PROPERTIES_FILE = new File(TERMUX_COLOR_PROPERTIES_FILE_PATH);
-
-    /** Termux app colors-light.properties file path. If the file exists, it is used instead of
-     * {@link #TERMUX_COLOR_PROPERTIES_FILE_PATH} while the light theme is in use. */
-    public static final String TERMUX_COLOR_PROPERTIES_LIGHT_FILE_PATH = TERMUX_DATA_HOME_DIR_PATH + "/colors-light.properties"; // Default: "/data/data/com.termux/files/home/.termux/colors-light.properties"
-    /** Termux app colors-light.properties file */
-    public static final File TERMUX_COLOR_PROPERTIES_LIGHT_FILE = new File(TERMUX_COLOR_PROPERTIES_LIGHT_FILE_PATH);
-
-    /** Termux app colors-dark.properties file path. If the file exists, it is used instead of
-     * {@link #TERMUX_COLOR_PROPERTIES_FILE_PATH} while the dark theme is in use. */
-    public static final String TERMUX_COLOR_PROPERTIES_DARK_FILE_PATH = TERMUX_DATA_HOME_DIR_PATH + "/colors-dark.properties"; // Default: "/data/data/com.termux/files/home/.termux/colors-dark.properties"
-    /** Termux app colors-dark.properties file */
-    public static final File TERMUX_COLOR_PROPERTIES_DARK_FILE = new File(TERMUX_COLOR_PROPERTIES_DARK_FILE_PATH);
 
     /** Termux app and Termux:Styling font.ttf file path */
     public static final String TERMUX_FONT_FILE_PATH = TERMUX_DATA_HOME_DIR_PATH + "/font.ttf"; // Default: "/data/data/com.termux/files/home/.termux/font.ttf"
