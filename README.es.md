@@ -146,13 +146,16 @@ modo que las instalaciones posteriores lo conservan, también con un invitado nu
 mano no crea la marca.
 
 **Colores y tema.** Salvo que pases `--no-colors`, el instalador escribe un esquema de colores claro en
-`~/.termux/colors.properties` (tu archivo anterior se conserva como `colors.properties.bak-<marca de tiempo>`) y fija
-`"theme": "light-ansi"` en el `~/.claude/settings.json` del invitado (las demás claves se mantienen). La variante ANSI
-dibuja con los 16 colores de ese archivo en lugar de valores RGB fijos, lo que se lee mucho mejor en Termux que
-`light`; cámbialo cuando quieras con `/theme`. Cada nueva shell interactiva de Termux ejecuta
+`~/.termux/colors-light.properties`. La compilación E-Paper de Termux (`epaper-dev/termux`) lo usa mientras el teléfono
+está en modo claro y cambia con el modo claro/oscuro del teléfono; en modo oscuro rige el esquema oscuro propio de
+Termux, o tu `colors.properties` si tienes una. Otras compilaciones de Termux ignoran el archivo (allí cópialo a
+`colors.properties`). Un `colors.properties` que sea exactamente la paleta clara de versiones anteriores se elimina; los
+demás se conservan. El instalador también fija `"theme": "auto"` en el `~/.claude/settings.json` del invitado (las demás
+claves se mantienen): Claude Code pregunta al terminal por su color de fondo y elige su tema claro u oscuro, así que
+también sigue al teléfono; cámbialo cuando quieras con `/theme`. Cada nueva shell interactiva de Termux ejecuta
 `termux-reload-settings`, y también los accesos directos de Termux:Widget antes de conectarse, de modo que los colores
 están cargados antes de que arranquen `claude update` y Claude Code. Para cambiar el aspecto, edita
-`termux/colors.properties` y vuelve a ejecutar `install.sh`.
+`termux/colors-light.properties` y vuelve a ejecutar `install.sh`.
 
 **Nombre fijo en la vista Remote Control** (claude.ai/code): `bash install.sh --remote-name android`. **En un
 dispositivo nuevo** (o tras borrar Termux) pasa la opción en la primera instalación, porque aún no hay una

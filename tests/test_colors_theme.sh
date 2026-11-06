@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Test: light colour scheme (~/.termux/colors.properties), reload at every start and the
-# Claude Code theme.
+# Test: light colour scheme (~/.termux/colors-light.properties), the move of the colors.properties of earlier
+# versions, reload at every start and the Claude Code theme (auto).
 #   1. guest installer: --theme writes "theme" into ~/.claude/settings.json (staging root)
-#   2. install.sh with a fake HOME/PREFIX: colors.properties, reload, --no-colors, --theme hand-over
+#   2. install.sh with a fake HOME/PREFIX: colors-light.properties, reload, --no-colors, --theme hand-over
 #   3. the block in ~/.bashrc: reload in every new shell, nothing else (no autostart); an old
 #      autostart block is replaced when install.sh runs again
 #   4. Termux:Widget shortcuts reload first
@@ -14,7 +14,7 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GUEST="$ROOT/guest/install-guest.sh"
 INSTALL="$ROOT/install.sh"
-COLORS="$ROOT/termux/colors.properties"
+LIGHT="$ROOT/termux/colors-light.properties"
 
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
@@ -90,7 +90,7 @@ check "--autonomous yes + --theme: theme"             light-ansi "$(jget "$(sett
 check "--autonomous yes + --theme: model bleibt"      opusplan "$(jget "$(settings "$S")" model)"
 
 # every valid name is accepted
-for name in dark light light-daltonized dark-daltonized light-ansi dark-ansi; do
+for name in auto dark light light-daltonized dark-daltonized light-ansi dark-ansi; do
     S="$T/v-$name"
     ginstall "$S" --theme "$name"
     check "Gültiges Theme '$name'"                    "0 $name" "$? $(jget "$(settings "$S")" theme)"
@@ -156,57 +156,82 @@ rinstall() {  # rinstall <home> [args...]  (fake HOME/PREFIX, stubs first in PAT
         bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-setup --autonomous no "$@" > "$T/install.log" 2>&1
 }
 reloads() { grep -c '^reload$' "$RB_LOG" || true; }
-cbaks() { find "$1/.termux" -name 'colors.properties.bak-*' 2>/dev/null | wc -l | tr -d ' '; }
+cbaks() { find "$1/.termux" -name 'colors*.properties.bak-*' 2>/dev/null | wc -l | tr -d ' '; }
 gsettings() { printf '%s' "$GUEST_ROOT$ROOTBRIDGE_GUEST_HOME/.claude/settings.json"; }
 CF="$H/.termux/colors.properties"
+LF="$H/.termux/colors-light.properties"
 
-check "Repo-Farbdatei: background=#FFFFFF"            "background=#FFFFFF" "$(grep '^background=' "$COLORS")"
-check "Repo-Farbdatei: 16 Farben"                     16 "$(grep -c '^color[0-9]*=#[0-9A-Fa-f]\{6\}$' "$COLORS")"
+check "Repo-Farbdatei: background=#FFFFFF"            "background=#FFFFFF" "$(grep '^background=' "$LIGHT")"
+check "Repo-Farbdatei: foreground=#000000"            "foreground=#000000" "$(grep '^foreground=' "$LIGHT")"
+check "Repo-Farbdatei: 16 Farben"                     16 "$(grep -c '^color[0-9]*=#[0-9A-Fa-f]\{6\}$' "$LIGHT")"
+check "Repo: keine colors.properties (Standardschema bleibt dem Nutzer)" nein "$([ -e "$ROOT/termux/colors.properties" ] && echo ja || echo nein)"
+# install.sh recognises the colors.properties of earlier versions by checksum: it is the palette without the header
+grep -v '^#' "$LIGHT" > "$T/legacy-colors.properties"
+check "Prüfsumme der früheren Palette stimmt"         "$(sed -n 's/^ *LEGACY_COLORS_SHA256=//p' "$INSTALL")" "$(sha256sum < "$T/legacy-colors.properties" | cut -d' ' -f1)"
 
 rinstall "$H"
 check "install.sh: läuft durch"                       0 "$?"
-check "colors.properties: Inhalt wie im Repo"         0 "$(cmp -s "$COLORS" "$CF"; echo $?)"
-check "colors.properties: Modus 600"                  600 "$(stat -c %a "$CF")"
+check "colors-light.properties: Inhalt wie im Repo"   0 "$(cmp -s "$LIGHT" "$LF"; echo $?)"
+check "colors-light.properties: Modus 600"            600 "$(stat -c %a "$LF")"
+check "Keine colors.properties angelegt"              nein "$([ -e "$CF" ] && echo ja || echo nein)"
 check "Neu geschrieben: Reload genau einmal"          1 "$(reloads)"
-check "Gast bekam --theme light-ansi"                 1 "$(grep -c -- '--theme light-ansi' "$STUB_LOG")"
-check "Gast: theme=light-ansi in settings.json"       light-ansi "$(jget "$(gsettings)" theme)"
+check "Gast bekam --theme auto"                       1 "$(grep -c -- '--theme auto' "$STUB_LOG")"
+check "Gast: theme=auto in settings.json"             auto "$(jget "$(gsettings)" theme)"
 check "Neu geschrieben: keine Sicherung"              0 "$(cbaks "$H")"
 
-cksum_before="$(cksum < "$CF")"
+cksum_before="$(cksum < "$LF")"
 rinstall "$H"
 check "Zweiter Lauf: läuft durch"                     0 "$?"
-check "Zweiter Lauf: Farbdatei unverändert"           "$cksum_before" "$(cksum < "$CF")"
+check "Zweiter Lauf: Farbdatei unverändert"           "$cksum_before" "$(cksum < "$LF")"
 check "Zweiter Lauf: keine Sicherung"                 0 "$(cbaks "$H")"
 check "Zweiter Lauf: kein weiterer Reload"            1 "$(reloads)"
 check "Zweiter Lauf: .bashrc-Block genau einmal"      1 "$(grep -c '^# >>> termux-root-bridge >>>$' "$H/.bashrc")"
 
-# a different colours file is replaced, the old one is kept as a backup, reload runs again
-printf '%s\n' 'background=#123456' > "$CF"
+# a changed light file is replaced, the old one is kept as a backup, reload runs again
+printf '%s\n' 'background=#123456' > "$LF"
 rinstall "$H"
-check "Fremde Farbdatei: ersetzt"                     0 "$(cmp -s "$COLORS" "$CF"; echo $?)"
-check "Fremde Farbdatei: eine Sicherung"              1 "$(cbaks "$H")"
-check "Fremde Farbdatei: Sicherung hat den alten Inhalt" "background=#123456" "$(cat "$H"/.termux/colors.properties.bak-*)"
-check "Fremde Farbdatei: Reload erneut"               2 "$(reloads)"
+check "Geänderte Lichtdatei: ersetzt"                 0 "$(cmp -s "$LIGHT" "$LF"; echo $?)"
+check "Geänderte Lichtdatei: eine Sicherung"          1 "$(cbaks "$H")"
+check "Geänderte Lichtdatei: Sicherung hat den alten Inhalt" "background=#123456" "$(cat "$H"/.termux/colors-light.properties.bak-*)"
+check "Geänderte Lichtdatei: Reload erneut"           2 "$(reloads)"
+
+# the colors.properties of earlier versions (the light palette) is removed, the light file takes over
+HL="$T/home-legacy"; mkdir -p "$HL/.termux"; cp "$T/legacy-colors.properties" "$HL/.termux/colors.properties"; : > "$RB_LOG"
+rinstall "$HL"
+check "Frühere Palette: läuft durch"                  0 "$?"
+check "Frühere Palette: colors.properties entfernt"   nein "$([ -e "$HL/.termux/colors.properties" ] && echo ja || echo nein)"
+check "Frühere Palette: keine Sicherung nötig"        0 "$(cbaks "$HL")"
+check "Frühere Palette: colors-light.properties da"   0 "$(cmp -s "$LIGHT" "$HL/.termux/colors-light.properties"; echo $?)"
+check "Frühere Palette: Meldung"                      1 "$(grep -c 'entfernt: ~/.termux/colors.properties' "$T/install.log")"
+check "Frühere Palette: Reload genau einmal"          1 "$(reloads)"
+
+# any other colors.properties is the user's: it stays and keeps being the scheme of the dark mode
+HF="$T/home-foreign"; mkdir -p "$HF/.termux"; printf '%s\n' 'background=#123456' > "$HF/.termux/colors.properties"; : > "$RB_LOG"
+rinstall "$HF"
+check "Fremde colors.properties: unberührt"           "background=#123456" "$(cat "$HF/.termux/colors.properties")"
+check "Fremde colors.properties: Hinweis"             1 "$(grep -c 'bleibt (gilt im dunklen Modus)' "$T/install.log")"
+check "Fremde colors.properties: keine Sicherung"     0 "$(cbaks "$HF")"
+check "Fremde colors.properties: Lichtdatei da"       0 "$(cmp -s "$LIGHT" "$HF/.termux/colors-light.properties"; echo $?)"
 
 # --no-colors: no colours file, no theme, installer still exits 0
 H2="$T/home2"; mkdir -p "$H2"; : > "$STUB_LOG"; : > "$RB_LOG"; rm -rf "$GUEST_ROOT"
 rinstall "$H2" --no-colors
 check "--no-colors: läuft durch (Exit 0)"             0 "$?"
-check "--no-colors: keine colors.properties"          nein "$([ -e "$H2/.termux/colors.properties" ] && echo ja || echo nein)"
+check "--no-colors: keine colors-light.properties"    nein "$([ -e "$H2/.termux/colors-light.properties" ] && echo ja || echo nein)"
 check "--no-colors: kein Reload durch den Installer"  0 "$(reloads)"
 check "--no-colors: kein --theme an den Gast"         0 "$(grep -c -- '--theme' "$STUB_LOG")"
 check "--no-colors: theme nicht gesetzt"              - "$(jget "$(gsettings)" theme)"
 check "--no-colors: Farbschema-Hinweis fehlt am Ende" 0 "$(grep -c '^Farben:' "$T/install.log")"
 
-# an earlier install left theme "light" (or the user picked "dark"): the installer sets light-ansi, keeps the rest
+# an earlier install left theme "light" (or the user picked "dark"): the installer sets auto, keeps the rest
 H5="$T/home5"; mkdir -p "$H5"; rm -rf "$GUEST_ROOT"; mkdir -p "$(dirname "$(gsettings)")"
 printf '%s\n' '{"model":"opusplan","theme":"light"}' > "$(gsettings)"
 rinstall "$H5"
-check "Altes Theme 'light' wird zu light-ansi"        light-ansi "$(jget "$(gsettings)" theme)"
+check "Altes Theme 'light' wird zu auto"              auto "$(jget "$(gsettings)" theme)"
 check "Altes Theme: model bleibt"                     opusplan "$(jget "$(gsettings)" model)"
 
-# --no-colors leaves an existing colours file alone
-H3="$T/home3"; mkdir -p "$H3/.termux"; printf '%s\n' 'background=#abcdef' > "$H3/.termux/colors.properties"
+# --no-colors leaves existing colours files alone, even the colors.properties of earlier versions
+H3="$T/home3"; mkdir -p "$H3/.termux"; cp "$T/legacy-colors.properties" "$H3/.termux/colors.properties"
 before="$(cksum < "$H3/.termux/colors.properties")"
 rinstall "$H3" --no-colors
 check "--no-colors: vorhandene Farbdatei unberührt"   "$before" "$(cksum < "$H3/.termux/colors.properties")"
@@ -215,7 +240,7 @@ check "--no-colors: keine Sicherung"                  0 "$(cbaks "$H3")"
 # --no-guest still installs the colours (and calls no guest installer)
 H4="$T/home4"; mkdir -p "$H4"; : > "$STUB_LOG"
 rinstall "$H4" --no-guest
-check "--no-guest: Farben trotzdem installiert"       0 "$(cmp -s "$COLORS" "$H4/.termux/colors.properties"; echo $?)"
+check "--no-guest: Farben trotzdem installiert"       0 "$(cmp -s "$LIGHT" "$H4/.termux/colors-light.properties"; echo $?)"
 check "--no-guest: Gast-Installer nicht aufgerufen"   0 "$(wc -l < "$STUB_LOG" | tr -d ' ')"
 
 # --help lists the option and is not cut off

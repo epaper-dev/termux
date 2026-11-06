@@ -142,12 +142,15 @@ the Termux config as `CLAUDE_UPDATE`, so later installs keep it, also with a fre
 hand does not set the stamp.
 
 **Colours and theme.** Unless you pass `--no-colors`, the installer writes a light colour scheme to
-`~/.termux/colors.properties` (your previous file is kept as `colors.properties.bak-<timestamp>`) and sets
-`"theme": "light-ansi"` in the guest's `~/.claude/settings.json` (other keys stay). The ANSI variant draws with the
-16 colours of that file instead of fixed RGB values, which is much easier to read in Termux than `light`; switch
-any time with `/theme`. Every new interactive Termux shell runs
-`termux-reload-settings`, and so do the Termux:Widget shortcuts before they attach, so the colours are loaded before
-`claude update` and Claude Code start. To change the look, edit `termux/colors.properties` and run `install.sh` again.
+`~/.termux/colors-light.properties`. The E-Paper Termux build (`epaper-dev/termux`) uses it while the phone is in light
+mode and switches with the phone's light/dark mode; in dark mode Termux' own dark default applies, or your
+`colors.properties` if you have one. Other Termux builds ignore the file (there, copy it to `colors.properties`). A
+`colors.properties` that is exactly the light palette earlier versions installed is removed, any other one stays. The
+installer also sets `"theme": "auto"` in the guest's `~/.claude/settings.json` (other keys stay): Claude Code asks the
+terminal for its background colour and picks its light or dark theme, so it follows the phone as well; switch any time
+with `/theme`. Every new interactive Termux shell runs `termux-reload-settings`, and so do the Termux:Widget shortcuts
+before they attach, so the colours are loaded before `claude update` and Claude Code start. To change the look, edit
+`termux/colors-light.properties` and run `install.sh` again.
 
 **Fixed name in the Remote Control view** (claude.ai/code): the default is `android`, so a plain `bash install.sh`
 sets it. Another name: `bash install.sh --remote-name NAME`. That name is stored in the Termux config (`REMOTE_NAME`), so

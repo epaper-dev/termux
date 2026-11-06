@@ -148,12 +148,15 @@ nicht ändern; `/etc/termux-root-bridge.conf` im Gast). Das Limit wird nur gesen
 Shell drumherum behält ihres. Wirkt nach `install.sh` und einem Neustart der Claude-Code-Sitzung.
 
 **Farben und Theme.** Ohne `--no-colors` schreibt der Installer ein helles Farbschema nach
-`~/.termux/colors.properties` (deine bisherige Datei bleibt als `colors.properties.bak-<Zeitstempel>` erhalten) und
-setzt `"theme": "light-ansi"` in der `~/.claude/settings.json` des Gasts (andere Schlüssel bleiben). Die ANSI-Variante
-zeichnet mit den 16 Farben dieser Datei statt mit festen RGB-Werten und ist in Termux deutlich besser lesbar als
-`light`; jederzeit mit `/theme` umstellbar. Jede neue interaktive
-Termux-Shell führt `termux-reload-settings` aus, ebenso die Termux:Widget-Verknüpfungen vor dem Anhängen; die Farben
-sind also geladen, bevor `claude update` und Claude Code starten. Zum Ändern `termux/colors.properties` bearbeiten und
+`~/.termux/colors-light.properties`. Der E-Paper-Build von Termux (`epaper-dev/termux`) nutzt es, solange das Telefon im
+Hellmodus ist, und wechselt mit dem Hell/Dunkel-Modus des Telefons; im Dunkelmodus gilt Termux' eigener dunkler Standard
+oder deine `colors.properties`, falls du eine hast. Andere Termux-Builds ignorieren die Datei (dort nach
+`colors.properties` kopieren). Eine `colors.properties`, die genau der hellen Palette früherer Versionen entspricht, wird
+entfernt, jede andere bleibt. Außerdem setzt der Installer `"theme": "auto"` in der `~/.claude/settings.json` des Gasts
+(andere Schlüssel bleiben): Claude Code fragt das Terminal nach seiner Hintergrundfarbe und wählt sein helles oder
+dunkles Theme, folgt also ebenfalls dem Telefon; jederzeit mit `/theme` umstellbar. Jede neue interaktive Termux-Shell
+führt `termux-reload-settings` aus, ebenso die Termux:Widget-Verknüpfungen vor dem Anhängen; die Farben sind also
+geladen, bevor `claude update` und Claude Code starten. Zum Ändern `termux/colors-light.properties` bearbeiten und
 `install.sh` erneut ausführen.
 
 **Fester Name in der Remote-Control-Ansicht** (claude.ai/code): Standard ist `android`, ein einfaches `bash install.sh`
