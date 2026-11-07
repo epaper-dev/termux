@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -54,6 +55,12 @@ public final class TerminalView extends View {
     public TerminalEmulator mEmulator;
 
     public TerminalRenderer mRenderer;
+
+    /** The secure setting behind Android's "Accessibility > High contrast text" ({@code Settings.Secure.ACCESSIBILITY_HIGH_TEXT_CONTRAST_ENABLED}, which is hidden). */
+    private static final String SETTING_HIGH_TEXT_CONTRAST = "high_text_contrast_enabled";
+
+    /** Whether Android's "High contrast text" was on at the last check, see {@link #updateTextContrastGuard()}. */
+    private boolean mHighTextContrast;
 
     public TerminalViewClient mClient;
 
@@ -514,13 +521,42 @@ public final class TerminalView extends View {
      */
     public void setTextSize(int textSize) {
         mRenderer = new TerminalRenderer(textSize, mRenderer == null ? Typeface.MONOSPACE : mRenderer.mTypeface);
+        updateTextContrastGuard();
         updateSize();
     }
 
     public void setTypeface(Typeface newTypeface) {
         mRenderer = new TerminalRenderer(mRenderer.mTextSize, newTypeface);
+        updateTextContrastGuard();
         updateSize();
         invalidate();
+    }
+
+    /**
+     * Read Android's "High contrast text" setting and give it to the renderer: while it is on, the colours programs
+     * choose themselves are pulled to the right side of the threshold (see {@link com.termux.terminal.TextContrast}),
+     * while it is off they are drawn as chosen. Called when the renderer is created and when the window gets the focus
+     * back, which is where a change made in the system settings arrives.
+     */
+    private void updateTextContrastGuard() {
+        boolean on = false;
+        try {
+            on = Settings.Secure.getInt(getContext().getContentResolver(), SETTING_HIGH_TEXT_CONTRAST, 0) != 0;
+        } catch (RuntimeException e) {
+            // Setting not readable: leave the colours as the program chose them.
+        }
+        mHighTextContrast = on;
+        if (mRenderer != null) mRenderer.setTextContrastGuard(on);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        if (hasWindowFocus) {
+            boolean before = mHighTextContrast;
+            updateTextContrastGuard();
+            if (before != mHighTextContrast) invalidate();
+        }
     }
 
     @Override

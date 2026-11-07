@@ -12,6 +12,7 @@ import android.os.Build;
 import com.termux.terminal.TerminalBuffer;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalRow;
+import com.termux.terminal.TextContrast;
 import com.termux.terminal.TextStyle;
 import com.termux.terminal.WcWidth;
 
@@ -37,6 +38,9 @@ public final class TerminalRenderer {
 
     private final float[] asciiMeasures = new float[127];
 
+    /** Whether the colours programs choose are guarded against hollow text, see {@link TextContrast}. Off by default. */
+    private boolean mTextContrastGuard;
+
     public TerminalRenderer(int textSize, Typeface typeface) {
         mTextSize = textSize;
         mTypeface = typeface;
@@ -57,6 +61,15 @@ public final class TerminalRenderer {
         }
     }
 
+    /**
+     * Switch the guard of {@link TextContrast} on or off. It is meant for the time Android's "High contrast text" is on:
+     * only then does text on the wrong side of the middle turn into hollow letters, and the colours stay as the program
+     * chose them otherwise. The caller has to redraw afterwards.
+     */
+    public void setTextContrastGuard(boolean enabled) {
+        mTextContrastGuard = enabled;
+    }
+
     /** Render the terminal to a canvas with at a specified row scroll, and an optional rectangular selection. */
     public final void render(TerminalEmulator mEmulator, Canvas canvas, int topRow,
                              int selectionY1, int selectionY2, int selectionX1, int selectionX2) {
@@ -69,6 +82,8 @@ public final class TerminalRenderer {
         final TerminalBuffer screen = mEmulator.getScreen();
         final int[] palette = mEmulator.mColors.mCurrentColors;
         final int cursorShape = mEmulator.getCursorStyle();
+        // The colour the screen is cleared with: text on it gets its colour guarded, see TextContrast.
+        final int defaultBackground = palette[reverseVideo ? TextStyle.COLOR_INDEX_FOREGROUND : TextStyle.COLOR_INDEX_BACKGROUND];
 
         if (reverseVideo)
             canvas.drawColor(palette[TextStyle.COLOR_INDEX_FOREGROUND], PorterDuff.Mode.SRC);
@@ -145,7 +160,7 @@ public final class TerminalRenderer {
                         if (lastRunInsideCursor && cursorShape == TerminalEmulator.TERMINAL_CURSOR_STYLE_BLOCK) {
                             invertCursorTextColor = true;
                         }
-                        drawTextRun(canvas, line, palette, heightOffset, lastRunStartColumn, columnWidthSinceLastRun,
+                        drawTextRun(canvas, line, palette, defaultBackground, heightOffset, lastRunStartColumn, columnWidthSinceLastRun,
                             lastRunStartIndex, charsSinceLastRun, measuredWidthForRun,
                             cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor || lastRunInsideSelection);
                     }
@@ -174,12 +189,12 @@ public final class TerminalRenderer {
             if (lastRunInsideCursor && cursorShape == TerminalEmulator.TERMINAL_CURSOR_STYLE_BLOCK) {
                 invertCursorTextColor = true;
             }
-            drawTextRun(canvas, line, palette, heightOffset, lastRunStartColumn, columnWidthSinceLastRun, lastRunStartIndex, charsSinceLastRun,
+            drawTextRun(canvas, line, palette, defaultBackground, heightOffset, lastRunStartColumn, columnWidthSinceLastRun, lastRunStartIndex, charsSinceLastRun,
                 measuredWidthForRun, cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor || lastRunInsideSelection);
         }
     }
 
-    private void drawTextRun(Canvas canvas, char[] text, int[] palette, float y, int startColumn, int runWidthColumns,
+    private void drawTextRun(Canvas canvas, char[] text, int[] palette, int defaultBackground, float y, int startColumn, int runWidthColumns,
                              int startCharIndex, int runWidthChars, float mes, int cursor, int cursorStyle,
                              long textStyle, boolean reverseVideo) {
         int foreColor = TextStyle.decodeForeColor(textStyle);
@@ -190,6 +205,11 @@ public final class TerminalRenderer {
         final boolean italic = (effect & TextStyle.CHARACTER_ATTRIBUTE_ITALIC) != 0;
         final boolean strikeThrough = (effect & TextStyle.CHARACTER_ATTRIBUTE_STRIKETHROUGH) != 0;
         final boolean dim = (effect & TextStyle.CHARACTER_ATTRIBUTE_DIM) != 0;
+
+        // Truecolor and the 256 colour palette are the program's choice, the 16 scheme colours are the scheme's: only
+        // the former get their colour guarded against hollow text (see TextContrast).
+        boolean foreFromProgram = TextContrast.isProgramColor(foreColor);
+        boolean backFromProgram = TextContrast.isProgramColor(backColor);
 
         if ((foreColor & 0xff000000) != 0xff000000) {
             // Let bold have bright colors if applicable (one of the first 8):
@@ -207,6 +227,9 @@ public final class TerminalRenderer {
             int tmp = foreColor;
             foreColor = backColor;
             backColor = tmp;
+            boolean tmpFromProgram = foreFromProgram;
+            foreFromProgram = backFromProgram;
+            backFromProgram = tmpFromProgram;
         }
 
         float left = startColumn * mFontWidth;
@@ -247,6 +270,13 @@ public final class TerminalRenderer {
                 green = green * 2 / 3;
                 blue = blue * 2 / 3;
                 foreColor = 0xFF000000 + (red << 16) + (green << 8) + blue;
+            }
+
+            // While "High contrast text" is on, text on the default background in a colour of the program (after
+            // dimming) is drawn hollow if it is on the wrong side of the middle. Text on a background of its own, like
+            // a selection or the message backgrounds of Claude Code, keeps its colours.
+            if (mTextContrastGuard && foreFromProgram && backColor == defaultBackground) {
+                foreColor = TextContrast.guard(foreColor, backColor);
             }
 
             mTextPaint.setFakeBoldText(bold);

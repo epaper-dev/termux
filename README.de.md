@@ -52,7 +52,7 @@ das dem Telefon folgt.
 | | Änderung |
 |---|---|
 | 🌗 **Folgt dem Telefon** | Das Terminal selbst, nicht nur die Menüs, folgt dem Hell/Dunkel-Modus des Telefons, ohne jede Datei: eingebautes weißes Schema im hellen Modus, eingebautes schwarzes im dunklen, weißer Fensterhintergrund im hellen Modus. Alle Sitzungen wechseln gleichzeitig. |
-| 🔲 **Lesbar mit *Text mit hohem Kontrast*** | Android zeichnet Text schwarz oder weiß, je nachdem ob R+G+B unter 384 liegt, und gibt ihm eine Kontur in der Gegenfarbe. Farben nahe der Mitte werden so zu hohlen Buchstaben. Die eingebauten Schemata halten jede Textfarbe klar auf einer Seite (geprüft von `BuiltInColorSchemesTest`). |
+| 🔲 **Lesbar mit *Text mit hohem Kontrast*** | Android zeichnet Text schwarz oder weiß, je nachdem ob R+G+B unter 384 liegt, und gibt ihm eine Kontur in der Gegenfarbe. Farben nahe der Mitte werden so zu hohlen Buchstaben. Die eingebauten Schemata halten jede Textfarbe klar auf einer Seite (geprüft von `BuiltInColorSchemesTest`), und solange *Text mit hohem Kontrast* an ist, tut der Renderer dasselbe für Farben, die Programme selbst wählen (Truecolor, 256 Farben): Auf dem Standardhintergrund werden sie auf die richtige Seite gezogen (`TextContrast`). Bei ausgeschalteter Einstellung werden sie wie gewählt gezeichnet. |
 | 🔤 **Eingebaute Schrift** | [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) NL Bold statt der dünnen Monospace-Systemschrift. |
 | 📣 **DECSET 2031** | Programme erfahren von Hell/Dunkel-Wechseln (`CSI ? 997 ; 1\|2 n`, Abfrage mit `CSI ? 996 n`). tmux ab 3.6 und Claude Code folgen live. |
 | 🪟 **Termux:Float** | Dieselben Farbschemata, dieselbe Schrift und derselbe Hell/Dunkel-Wechsel. |
@@ -155,7 +155,18 @@ Im hellen Modus nutzt das Terminal `termux-shared/src/main/res/raw/colors_light_
 im dunklen `colors_dark_default.properties` (weiß auf schwarz). Jede Textfarbe bleibt klar dunkel (helles Schema:
 R+G+B unter 384) oder klar hell (dunkles Schema: 576 oder mehr, damit auch abgedunkelter Text über 384 bleibt). Die
 einzige Ausnahme ist das Grau, das Claude Codes ANSI-Themes hinter deine Nachrichten legen (hell: `color7` #E4E4E4,
-dunkel: `color8` #404040). Telefone ohne System-Dunkelmodus bleiben hell. `night-mode` in `termux.properties`
+dunkel: `color8` #404040).
+
+Programme wählen aber auch eigene Farben, die kein Schema abdecken kann: Claude Code zeichnet seinen „thinking“-Status
+in einem festen Truecolor-Grau von 153 bis 185, und das sind auf Weiß hohle Buchstaben. Deshalb zieht der Renderer
+(`TerminalRenderer`, `TextContrast` in `terminal-emulator`), solange Androids *Text mit hohem Kontrast* an ist (die
+View liest `high_text_contrast_enabled` beim Start und wenn das Fenster den Fokus zurückbekommt), die Textfarbe von
+Truecolor und der 256-Farben-Palette (Index 16 bis 255) auf die richtige Seite der Schwelle, aber nur für Text auf dem
+Standardhintergrund: Im hellen Modus
+wird R+G+B auf höchstens 380 herunterskaliert, im dunklen Modus auf mindestens 388 Richtung Weiß gemischt, der
+Farbton bleibt so weit wie möglich erhalten. Die 16 Schemafarben bleiben, wie das Schema (oder deine
+`colors.properties`) sie festlegt, und Text auf eigenem Hintergrund (Auswahl, Nachrichtenhintergründe von Claude Code)
+bleibt unberührt. Telefone ohne System-Dunkelmodus bleiben hell. `night-mode` in `termux.properties`
 (standardmäßig `system`, sonst `true`/`false`) bestimmt den Modus; Menüs, Einstellungen und Dialoge folgen ebenfalls.
 
 Dateien in `~/.termux/` gehen vor: `colors-light.properties` und/oder `colors-dark.properties` gelten in ihrem Modus,

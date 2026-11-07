@@ -53,7 +53,7 @@ tema que sigue al móvil.
 | | Cambio |
 |---|---|
 | 🌗 **Sigue al móvil** | El propio terminal (no solo los menús) sigue el modo claro u oscuro del móvil, sin ningún archivo: esquema blanco integrado en el tema claro, esquema negro integrado en el tema oscuro y fondo de ventana blanco en el tema claro. Todas las sesiones cambian a la vez. |
-| 🔲 **Legible con *Texto de alto contraste*** | Android dibuja el texto en negro o blanco según si R+G+B < 384 y le añade un contorno del otro color, por lo que los colores cercanos al centro se ven como letras huecas. Los esquemas integrados mantienen cada color de texto claramente en un lado (lo comprueba `BuiltInColorSchemesTest`). |
+| 🔲 **Legible con *Texto de alto contraste*** | Android dibuja el texto en negro o blanco según si R+G+B < 384 y le añade un contorno del otro color, por lo que los colores cercanos al centro se ven como letras huecas. Los esquemas integrados mantienen cada color de texto claramente en un lado (lo comprueba `BuiltInColorSchemesTest`), y mientras *Texto de alto contraste* está activado, el renderizador hace lo mismo con los colores que los programas eligen por su cuenta (truecolor, 256 colores): sobre el fondo predeterminado se llevan al lado correcto (`TextContrast`). Con la opción desactivada se dibujan como se eligieron. |
 | 🔤 **Fuente integrada** | [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) NL Bold en lugar de la fina fuente monoespaciada del sistema. |
 | 📣 **DECSET 2031** | Los programas se enteran de los cambios entre claro y oscuro (`CSI ? 997 ; 1\|2 n`, consulta `CSI ? 996 n`). tmux 3.6+ y Claude Code los siguen en directo. |
 | 🪟 **Termux:Float** | Los mismos esquemas de color, la misma fuente y el mismo cambio entre claro y oscuro. |
@@ -142,8 +142,18 @@ En el tema claro, el terminal usa `termux-shared/src/main/res/raw/colors_light_d
 blanco); en el oscuro, `colors_dark_default.properties` (blanco sobre negro). Todos los colores de texto quedan
 claramente oscuros (esquema claro: R+G+B por debajo de 384) o claramente claros (esquema oscuro: 576 o más, así el texto
 atenuado también queda por encima de 384). La única excepción es el gris que los temas ANSI de Claude Code ponen detrás
-de tus mensajes (claro: `color7` #E4E4E4, oscuro: `color8` #404040). Los móviles sin modo oscuro del sistema se quedan
-en claro. `night-mode` en `termux.properties` (`system` por defecto, o `true`/`false`) decide el modo; los menús,
+de tus mensajes (claro: `color7` #E4E4E4, oscuro: `color8` #404040).
+
+Los programas también eligen colores propios que ningún esquema puede cubrir: Claude Code dibuja su estado «thinking» en
+un gris truecolor fijo de 153 a 185, que sobre blanco son letras huecas. Por eso, mientras *Texto de alto
+contraste* de Android está activado (la vista lee `high_text_contrast_enabled` al arrancar y cuando la ventana recupera
+el foco), el renderizador (`TerminalRenderer`, `TextContrast` en `terminal-emulator`) lleva el color del texto de
+truecolor y de la paleta de 256 colores (índices 16 a 255) al lado correcto del umbral, pero solo para texto sobre el
+fondo predeterminado: en el modo claro R+G+B se
+reduce a 380 como máximo, en el oscuro se mezcla hacia el blanco hasta 388 como mínimo, conservando el tono en lo
+posible. Los 16 colores del esquema quedan como los define el esquema (o tu `colors.properties`), y el texto sobre un
+fondo propio (selección, fondos de mensajes de Claude Code) no se toca. Los móviles sin modo oscuro del sistema se
+quedan en claro. `night-mode` en `termux.properties` (`system` por defecto, o `true`/`false`) decide el modo; los menús,
 ajustes y diálogos también lo siguen.
 
 Los archivos de `~/.termux/` tienen prioridad: `colors-light.properties` y/o `colors-dark.properties` se usan en su
