@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # androidsu <command...> - run a command as real Android root via the
-# termux-root-bridge daemon (outside proot).
+# termux-rootbridge daemon (outside proot).
 #
 # Inside Claude Code the PreToolUse hook asks for confirmation and injects a
 # single-use ROOTBRIDGE_TICKET for exactly this command. Without a ticket the
@@ -12,7 +12,7 @@
 #              ROOTBRIDGE_TTY_CONFIRM=0   disable the terminal question
 #              ROOTBRIDGE_ACK_TIMEOUT     seconds to wait for the daemon (70)
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-root-bridge.conf}"
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
 conf_get() {
     [ -r "$CONF" ] || return 1
     local v

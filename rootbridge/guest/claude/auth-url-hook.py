@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""auth-url-hook - Claude Code PostToolUse hook (termux-root-bridge v2).
+"""auth-url-hook - Claude Code PostToolUse hook (termux-rootbridge v2).
 
 For claude.ai connectors and MCP servers that need a login, the tool
 `mcp__<server>__authenticate` returns a very long authorization URL that
@@ -8,7 +8,7 @@ to copy on a phone. This hook finds the URL in the tool result, opens it in
 the Android browser (rootbridge-open) and copies it to the Android clipboard,
 and tells Claude not to print it again.
 
-Settings (/etc/termux-root-bridge.conf or environment):
+Settings (/etc/termux-rootbridge.conf or environment):
   AUTH_OPEN=auto|copy|off     auto: open + copy (default), copy: only copy
   AUTH_REPLACE_OUTPUT=0|1     1: replace the tool result with a short note via
                               updatedToolOutput (default 0 until verified)
@@ -23,7 +23,7 @@ import shutil
 import subprocess
 import sys
 
-CONF_PATH = os.environ.get("ROOTBRIDGE_CONF", "/etc/termux-root-bridge.conf")
+CONF_PATH = os.environ.get("ROOTBRIDGE_CONF", "/etc/termux-rootbridge.conf")
 TOOL_RE = re.compile(r"^mcp__.+__(authenticate|complete_authentication)$")
 URL_RE = re.compile(r"https://[^\s\"'<>`\\]+")
 VALID_RE = re.compile(

@@ -24,7 +24,7 @@ check() {   # check <name> <expected> <actual>
 }
 
 # ------------------------------------------------------------ 1. guest installer
-gconf() { printf '%s' "$1/etc/termux-root-bridge.conf"; }
+gconf() { printf '%s' "$1/etc/termux-rootbridge.conf"; }
 gline() { grep '^CLAUDE_ARGS=' "$(gconf "$1")" 2>/dev/null || true; }
 gcount() { grep -c '^CLAUDE_ARGS=' "$(gconf "$1")" 2>/dev/null || true; }
 ginstall() {  # ginstall <stage> [args...]  (quiet)
@@ -42,7 +42,7 @@ check "Gast neu: genau eine CLAUDE_ARGS-Zeile"        1 "$(gcount "$S")"
 check "Gast neu: remoteControlAtStartup=true"         1 "$(grep -c '"remoteControlAtStartup": *true' "$S"/home/tester/.claude/settings.json 2>/dev/null || true)"
 
 before="$(cksum < "$(gconf "$S")")"
-baks() { find "$S/etc" -name 'termux-root-bridge.conf.bak-*' | wc -l | tr -d ' '; }
+baks() { find "$S/etc" -name 'termux-rootbridge.conf.bak-*' | wc -l | tr -d ' '; }
 b0="$(baks)"
 ginstall "$S" --remote-name android
 check "Gast zweiter Lauf: Konfig unverändert"         "$before" "$(cksum < "$(gconf "$S")")"
@@ -95,7 +95,7 @@ bash "$GUEST" --root "$T/bad" --remote-name > /dev/null 2>&1
 check "--remote-name ohne Wert: Abbruch mit 2"        2 "$?"
 
 # wrapper picks the name up (stubbed `command`/`claude`, the real Claude Code can not start)
-S="$T/g1"; BLOCK="$(sed -n '/# >>> termux-root-bridge >>>/,/# <<< termux-root-bridge <<</p' "$S$ROOTBRIDGE_GUEST_HOME/.bashrc" 2>/dev/null)"; export BLOCK
+S="$T/g1"; BLOCK="$(sed -n '/# >>> termux-rootbridge >>>/,/# <<< termux-rootbridge <<</p' "$S$ROOTBRIDGE_GUEST_HOME/.bashrc" 2>/dev/null)"; export BLOCK
 if [ -z "$BLOCK" ]; then echo "ABBRUCH: kein claude()-Block im Staging-.bashrc" >&2; exit 1; fi
 ginstall "$S" --remote-name android
 got="$(ROOTBRIDGE_CONF="$(gconf "$S")" bash -c 'command() { printf "%s" "$*"; }; claude() { printf "BLOCK-FEHLT"; }; eval "$BLOCK"; claude' _)"
@@ -103,7 +103,7 @@ check "claude() nutzt den installierten Namen"        "claude --allow-dangerousl
 
 # --------------------------------------------------- 2. install.sh (fake Termux)
 H="$T/home"; P="$T/prefix"; GROOT="$T/groot"; GUEST_ROOT="$T/guestroot"
-CFG="$H/.config/termux-root-bridge/config"
+CFG="$H/.config/termux-rootbridge/config"
 mkdir -p "$H" "$P/bin" "$GROOT/var/tmp" "$T/stubs" "$P/var/lib/proot-distro/containers/ubuntu"
 ln -s "$GROOT" "$P/var/lib/proot-distro/containers/ubuntu/rootfs"
 cat > "$T/stubs/proot-distro" <<'EOF'
@@ -133,7 +133,7 @@ rinstall() {  # rinstall [args...]  (fake HOME/PREFIX, stub proot-distro, no mig
         bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-setup --autonomous no "$@" > "$T/install.log" 2>&1
 }
 tcount() { grep -c '^REMOTE_NAME=' "$CFG" 2>/dev/null || true; }
-gline2() { grep '^CLAUDE_ARGS=' "$GUEST_ROOT/etc/termux-root-bridge.conf" 2>/dev/null || true; }
+gline2() { grep '^CLAUDE_ARGS=' "$GUEST_ROOT/etc/termux-rootbridge.conf" 2>/dev/null || true; }
 
 rinstall --remote-name android
 check "install.sh --remote-name: läuft durch"         0 "$?"
@@ -172,8 +172,8 @@ HOME="$H2" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR
     bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-setup --autonomous no > "$T/install.log" 2>&1
 check "Ohne Name: Installer läuft"                    0 "$?"
 check "Ohne Name: Standard android an den Gast"       1 "$(grep -c -- '--remote-name android' "$STUB_LOG")"
-check "Ohne Name: keine REMOTE_NAME-Zeile"            0 "$(grep -c '^REMOTE_NAME=' "$H2/.config/termux-root-bridge/config")"
-check "Ohne Name: CLAUDE_ARGS mit android im Gast"    'CLAUDE_ARGS="--remote-control android --continue"' "$(grep '^CLAUDE_ARGS=' "$GUEST_ROOT/etc/termux-root-bridge.conf")"
+check "Ohne Name: keine REMOTE_NAME-Zeile"            0 "$(grep -c '^REMOTE_NAME=' "$H2/.config/termux-rootbridge/config")"
+check "Ohne Name: CLAUDE_ARGS mit android im Gast"    'CLAUDE_ARGS="--remote-control android --continue"' "$(grep '^CLAUDE_ARGS=' "$GUEST_ROOT/etc/termux-rootbridge.conf")"
 
 # invalid option value: abort before anything is written
 H3="$T/home3"; mkdir -p "$H3"
@@ -185,7 +185,7 @@ check "install.sh: dabei nichts geschrieben"          nein "$([ -e "$H3/.config"
 H4="$T/home4"; mkdir -p "$H4"; : > "$STUB_LOG"
 HOME="$H4" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H4/.rootbridge" \
     bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-guest --remote-name android > /dev/null 2>&1
-check "--no-guest: Name gespeichert"                  "REMOTE_NAME=android" "$(grep '^REMOTE_NAME=' "$H4/.config/termux-root-bridge/config")"
+check "--no-guest: Name gespeichert"                  "REMOTE_NAME=android" "$(grep '^REMOTE_NAME=' "$H4/.config/termux-rootbridge/config")"
 check "--no-guest: Gast-Installer nicht aufgerufen"   0 "$(wc -l < "$STUB_LOG" | tr -d ' ')"
 
 echo

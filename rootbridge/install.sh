@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh - termux-root-bridge v2 installer. Run it in a TERMUX shell
+# install.sh - termux-rootbridge v2 installer. Run it in a TERMUX shell
 # (not inside proot): the daemon needs real `su` outside proot.
 #
 #   bash install.sh [--no-guest] [--no-boot] [--no-migrate] [--no-colors] [--no-widgets]
@@ -30,7 +30,7 @@
 #
 # What it does (idempotent, with backups):
 #   1. installs rootbridge + rootbridge-daemon into $PREFIX/bin
-#   2. config ~/.config/termux-root-bridge/config (the Remote Control name is "android" unless
+#   2. config ~/.config/termux-rootbridge/config (the Remote Control name is "android" unless
 #      --remote-name NAME says otherwise; NAME is stored there as REMOTE_NAME and reused by every
 #      later install), tmux clipboard settings
 #   3. colours: no colour file is written (the E-Paper Termux build has the light and the dark scheme built in
@@ -52,7 +52,7 @@
 #      or daily = 24 h changes the distance, --no-apt-upgrade turns it off, --apt-upgrade
 #      always runs it at every start; the choice is stored in the Termux config as
 #      APT_UPGRADE and reused by every later install). A value already in
-#      /etc/termux-root-bridge.conf stays when you run the installer without the option,
+#      /etc/termux-rootbridge.conf stays when you run the installer without the option,
 #      so switch an older "daily" once with --apt-upgrade 6h --claude-update 6h. `claude
 #      update` follows the same rules: every 6 h by default (--claude-update 12h|daily|
 #      always, --no-claude-update turns it off; stored as CLAUDE_UPDATE)
@@ -63,8 +63,8 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 BRIDGE_DIR="${BRIDGE_DIR:-$HOME/.rootbridge}"
 STAMP="$(date +%Y%m%d%H%M%S)"
-BEGIN='# >>> termux-root-bridge >>>'
-END='# <<< termux-root-bridge <<<'
+BEGIN='# >>> termux-rootbridge >>>'
+END='# <<< termux-rootbridge <<<'
 
 DO_SETUP=1; SETUP_DID=0; DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=yes
 CLAUDE_THEME=custom:epaper   # "Auto epaper": light-/dark-ansi, switched by the tmux hook (rootbridge theme)
@@ -297,16 +297,16 @@ command -v python3 >/dev/null 2>&1 || die "python3 fehlt (pkg install python)"
 say "== 1/5 Programme"
 inst "$REPO/termux/bin/rootbridge"        "$PREFIX/bin/rootbridge"
 inst "$REPO/termux/bin/rootbridge-daemon" "$PREFIX/bin/rootbridge-daemon"
-inst "$REPO/termux/lib/rootbridge-lib.sh" "$PREFIX/lib/termux-root-bridge/rootbridge-lib.sh"
-chmod 644 "$PREFIX/lib/termux-root-bridge/rootbridge-lib.sh"
+inst "$REPO/termux/lib/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
+chmod 644 "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
 
 say "== 2/5 Konfiguration"
-CFG="$HOME/.config/termux-root-bridge/config"
+CFG="$HOME/.config/termux-rootbridge/config"
 mkdir -p "$(dirname "$CFG")" "$BRIDGE_DIR"
 chmod 700 "$BRIDGE_DIR"
 if [ ! -e "$CFG" ]; then
     cat > "$CFG" <<'EOF'
-# termux-root-bridge - read as data (no shell code is executed)
+# termux-rootbridge - read as data (no shell code is executed)
 DISTRO=ubuntu
 WORKDIR=/root/work
 SESSION=ubuntu
@@ -541,7 +541,7 @@ if [ "$DO_GUEST" = 1 ]; then
         done
     fi
     [ -n "$GROOT" ] || die "Gast '$DISTRO' nicht gefunden (proot-distro list). Ohne --no-setup legt install.sh ihn an; oder mit --no-guest überspringen."
-    STAGE="$GROOT/var/tmp/termux-root-bridge-install"
+    STAGE="$GROOT/var/tmp/termux-rootbridge-install"
     rm -rf "$STAGE"; mkdir -p "$STAGE"
     cp -r "$REPO/guest/." "$STAGE/"
     # Setup, part 3: python3 / curl / certificates and Claude Code in the guest. Looked up from outside
@@ -553,17 +553,17 @@ if [ "$DO_GUEST" = 1 ]; then
     }
     if [ "$DO_SETUP" = 1 ] && ! guest_ready; then
         say "  Gast: Voraussetzungen und Claude Code einrichten"
-        proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/setup-guest.sh \
+        proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/setup-guest.sh \
             || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh"
         SETUP_DID=1
     fi
-    GUEST_ARGS=(--src /var/tmp/termux-root-bridge-install --autonomous "$AUTONOMOUS")
+    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
     if [ "$MODEL_SET" = 1 ]; then GUEST_ARGS+=(--model "$MODEL"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
     if [ -n "$APT_MODE" ]; then GUEST_ARGS+=(--apt-upgrade "$APT_MODE"); fi
     if [ -n "$CLAUDE_UPD_MODE" ]; then GUEST_ARGS+=(--claude-update "$CLAUDE_UPD_MODE"); fi
-    proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/install-guest.sh "${GUEST_ARGS[@]}"
+    proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/install-guest.sh "${GUEST_ARGS[@]}"
     rm -rf "$STAGE"
 else
     say "  übersprungen (--no-guest)"

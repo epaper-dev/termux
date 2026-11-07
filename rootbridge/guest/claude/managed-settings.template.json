@@ -30,13 +30,13 @@
     "ask": [
       "Bash(androidsu *)",
       "Edit(//etc/claude-code/**)",
-      "Edit(//etc/termux-root-bridge.conf)",
-      "Edit(//usr/local/lib/termux-root-bridge/**)",
+      "Edit(//etc/termux-rootbridge.conf)",
+      "Edit(//usr/local/lib/termux-rootbridge/**)",
       "Edit(//usr/local/bin/androidsu)",
       "Edit(//usr/local/bin/rootbridge-*)",
       "Edit(//usr/local/bin/xdg-open)",
       "Edit(//data/data/com.termux/files/home/.rootbridge/**)",
-      "Edit(//data/data/com.termux/files/home/.config/termux-root-bridge/**)"
+      "Edit(//data/data/com.termux/files/home/.config/termux-rootbridge/**)"
     ]
   }
 }

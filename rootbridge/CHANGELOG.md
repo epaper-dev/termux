@@ -5,6 +5,12 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* **Renamed `termux-root-bridge` to `termux-rootbridge`** (the command was already `rootbridge`): `/etc/termux-rootbridge.conf`,
+  `/usr/local/lib/termux-rootbridge/`, `/var/lib/termux-rootbridge/`, `/var/log/termux-rootbridge-apt.log` in the guest,
+  `~/.config/termux-rootbridge/config` and `$PREFIX/lib/termux-rootbridge/` in Termux, and the markers
+  `# >>> termux-rootbridge >>>` in `~/.bashrc` and `~/.tmux.conf`. **There is no migration:** an installation under the
+  old name is not found by the new installer. Remove it first (or set the device up fresh) and run `install.sh` again;
+  keep `~/.rootbridge` (audit log, backups) and copy your old config over by hand if you changed it.
 * New widget icon: `termux/shortcuts/icons/widget.png` (192x192, one icon for the **Claude** and the **Ubuntu** widget)
   replaces the neutral `>_` icons. `install.sh` installs it where no icon exists and in place of an icon that is exactly a
   default icon of an earlier version (kept as `termux/shortcuts/icons/legacy/{claude,ubuntu}.png` for this comparison; also
@@ -35,12 +41,12 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `client-dark-theme` (`termux/tmux.conf.snippet`) run the new `rootbridge theme light|dark`, which switches only the
   light/dark part of the base (`-daltonized`, `-ansi` stay). Needs the E-Paper Termux build that reports light/dark
   (DECSET 2031, `CSI ? 996 n`). A running Claude Code session switches its colours live (confirmed on the device);
-  `THEME_RESTART=on` in `~/.config/termux-root-bridge/config` is a fallback that restarts it
+  `THEME_RESTART=on` in `~/.config/termux-rootbridge/config` is a fallback that restarts it
   (`rootbridge-claude --continue`), `THEME_FOLLOW=off` stops the switching. New `tests/test_theme_follow.sh` (25 checks), `tests/test_colors_theme.sh` has 114 checks.
 * The apt upgrade and `claude update` at the session start now run at most once every **6 hours** (before: once per
   24 h). `APT_UPGRADE` and `CLAUDE_UPDATE` take `6h` (new default), any `<N>h` (1-999 hours), `daily` (= 24 h, as before),
   `always` or `off`; `install.sh --apt-upgrade` and `--claude-update` accept the same values. A value already in
-  `/etc/termux-root-bridge.conf` stays, so switch an older `daily` once: `bash install.sh --apt-upgrade 6h --claude-update 6h`.
+  `/etc/termux-rootbridge.conf` stays, so switch an older `daily` once: `bash install.sh --apt-upgrade 6h --claude-update 6h`.
   npm is not part of this: `apt-get upgrade` covers everything installed with `apt` (`nodejs`/`npm` too, if added), global
   `npm -g` packages are not updated, and Claude Code is a native binary that `claude update` replaces.
 * The Remote Control name defaults to `android`: a plain `install.sh` (no `--remote-name`) now writes
@@ -57,7 +63,7 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `--model NAME|none`: writes the given model, `none` leaves the model alone.
 * The guest installer **creates the working directory**: `WORKDIR` (default now `/root/work`, before `/root/workspace`).
   It was never created, so `rootbridge-claude` fell back to `/root` on a fresh installation. A `WORKDIR` already in
-  `/etc/termux-root-bridge.conf` stays and is created; an unsafe one (`..`) falls back to `/root/work`.
+  `/etc/termux-rootbridge.conf` stays and is created; an unsafe one (`..`) falls back to `/root/work`.
   The old default `WORKDIR=/root/workspace` (guest conf and Termux config) is moved to `/root/work` when the folder
   `/root/workspace` does not exist (it never was created, so nobody uses it); an existing folder keeps its setting.
 * All `settings.json` changes of one installer run are written in **one** go (`settings_queue` / `settings_apply` instead of
@@ -99,7 +105,7 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   optional Termux:Boot script.
 * Idempotent installers/uninstaller with change-only backups and a staging root; migration of the v1 bridge.
 * `tests/headless-proof.sh` — run yourself to prove that the hook's `ask` holds in bypass-permissions mode.
-* Guest `CLAUDE_ARGS` (`/etc/termux-root-bridge.conf`): the `claude()` function takes a `--remote-control <name>` from
+* Guest `CLAUDE_ARGS` (`/etc/termux-rootbridge.conf`): the `claude()` function takes a `--remote-control <name>` from
   it, so manual starts show up under the same name as the autostart. `tests/test_claude_wrapper.sh` (22 checks, stubbed
   `claude`, staging root).
 
@@ -152,17 +158,17 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   (`APT_HOLD`, default `rust-coreutils gnu-coreutils coreutils-from-uutils coreutils`) are held back because upgrading the
   multicall binary breaks the guest, a failure, a timeout or a missing network never stops the start and leaves no
   success stamp (so the next start tries again), `dpkg --audit` is checked afterwards. Log:
-  `/var/log/termux-root-bridge-apt.log` (cut at 256 KiB): the apt output plus the result lines (`apt: fertig.`, held
+  `/var/log/termux-rootbridge-apt.log` (cut at 256 KiB): the apt output plus the result lines (`apt: fertig.`, held
   packages, errors) and a closing line `=== <time> Ende: ok|update-fehlgeschlagen|upgrade-fehlgeschlagen|dpkg-audit-warnung`
   per run — a run that has a header but no `Ende:` line was interrupted (killed, reboot). On by default; `install.sh --no-apt-upgrade` (or
   `--apt-upgrade daily|always|off`) turns it off or changes it, the choice is stored in the Termux config
   (`APT_UPGRADE`) and reused by every later install, like `REMOTE_NAME`. `install-guest.sh --apt-upgrade MODE` sets
-  `APT_UPGRADE` in `/etc/termux-root-bridge.conf` (an existing value stays without the option).
+  `APT_UPGRADE` in `/etc/termux-rootbridge.conf` (an existing value stays without the option).
   `tests/test_apt_upgrade.sh` (143 checks; stub `apt-get`/`apt-mark`/`dpkg`/`dpkg-query`/`timeout`/`proot-distro`, real
   apt is never started).
 
 * `claude update` at the session start runs at most once a day, like the apt upgrade: guest key `CLAUDE_UPDATE`
-  (`daily` default, `always`, `off`), stamp `/var/lib/termux-root-bridge/claude-update-last-success` written only after a
+  (`daily` default, `always`, `off`), stamp `/var/lib/termux-rootbridge/claude-update-last-success` written only after a
   successful update (a failed or aborted one leaves none, the start goes on and the next start tries again).
   `install.sh --claude-update MODE` / `--no-claude-update` are stored in the Termux config (`CLAUDE_UPDATE`) and reused by
   every later install, also with a fresh guest; the guest installer takes `--claude-update MODE`. A value already in the

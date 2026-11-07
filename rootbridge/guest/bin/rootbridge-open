@@ -10,7 +10,7 @@
 #
 # Environment: ROOTBRIDGE_DIR, ROOTBRIDGE_OPEN_WAIT (seconds, default 12)
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-root-bridge.conf}"
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
 BRIDGE_DIR="${ROOTBRIDGE_DIR:-}"
 if [ -z "$BRIDGE_DIR" ] && [ -r "$CONF" ]; then
     BRIDGE_DIR="$(sed -n 's/^BRIDGE_DIR=//p' "$CONF" | tail -n 1 | tr -d "\"'")"

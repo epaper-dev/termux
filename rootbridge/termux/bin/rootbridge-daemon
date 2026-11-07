@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rootbridge-daemon - headless root bridge of termux-root-bridge v2.
+# rootbridge-daemon - headless root bridge of termux-rootbridge v2.
 #
 # Runs in Termux (outside proot). Executes Android-root requests of the guest
 # ONLY when they carry a valid single-use ticket that the Claude Code hook
@@ -17,7 +17,7 @@ self="$(readlink -f "${BASH_SOURCE[0]}")"
 here="${self%/*}"
 lib=""
 for cand in "${ROOTBRIDGE_LIB:-}" \
-            "$here/../lib/termux-root-bridge/rootbridge-lib.sh" \
+            "$here/../lib/termux-rootbridge/rootbridge-lib.sh" \
             "$here/../lib/rootbridge-lib.sh"; do
     if [ -n "$cand" ] && [ -r "$cand" ]; then lib="$cand"; break; fi
 done

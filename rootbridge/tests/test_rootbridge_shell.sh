@@ -25,11 +25,11 @@ check() {   # check <name> <expected> <actual>
     else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
 }
 
-mkdir -p "$T/bin" "$T/lib/termux-root-bridge" "$T/stubs" "$T/home" "$T/prefix/bin"
+mkdir -p "$T/bin" "$T/lib/termux-rootbridge" "$T/stubs" "$T/home" "$T/prefix/bin"
 # like install.sh: point the shebang at the real bash (`#!/usr/bin/env bash` does not work everywhere,
 # e.g. /usr/bin/env of this proot guest is broken); the widget runs `rootbridge` directly
 sed "1s|^#!.*|#!$(command -v bash)|" "$ROOT/termux/bin/rootbridge" > "$T/bin/rootbridge"
-cp "$ROOT/termux/lib/rootbridge-lib.sh" "$T/lib/termux-root-bridge/rootbridge-lib.sh"
+cp "$ROOT/termux/lib/rootbridge-lib.sh" "$T/lib/termux-rootbridge/rootbridge-lib.sh"
 cat > "$T/bin/rootbridge-daemon" <<'EOF'
 #!/bin/bash
 # stub daemon: records its start, publishes pid and "alive" marker like the real one

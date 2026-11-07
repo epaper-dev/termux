@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# uninstall.sh - remove termux-root-bridge v2 (run in a Termux shell).
-# Keeps ~/.rootbridge (audit log, backups) and ~/.config/termux-root-bridge.
+# uninstall.sh - remove termux-rootbridge v2 (run in a Termux shell).
+# Keeps ~/.rootbridge (audit log, backups) and ~/.config/termux-rootbridge.
 #   bash uninstall.sh [--no-guest]
 set -eu
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-BEGIN='# >>> termux-root-bridge >>>'
-END='# <<< termux-root-bridge <<<'
+BEGIN='# >>> termux-rootbridge >>>'
+END='# <<< termux-rootbridge <<<'
 DO_GUEST=1
 [ "${1:-}" = "--no-guest" ] && DO_GUEST=0
 
@@ -16,15 +16,15 @@ say() { printf '%s\n' "$*"; }
 if command -v rootbridge >/dev/null 2>&1; then rootbridge stop 2>/dev/null || true; fi
 
 if [ "$DO_GUEST" = 1 ] && command -v proot-distro >/dev/null 2>&1; then
-    CFG="$HOME/.config/termux-root-bridge/config"
+    CFG="$HOME/.config/termux-rootbridge/config"
     DISTRO="$(sed -n 's/^DISTRO=//p' "$CFG" 2>/dev/null | tail -n 1)"; DISTRO="${DISTRO:-ubuntu}"
     for c in "$PREFIX/var/lib/proot-distro/containers/$DISTRO/rootfs" \
              "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
         if [ -d "$c" ]; then
-            STAGE="$c/var/tmp/termux-root-bridge-install"
+            STAGE="$c/var/tmp/termux-rootbridge-install"
             rm -rf "$STAGE"; mkdir -p "$STAGE"; cp -r "$REPO/guest/." "$STAGE/"
-            proot-distro login "$DISTRO" -- bash /var/tmp/termux-root-bridge-install/install-guest.sh \
-                --src /var/tmp/termux-root-bridge-install --uninstall || true
+            proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/install-guest.sh \
+                --src /var/tmp/termux-rootbridge-install --uninstall || true
             rm -rf "$STAGE"
             break
         fi
@@ -52,7 +52,7 @@ PYEOF
 done
 
 rm -f "$PREFIX/bin/rootbridge" "$PREFIX/bin/rootbridge-daemon"
-rm -rf "$PREFIX/lib/termux-root-bridge"
+rm -rf "$PREFIX/lib/termux-rootbridge"
 rm -f "$HOME/.termux/boot/10-rootbridge.sh"
 # widgets, under every name this project has used: "Claude"/"Ubuntu" are generic, so only remove a script
 # that really is ours (it calls rootbridge)
@@ -70,6 +70,6 @@ for name in "Claude" "Claude >_" "Ubuntu" "Ubuntu >_"; do
     done
 done
 say "Programme, Widgets und Boot-Skript entfernt."
-say "Bleibt erhalten: ~/.rootbridge (Audit-Log, Sicherungen), ~/.config/termux-root-bridge,"
+say "Bleibt erhalten: ~/.rootbridge (Audit-Log, Sicherungen), ~/.config/termux-rootbridge,"
 # shellcheck disable=SC2088  # the tilde is meant literally (message text)
 say "Farbdateien in ~/.termux (der Installer schreibt keine mehr; Sicherungen früherer Versionen liegen als colors*.properties.bak-*) und das Claude-Code-Theme."

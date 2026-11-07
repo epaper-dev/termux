@@ -16,8 +16,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL="$ROOT/install.sh"
 UNINSTALL="$ROOT/uninstall.sh"
 SNIP="$ROOT/termux/extra-keys.snippet"
-BEGIN='# >>> termux-root-bridge >>>'
-END='# <<< termux-root-bridge <<<'
+BEGIN='# >>> termux-rootbridge >>>'
+END='# <<< termux-rootbridge <<<'
 
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT

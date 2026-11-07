@@ -1,4 +1,4 @@
-# termux-root-bridge
+# termux-rootbridge
 
 **Claude Code auf Android (Termux + proot-distro) – jede echte Root-Aktion wird direkt in Claude Code bestätigt, und Logins funktionieren ohne Kopierärger.**
 
@@ -85,7 +85,7 @@ lässt beide Einstellungen unberührt (ein früher gesetzter Wert bleibt), `--au
 
 Außerdem setzt der Installer das **Modell** auf `opusplan` (Opus plant, Sonnet arbeitet), ebenfalls nur, wenn die `settings.json`
 noch keins enthält. `--model NAME` schreibt das angegebene Modell immer, `--model none` lässt es unberührt. Und er legt den
-**Arbeitsordner `/root/work`** im Gast an, in dem Claude Code startet (`WORKDIR` in `/etc/termux-root-bridge.conf`; ein dort
+**Arbeitsordner `/root/work`** im Gast an, in dem Claude Code startet (`WORKDIR` in `/etc/termux-rootbridge.conf`; ein dort
 gesetzter Wert bleibt). Vorher wurde der Ordner nie angelegt, sodass eine frische Installation Claude Code in `/root` startete.
 Ein alter Standard `WORKDIR=/root/workspace` wird auf `/root/work` umgestellt, wenn der Ordner `/root/workspace` nicht existiert.
 
@@ -131,18 +131,18 @@ blockiert den Start nie (kein Netz, ein Fehler oder ein Timeout geben nur einen 
 nächste Start versucht es erneut). Zwei Schutzmaßnahmen sind unter proot-distro mit Ubuntu 26.04 wichtig: dpkg bekommt
 `-o DPkg::Path` mit `/usr/local/bin`, weil die uutils-coreutils dort die GNU-benannten Symlinks brauchen (sonst brechen
 Maintainer-Skripte mit „Security violation“ ab), und die coreutils-Pakete (`APT_HOLD`) werden zurückgehalten, weil ein
-Upgrade des Multicall-Binarys den Gast kaputt macht. Log: `/var/log/termux-root-bridge-apt.log` im Gast – jeder Lauf
+Upgrade des Multicall-Binarys den Gast kaputt macht. Log: `/var/log/termux-rootbridge-apt.log` im Gast – jeder Lauf
 endet mit einer Zeile `Ende: ok` (oder dem Grund), ein Lauf ohne sie wurde abgebrochen; gehaltene Pakete:
 `apt-mark showhold`. Abschalten mit `bash install.sh --no-apt-upgrade` (wird in der Termux-Konfig als
 `APT_UPGRADE` gespeichert, spätere Installationen behalten es, auch mit frischem Gast), bei jedem Start mit
 `--apt-upgrade always`. Von Hand: `rootbridge-apt` im Gast. Alles, was per `apt` installiert ist, ist abgedeckt, auch `nodejs` und `npm`, falls du
 sie nachinstallierst; globale Pakete aus `npm -g` nicht. Claude Code selbst ist ein natives Programm, das `claude update`
-ohne npm ersetzt. Ein Wert, der schon in `/etc/termux-root-bridge.conf` steht, bleibt beim Installieren ohne Option
+ohne npm ersetzt. Ein Wert, der schon in `/etc/termux-rootbridge.conf` steht, bleibt beim Installieren ohne Option
 erhalten; ein älteres `daily` stellst du einmal mit `bash install.sh --apt-upgrade 6h --claude-update 6h` um.
 
 **`claude update`.** Gleiche Regeln wie bei den Paket-Updates (`CLAUDE_UPDATE=6h|<N>h|daily|always|off`, Standard `6h`): Der
 Sitzungsstart führt `claude update` höchstens einmal in 6 h nach einem Erfolg aus (Stempel
-`/var/lib/termux-root-bridge/claude-update-last-success` im Gast). Ein fehlgeschlagenes oder abgebrochenes Update hinterlässt
+`/var/lib/termux-rootbridge/claude-update-last-success` im Gast). Ein fehlgeschlagenes oder abgebrochenes Update hinterlässt
 keinen Stempel, meldet es kurz und Claude Code startet trotzdem; der nächste Start versucht es erneut. Mit dem Standard kann
 Claude Code bis zu 6 Stunden hinter der neuesten Version liegen. Abschalten mit `bash install.sh --no-claude-update`, bei
 jedem Start mit `--claude-update always` (wird in der Termux-Konfig als `CLAUDE_UPDATE` gespeichert, spätere
@@ -152,7 +152,7 @@ Installationen behalten es, auch mit frischem Gast). Ein von Hand gestartetes `c
 Limit (`ulimit -n`), und unter proot ist jedes `close()` ein abgefangener Syscall: Androids Standard von 32768 kostete
 2,5 bis 4 s pro gestartetem Prozess, jeder Hook und jeder Tool-Aufruf brauchte 4 bis 9 s statt unter einer Sekunde.
 `rootbridge-claude` und die Funktion `claude()` starten Claude Code deshalb mit `NOFILE_LIMIT` (Standard 2048, `0` =
-nicht ändern; `/etc/termux-root-bridge.conf` im Gast). Das Limit wird nur gesenkt, nie erhöht, und nur für Claude: die
+nicht ändern; `/etc/termux-rootbridge.conf` im Gast). Das Limit wird nur gesenkt, nie erhöht, und nur für Claude: die
 Shell drumherum behält ihres. Wirkt nach `install.sh` und einem Neustart der Claude-Code-Sitzung.
 
 **Farben und Theme.** Der Installer schreibt keine Farbdatei. Der E-Paper-Build von Termux (`epaper-dev/termux`) bringt ein
@@ -169,7 +169,7 @@ zwischen hell und dunkel (DECSET 2031) an tmux, dessen Hooks `client-light-theme
 `rootbridge theme light|dark` aufrufen: Es stellt die Basis zwischen `light-ansi` und `dark-ansi` um (bzw.
 `light-daltonized`/`dark-daltonized`, `light`/`dark`, wenn du das einträgst). Eine laufende
 Claude-Code-Sitzung übernimmt die geänderte Theme-Datei und wechselt die Farben live (auf dem Gerät bestätigt, ohne
-Neustart). `THEME_RESTART=on` in `~/.config/termux-root-bridge/config` ist nur eine Notlösung für eine Version, die das
+Neustart). `THEME_RESTART=on` in `~/.config/termux-rootbridge/config` ist nur eine Notlösung für eine Version, die das
 nicht tut: Es startet Claude Code mit `--continue` neu (eine laufende Antwort bricht ab). `THEME_FOLLOW=off` schaltet die
 Hooks ab. Ein anderes
 Theme jederzeit mit `/theme`. Jede neue interaktive Termux-Shell führt

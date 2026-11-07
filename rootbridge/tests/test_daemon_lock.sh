@@ -35,9 +35,9 @@ sleeper() { sleep 300 & SLEEPER=$!; PIDS+=("$SLEEPER"); }   # a harmless live pr
 dead_pid() { true & local p=$!; wait "$p"; echo "$p"; }
 
 # ------------------------------------------------------------ 1. the daemon loop
-mkdir -p "$T/home/.config/termux-root-bridge" "$T/bridge"
-printf 'POLL_INTERVAL=0.2\n' > "$T/home/.config/termux-root-bridge/config"
-export HOME="$T/home" BRIDGE_DIR="$T/bridge" ROOTBRIDGE_CONFIG="$T/home/.config/termux-root-bridge/config"
+mkdir -p "$T/home/.config/termux-rootbridge" "$T/bridge"
+printf 'POLL_INTERVAL=0.2\n' > "$T/home/.config/termux-rootbridge/config"
+export HOME="$T/home" BRIDGE_DIR="$T/bridge" ROOTBRIDGE_CONFIG="$T/home/.config/termux-rootbridge/config"
 export RB_SU="$T/no-su" RB_OPEN_CMD="$T/no-open" RB_CLIP_CMD="$T/no-clip" TERMUX_BIN="$T/no-termux-bin"
 LOCK="$BRIDGE_DIR/.lock"
 lock_pid() { cat "$LOCK/pid" 2>/dev/null; }

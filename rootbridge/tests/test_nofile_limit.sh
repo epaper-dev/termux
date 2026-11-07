@@ -90,14 +90,14 @@ check "Claude-Start läuft über limit_nofile"         1 "$(grep -c 'limit_nofil
 export ROOTBRIDGE_GUEST_HOME=/home/tester
 STAGE="$T/stage"
 BASHRC="$STAGE$ROOTBRIDGE_GUEST_HOME/.bashrc"
-STAGED_CONF="$STAGE/etc/termux-root-bridge.conf"
+STAGED_CONF="$STAGE/etc/termux-rootbridge.conf"
 
 bash "$INSTALLER" --root "$STAGE" --autonomous no > "$T/install.log" 2>&1
 check "Installer läuft im Staging-Root" 0 "$?"
 check "bashrc: Syntax in Ordnung" 0 "$(bash -n "$BASHRC" 2>/dev/null; echo $?)"
 check "Installer schreibt NOFILE_LIMIT=2048 in die Konfig" 1 "$(grep -c '^NOFILE_LIMIT=2048$' "$STAGED_CONF" 2>/dev/null)"
 
-BLOCK="$(sed -n '/# >>> termux-root-bridge >>>/,/# <<< termux-root-bridge <<</p' "$BASHRC" 2>/dev/null)"
+BLOCK="$(sed -n '/# >>> termux-rootbridge >>>/,/# <<< termux-rootbridge <<</p' "$BASHRC" 2>/dev/null)"
 export BLOCK
 if [ -z "$BLOCK" ]; then
     echo "ABBRUCH: kein claude()-Block im Staging-.bashrc gefunden, siehe $T/install.log:" >&2
