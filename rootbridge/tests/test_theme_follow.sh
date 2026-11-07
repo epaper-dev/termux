@@ -107,6 +107,10 @@ check "Ungültiger Wert: Standard (folgt)"       dark-daltonized "$(base)"
 check "tmux: Hook hell"   1 "$(grep -c "^set-hook -g client-light-theme 'run-shell -b \"rootbridge theme light\"'$" "$ROOT/termux/tmux.conf.snippet")"
 check "tmux: Hook dunkel" 1 "$(grep -c "^set-hook -g client-dark-theme 'run-shell -b \"rootbridge theme dark\"'$" "$ROOT/termux/tmux.conf.snippet")"
 
+# the status line uses the terminal colours
+check "tmux: Statusleiste in Terminalfarben" 1 "$(grep -c '^set -g status-style default$' "$ROOT/termux/tmux.conf.snippet")"
+check "tmux: aktives Fenster fett"          1 "$(grep -c '^set -g window-status-current-style bold$' "$ROOT/termux/tmux.conf.snippet")"
+
 # rootbridge-claude passes --continue on to Claude Code
 check "rootbridge-claude: --continue" 1 "$(grep -c '^\[ "${1:-}" = --continue \] && extra+=(--continue)$' "$ROOT/guest/bin/rootbridge-claude")"
 

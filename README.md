@@ -28,7 +28,8 @@ Scripts: `.github/scripts/sync_upstream.sh`, `build_release_set.sh`, `make_signi
 The terminal (not only the menus) follows the light/dark mode of the phone, without any file: in the light theme it uses a
 built-in white scheme (`termux-shared/src/main/res/raw/colors_light_default.properties`), in the dark theme a built-in
 black one (`colors_dark_default.properties`). Both keep every text color clearly dark (light scheme: R+G+B below 384) or
-clearly light (dark scheme: 576 or more, so also dimmed text stays above 384). Android's "High contrast text", often on
+clearly light (dark scheme: 576 or more, so also dimmed text stays above 384); the one exception is the grey that
+Claude Code's ANSI themes use as the background of your messages (light: `color7` #E4E4E4, dark: `color8` #404040). Android's "High contrast text", often on
 by default on E-Ink phones, draws text black or white by exactly this threshold and gives it an outline in the other
 color, so a color near the middle comes out as hollow letters. `BuiltInColorSchemesTest` checks the thresholds.
 Phones without a system dark mode stay light. `night-mode` in `termux.properties` (`system` by
