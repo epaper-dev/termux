@@ -45,6 +45,14 @@ Programs learn about a change between light and dark: Termux supports DECSET 203
 `CSI ? 996 n`. tmux 3.6 and later passes this on and runs its hooks `client-light-theme` / `client-dark-theme`;
 Claude Code with the theme `auto` follows at once, rootbridge's theme **Auto epaper** via those hooks.
 
+## Built-in font
+
+Without `~/.termux/font.ttf` the terminal of the app and of Termux:Float uses the built-in font **JetBrains Mono NL
+Bold** (`app/src/main/assets/fonts/JetBrainsMonoNL-Bold.ttf`, version 2.304, the variant without ligatures), which reads
+better on E-Ink than the thin system monospace font. A `font.ttf` of yours (or one set by Termux:Styling) still wins.
+The font is licensed under the SIL Open Font License 1.1, see `assets/fonts/JetBrainsMono-OFL.txt` next to it
+(https://github.com/JetBrains/JetBrainsMono).
+
 ## Signing key
 
 All APKs of the set carry one certificate; Android installs the app and its plugins side by side only then, and an
