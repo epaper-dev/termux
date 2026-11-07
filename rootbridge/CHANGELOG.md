@@ -75,6 +75,39 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `tests/test_autonomous.sh`.
 
 ### Added
+* **Codex next to Claude Code**, on by default: `install.sh` installs `git` and `nodejs` (`apt`), Codex (the official standalone
+  installer, non-interactive; it brings its own `bwrap`) and the Codex plugin of Claude Code (`codex@openai-codex`), each only
+  when it is missing. `--no-codex` leaves it out, `--no-claude` gives a Codex-only installation (no Claude Code, managed
+  settings, hooks, plugin or `claude()` function; at least one tool stays), `--claude` / `--codex` turn a tool on again. The
+  choice is stored in the Termux config (`TOOL_CLAUDE` / `TOOL_CODEX`) and in the guest config, so later installs keep it.
+  `setup-guest.sh` takes `--claude yes|no` and `--codex yes|no`; `install-guest.sh` the same plus `--codex-update`.
+* **Widget "Codex"** and `rootbridge attach codex`: the Codex window (`rootbridge-codex`) is a second window of the same tmux
+  session; `rootbridge start [--no-attach] [claude|codex]` opens the session with either one (Codex on an installation
+  without Claude Code). Codex starts with its own defaults, not in a bypass mode; `CODEX_ARGS` (guest config) adds options.
+* **`rootbridge-update`** (guest): `claude update`, `codex update` and the plugin update at the start of **either**
+  window, so both tools are current whichever one you start (they review each other). `CODEX_UPDATE=6h|<N>h|daily|always|off`
+  (`install.sh --codex-update M` / `--no-codex-update`, stored in the Termux config) works like `CLAUDE_UPDATE`, with its own
+  stamps; the steps run one at a time (`flock`) when both sessions start at once. `update_claude()` moved here from
+  `rootbridge-claude`. `nodejs` and `git` are covered by `rootbridge-apt`.
+* **Codex pre-commit review**: a PreToolUse hook in the managed settings (`guest/claude/codex-precommit-review.py`) lets Codex
+  review every `git commit` of Claude Code. `ALLOW` as the first line lets it through, `BLOCK` or an unclear answer stops it and
+  hands the findings to Claude. A strict loop: a diff that got a `BLOCK` is never waved through, only a changed diff that Codex
+  approves is (and remembered). Fail closed (`onFailure: "block"`, timeout 900 s): without Codex login, plugin or `node`, or
+  when Codex fails, the commit is blocked. Emergency switch for the user only: `rootbridge codex-off` / `codex-on`
+  (`CODEX_PRECOMMIT=off` in the guest config, handed to Claude Code by `rootbridge-claude`) or `CODEX_PRECOMMIT=off` in the
+  environment. `~/.claude/codex-precommit` (the approved diffs) is a protected path of the guard.
+  The command is taken apart like a shell: a `git commit` that is run counts (also after `cd`, `git -C`, `sudo` / `env`, in
+  `bash -c '…'` and `$(…)`), text in quotes and heredocs does not; a command it cannot take apart falls back to a text
+  search. The plugin directory is chosen by version number (`1.0.10` after `1.0.9`). The review also covers binary changes (`git diff --binary`) and, when the same command runs
+  `git add`, the untracked files it can bring in (listed to Codex, their content is part of the approval hash); a
+  failing `git` blocks the commit. Codex blocks only for high severity; smaller findings come as notes after `ALLOW`.
+  `tests/test_codex_precommit.py` pins the loop and the detection down with a stub `node`.
+* `rootbridge codex-login [--device-auth]` (`codex login` with the browser hand-off), Codex lines in `rootbridge status`
+  (program, login, plugin, hook; read from the files, nothing is started).
+* New widget logo: `termux/shortcuts/icons/logo.png` (1024x1024 original) and `widget.png` (192x192, made from it with
+  `tools/make-widget-icon.py`, standard library only). The coloured icon of the previous version moved to
+  `icons/legacy/widget-colour.png`, so an installation that still has it gets the new one. The README headers use `logo.png`.
+  Tests: `tests/test_codex.sh`, `tests/test_codex_precommit.py`, and the Codex cases of `test_setup.sh` and `test_widgets.sh`.
 * Automatic setup in `install.sh`: what is missing gets installed first, without a question and without an option: the
   Termux packages (`pkg install -y`, only the missing ones), the Ubuntu guest (`proot-distro install`), and, through the new
   `guest/setup-guest.sh`, `python3` / `curl` / certificates in the guest (`apt-get`) and Claude Code (official installer).

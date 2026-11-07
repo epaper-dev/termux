@@ -12,6 +12,7 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT/guest/bin/rootbridge-claude"
+UPDATER="$ROOT/guest/bin/rootbridge-update"
 INSTALLER="$ROOT/guest/install-guest.sh"
 
 T="$(mktemp -d)"
@@ -83,7 +84,7 @@ conf 'NOFILE_LIMIT='
 check "NOFILE_LIMIT leer: Standard 2048"             "$(w 2048)/$(w 2048) $P"  "$(lim "$T/test.conf")"
 
 # Both claude starts of the script go through limit_nofile (in a subshell, so the shell afterwards keeps its limit)
-check "claude update läuft über limit_nofile"        1 "$(grep -c 'limit_nofile; exec timeout 180 "\$claude_bin" update' "$SCRIPT")"
+check "claude update läuft über limit_nofile"        1 "$(grep -c 'limit_nofile; exec timeout 180 "\$claude_bin" update' "$UPDATER")"
 check "Claude-Start läuft über limit_nofile"         1 "$(grep -c 'limit_nofile; exec "\$claude_bin" --allow-dangerously-skip-permissions' "$SCRIPT")"
 
 # ---------------------------------------------------------------- claude() in the generated ~/.bashrc

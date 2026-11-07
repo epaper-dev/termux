@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# rootbridge-update - brings the AI tools of the guest up to date: Claude Code (`claude update`), Codex
+# (`codex update`) and the Codex plugin of Claude Code (`claude plugin update`). Started by rootbridge-claude
+# and rootbridge-codex at the start of a session, after rootbridge-apt, so starting EITHER one updates BOTH
+# (the two review each other: they should be current at the same time). Can also be run by hand.
+# It never blocks the start: every problem is reported and the exit code is always 0.
+#
+# Config (/etc/termux-rootbridge.conf, read as data):
+#   TOOL_CLAUDE=on|off, TOOL_CODEX=on|off   which tools are part of the installation (default on; a tool that
+#                                           is off, or whose program is missing, is skipped)
+#   CLAUDE_UPDATE=6h|<N>h|daily|always|off  `claude update`
+#   CODEX_UPDATE=6h|<N>h|daily|always|off   `codex update` and the plugin update
+#                                  6h (default): at most once per 6 h after a success; <N>h: the same with N
+#                                  hours (1-999); daily = 24h; always: at every start; off: never
+# Last success of each step: /var/lib/termux-rootbridge/{claude,codex,codex-plugin}-update-last-success
+# A failed or aborted step leaves no stamp, so the next start tries again.
+#
+# Nothing here updates nodejs and git: they are apt packages and come with rootbridge-apt (apt-get upgrade).
+# A plugin update applies after a restart of Claude Code.
+
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
+
+conf_get() {
+    [ -r "$CONF" ] || return 1
+    local v
+    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    [ -n "$v" ] && printf '%s' "$v"
+}
+
+# Claude Code closes every file descriptor up to RLIMIT_NOFILE after each fork. Under proot every
+# close() is a trapped syscall (~80 us), so Android's limit of 32768 costs 2.5-4 s per started process.
+# Same function as in rootbridge-claude: only ever lowered, NOFILE_LIMIT=0 in the config switches it off.
+limit_nofile() {
+    local n cur
+    n="$(conf_get NOFILE_LIMIT || echo 2048)"
+    case "$n" in ''|0|*[!0-9]*) return 0 ;; esac
+    cur="$(ulimit -Hn)"
+    case "$cur" in
+        unlimited) ;;
+        ''|*[!0-9]*) return 0 ;;
+        *) [ "$cur" -gt "$n" ] || return 0 ;;
+    esac
+    ulimit -n "$n" 2>/dev/null || true
+}
+
+# update_due <label> <config key> <stamp file>: succeeds if the step is due now. Otherwise it says why not
+# (switched off silently) and fails. The key holds 6h (default) | <N>h | daily | always | off.
+update_due() {
+    local label="$1" key="$2" stamp="$3" mode now last interval=0
+    mode="$(conf_get "$key" || echo 6h)"
+    case "$mode" in
+        off) return 1 ;;
+        always) ;;
+        daily) interval=86400 ;;
+        *) if [[ "$mode" =~ ^[1-9][0-9]{0,2}h$ ]]; then
+               interval=$(( ${mode%h} * 3600 ))
+           else
+               echo "$label: unbekannter Wert $key=$mode (erlaubt: 6h (Stunden, 1-999), daily, always, off) - übersprungen" >&2
+               return 1
+           fi ;;
+    esac
+    now="$(date +%s)"
+    if [ "$interval" -gt 0 ] && [ -r "$stamp" ]; then
+        last="$(head -n 1 "$stamp" 2>/dev/null)"
+        if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt "$interval" ]; then
+            echo "$label: vor $(( (now - last) / 3600 )) h erfolgreich - übersprungen ($key=$mode)"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# stamp_success <stamp file>: remember the time of a successful step
+stamp_success() { { mkdir -p "$(dirname "$1")" && date +%s > "$1"; } 2>/dev/null || true; }
+
+state_dir() { printf '%s' "${ROOTBRIDGE_STATE_DIR:-/var/lib/termux-rootbridge}"; }
+
+# claude update. Never stops the start.
+update_claude() {
+    local stamp
+    stamp="$(state_dir)/claude-update-last-success"
+    update_due "claude update" CLAUDE_UPDATE "$stamp" || return 0
+    echo "== claude update"
+    if ( limit_nofile; exec timeout 180 "$claude_bin" update ); then
+        stamp_success "$stamp"
+    else
+        echo "Update fehlgeschlagen oder abgebrochen - starte die vorhandene Version."
+    fi
+    return 0
+}
+
+# codex update (the standalone installer's own update path). Never stops the start.
+update_codex() {
+    local stamp
+    stamp="$(state_dir)/codex-update-last-success"
+    update_due "codex update" CODEX_UPDATE "$stamp" || return 0
+    echo "== codex update"
+    if ( exec timeout 300 "$codex_bin" update ); then
+        stamp_success "$stamp"
+    else
+        echo "Update fehlgeschlagen oder abgebrochen - starte die vorhandene Version."
+    fi
+    return 0
+}
+
+# The Codex plugin of Claude Code (openai/codex-plugin-cc): refresh its marketplace, then update the plugin.
+# Only with both tools. Takes effect after a restart of Claude Code. Never stops the start.
+update_plugin() {
+    local stamp
+    stamp="$(state_dir)/codex-plugin-update-last-success"
+    update_due "codex plugin" CODEX_UPDATE "$stamp" || return 0
+    echo "== Codex-Plugin für Claude Code"
+    if ( limit_nofile
+         timeout 120 "$claude_bin" plugin marketplace update openai-codex &&
+         timeout 120 "$claude_bin" plugin update codex@openai-codex ); then
+        stamp_success "$stamp"
+    else
+        echo "Update des Plugins fehlgeschlagen oder abgebrochen - das vorhandene bleibt."
+    fi
+    return 0
+}
+
+# --- main (not run when the functions are cut out for the tests) ---------------------------------------------
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    # (the tests set ROOTBRIDGE_UPDATE_KEEP_PATH and ROOTBRIDGE_{CLAUDE,CODEX}_BIN to run it with stubs)
+    [ -n "${ROOTBRIDGE_UPDATE_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
+    use_claude=0; use_codex=0
+    [ "$(conf_get TOOL_CLAUDE || echo on)" = on ] && use_claude=1
+    [ "$(conf_get TOOL_CODEX || echo on)" = on ] && use_codex=1
+    claude_bin="${ROOTBRIDGE_CLAUDE_BIN:-/root/.local/bin/claude}"
+    [ -x "$claude_bin" ] || claude_bin="$(command -v claude || true)"
+    codex_bin="${ROOTBRIDGE_CODEX_BIN:-/root/.local/bin/codex}"
+    [ -x "$codex_bin" ] || codex_bin="$(command -v codex || true)"
+    [ -n "$claude_bin" ] || use_claude=0
+    [ -n "$codex_bin" ] || use_codex=0
+
+    # Two sessions can start at the same time (both widgets): one update run at a time, the second one then
+    # finds the stamps of the first and skips what is done.
+    lock="$(state_dir)/update.lock"
+    if command -v flock >/dev/null 2>&1 && mkdir -p "$(state_dir)" 2>/dev/null && ( : >> "$lock" ) 2>/dev/null; then
+        exec 9>> "$lock"
+        flock -n 9 || { echo "Warte auf ein laufendes Update ..."; flock -w 900 9 || true; }
+    fi
+
+    [ "$use_claude" = 1 ] && update_claude
+    [ "$use_codex" = 1 ] && update_codex
+    [ "$use_claude" = 1 ] && [ "$use_codex" = 1 ] && update_plugin
+    exit 0
+fi

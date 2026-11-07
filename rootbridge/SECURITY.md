@@ -24,6 +24,10 @@ sandbox against a hostile agent or a compromised guest. Read the limits before r
 * **Daemon hardening.** Its configuration is parsed as data against a whitelist and never executed. Only plain
   `https://` URLs are opened (no whitespace, quotes, control characters; ≤ 8 KiB; ≤ 10 per minute).
 * **Audit log.** Every decision is appended to `~/.rootbridge/audit.log`.
+* **Codex pre-commit review.** With Claude Code and Codex installed, a second hook (`codex-precommit-review.py`, managed
+  settings, `onFailure: "block"`) lets Codex review every `git commit` of Claude Code, a strict loop that fails closed (no
+  login, plugin or `node`, or a failing Codex blocks the commit). The approved diffs live in `~/.claude/codex-precommit`, a
+  protected path like the other bridge files. Only you switch it off: `rootbridge codex-off`.
 
 ### Known limits
 
@@ -39,6 +43,21 @@ sandbox against a hostile agent or a compromised guest. Read the limits before r
   pseudo-terminal can answer it. Disable with `TTY_CONFIRM=0` if that matters.
 * **Auto-opening of login links** follows links that MCP servers return. Only `https` URLs are opened; set
   `AUTH_OPEN=copy` or `off` if you do not trust a server.
+* **Codex is not covered by the guard.** The `android-root-guard` hook runs inside Claude Code. Codex starts with its own
+  defaults (sandbox and approval questions, no bypass mode); `androidsu` still refuses it without a ticket, but the
+  limits below about the shared Termux home apply to it just as well.
+* **The pre-commit review sends your diff to OpenAI** (under the account you logged in to Codex with), and Codex's sandbox
+  restricts writing, not reading: it can read more of the guest than the repository.
+* **The review hook takes the command apart like a shell, nothing more.** It reviews a `git commit` that is run (also after
+  `cd`, with `git -C`, behind `sudo` / `env` / `time`, in `bash -c '…'` and `$(…)`); text in quotes or heredocs does not count.
+  It does not recognise git aliases (`git ci`), scripts or programs that commit for you, and `merge`, `rebase` or
+  `cherry-pick`. A command it cannot take apart falls back to a text search, so a real commit is not missed. A `git` that fails blocks the commit (only "not a git repository" passes). Files that
+  only a `git add` of the same command brings in are in no diff: they are listed to Codex and part of the approval hash.
+  Codex blocks only for high severity (a bug that breaks something, a security hole, a secret, data loss, a swallowed
+  error); smaller findings come as notes after `ALLOW`. The review sees the working tree as it is when the command
+  starts: what the same command changes before the commit (`sed -i … && git commit -a`, a build script) is not covered. It also reads the
+  approved-diff state from a file that a process in the guest could write; the guard asks before Claude Code does that with
+  its tools, nothing more. It is a safety net against slips, not a sandbox.
 * **Bypass mode is bypass mode.** Everything not covered above runs unattended by design. Use it with projects
   and MCP servers you trust.
 * Hardening idea for later: run the guest with `proot-distro --isolated` and bind only `~/.rootbridge`.

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@PYTHON@ -I @LIBDIR@/codex-precommit-review.py",
+            "timeout": 900,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -16,6 +16,8 @@ POLL_INTERVAL=0.5
 SU_ARGS="-c"            # "-mm -c" = global mount namespace (Magisk)
 AUTH_OPEN="auto"        # auto | copy | off   (used by the Claude hook)
 CLAUDE_ARGS=""
+TOOL_CLAUDE="on"        # on | off: Claude Code is part of this installation (install.sh --no-claude sets off)
+TOOL_CODEX="on"         # on | off: Codex is part of this installation (install.sh --no-codex sets off)
 AUTOSTART_DELAY=3
 THEME_FOLLOW="on"       # on | off: "Auto epaper" follows light/dark (rootbridge theme)
 THEME_RESTART="off"     # on | off: fallback, restart Claude Code (--continue) after a change
@@ -48,7 +50,7 @@ rb_load_config() {
                 case "$val" in "-c"|"-mm -c") SU_ARGS="$val" ;; esac ;;
             AUTH_OPEN)
                 case "$val" in auto|copy|off) AUTH_OPEN="$val" ;; esac ;;
-            THEME_FOLLOW|THEME_RESTART)
+            THEME_FOLLOW|THEME_RESTART|TOOL_CLAUDE|TOOL_CODEX)
                 case "$val" in on|off) printf -v "$key" '%s' "$val" ;; esac ;;
             CLAUDE_ARGS)
                 [[ "$val" =~ ^[A-Za-z0-9._\ =:/,-]*$ ]] && CLAUDE_ARGS="$val" ;;

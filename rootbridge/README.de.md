@@ -50,6 +50,8 @@ androidsu ── Anfrage + Ticket ───────────────�
 * Termux-Pakete: `tmux proot-distro python coreutils util-linux`, optional `termux-api` (+ Termux:API-App) für die Zwischenablage
 * Gast: `python3`, coreutils mit `sha256sum`, `od`, `timeout`
 * Claude Code ≥ 2.1.295
+* Codex (standardmäßig an, `--no-codex` lässt es weg): `install.sh` installiert es mit dem offiziellen Installer; das
+  Claude-Code-Plugin und die Pre-Commit-Review brauchen außerdem `git` und `nodejs` (≥ 18.18) im Gast, die er per `apt` einrichtet
 
 ## Installation
 
@@ -99,12 +101,14 @@ nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart 
 Termux-Zusatztastenleiste hinzufügt, siehe unten).
 
 Optionen: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--model NAME|none`, `--remote-name NAME`,
-`--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`, `--no-claude-update`. Der Installer ist idempotent, sichert Geändertes und migriert die
+`--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`, `--no-claude-update`, `--codex-update 6h|<N>h|daily|always|off`, `--no-codex-update`, `--no-claude`, `--no-codex` (`--claude` / `--codex` schalten ein Programm wieder an, siehe [Codex neben Claude Code](#codex-neben-claude-code)). Der Installer ist idempotent, sichert Geändertes und migriert die
 alte v1-Popup-Bridge.
 
-**Widgets.** Mit der App Termux:Widget gibt es zwei Verknüpfungen: **Claude** (an die Claude-Code-Sitzung anhängen)
-und **Ubuntu** (normale Ubuntu-Shell). Der Installer legt sie zusammen mit dem Widget-Icon in `~/.shortcuts` ab
-(`termux/shortcuts/icons/widget.png`, kopiert nach `~/.shortcuts/icons/<Name>.png`, für beide dasselbe). Die neutralen
+**Widgets.** Mit der App Termux:Widget gibt es drei Verknüpfungen: **Claude** (an die Claude-Code-Sitzung anhängen), **Codex** (das Codex-Fenster, siehe
+[Codex neben Claude Code](#codex-neben-claude-code)) und **Ubuntu** (normale Ubuntu-Shell). Der Installer legt sie zusammen
+mit dem Widget-Icon in `~/.shortcuts` ab (`termux/shortcuts/icons/widget.png`, kopiert nach `~/.shortcuts/icons/<Name>.png`,
+für alle dasselbe; `tools/make-widget-icon.py` erzeugt es aus dem Logo `termux/shortcuts/icons/logo.png`). Das bunte Icon der
+vorigen Version (`icons/legacy/widget-colour.png`) wird ebenfalls dadurch ersetzt. Die neutralen
 `>_`-Icons früherer Versionen (`termux/shortcuts/icons/legacy`) werden dadurch ersetzt, jedes andere vorhandene Icon wird
 nie ersetzt, du kannst also ein eigenes PNG dorthin legen; bei früheren Namen („Claude Code“ / „Ubuntu Shell“, „Claude >_“ / „Ubuntu >_“) wandert ein vorhandenes Icon auf den neuen Namen, und die alten Skripte werden entfernt. Sicherungen von
 Widget- und Boot-Skripten landen in `~/.rootbridge/backups` (Termux:Widget listet jede Datei in `~/.shortcuts`,
@@ -185,17 +189,63 @@ Remote-Control-Sitzung wird über Neustarts und `/clear` wiederverwendet und beh
 `/rename` vergebenen. Für einen anderen Namen genügt ein einmaliges `/rename NAME`. Ein `--name` gibt es bewusst nicht:
 Es würde den Namen zusätzlich im Rahmen des Eingabefelds im Claude-Code-Fenster anzeigen.
 
+## Codex neben Claude Code
+
+`install.sh` richtet standardmäßig **Codex** (OpenAIs Coding-Agent) neben Claude Code ein. `--no-codex` lässt es weg,
+`--no-claude` gibt dir Codex allein: kein Claude Code, keine Managed Settings, keine Hooks, kein Plugin (Guard, Plugin und
+Pre-Commit-Review leben alle in Claude Code); eines der beiden Programme bleibt immer. Die Wahl steht in der Termux-Konfig
+(`TOOL_CLAUDE` / `TOOL_CODEX`) und gilt für jede spätere Installation; mit `--claude` / `--codex` schaltest du ein Programm
+wieder an.
+
+* **Installation.** Im Gast: `git` und `nodejs` per `apt` (das Plugin braucht Node.js 18.18 oder neuer), Codex mit dem
+  offiziellen Standalone-Installer (`chatgpt.com/codex/install.sh`, nicht interaktiv, nach `~/.local/bin`; er bringt seine
+  eigene `bwrap`-Sandbox mit) und das Codex-Plugin für Claude Code (`codex@openai-codex` aus `openai/codex-plugin-cc`).
+  Jeder Schritt läuft nur, wenn er fehlt, ein zweiter Lauf fasst das Netz also nicht an.
+* **Widget „Codex“** und `rootbridge attach codex`: ein zweites Fenster in derselben tmux-Sitzung. Codex startet mit seinen
+  eigenen Standardwerten (Sandbox und Rückfragen), **nicht** in einem Bypass-Modus; `CODEX_ARGS` in
+  `/etc/termux-rootbridge.conf` fügt Optionen hinzu. Der Hook `android-root-guard` schützt nur Claude Code; `androidsu`
+  verweigert ohne Ticket weiterhin, und Tickets stellt nur dieser Hook aus.
+* **Anmeldung.** `rootbridge codex-login` führt `codex login` mit der Browser-Übergabe aus (`--device-auth`, wenn es keinen
+  Browser gibt). `rootbridge status` zeigt, ob Codex, seine Anmeldung, das Plugin und der Hook da sind.
+* **Beide bleiben aktuell.** Der Start eines der beiden Fenster ruft `rootbridge-apt` und danach `rootbridge-update` auf:
+  `claude update`, `codex update` und das Plugin-Update, jeweils höchstens alle 6 h nach einem Erfolg (`CLAUDE_UPDATE` /
+  `CODEX_UPDATE` = `6h|<N>h|daily|always|off`, Stempel in `/var/lib/termux-rootbridge/`; `--codex-update M`,
+  `--no-codex-update`). Starten zwei Sitzungen gleichzeitig, kommen sie nacheinander dran (Sperre), und ein fehlgeschlagener
+  Schritt hält den Start nie auf. `nodejs` und `git` sind `apt`-Pakete, `rootbridge-apt` hält sie also aktuell. Ein
+  Plugin-Update gilt nach einem Neustart von Claude Code.
+* **Pre-Commit-Review.** Mit beiden Programmen lässt ein Hook in den Managed Settings (`codex-precommit-review.py`, Timeout
+  900 s, `onFailure: "block"`) Codex jeden `git commit` von Claude Code prüfen. Eine erste Zeile `ALLOW` lässt den Commit
+  durch; `BLOCK` oder keine klare Antwort hält ihn an und gibt Codex' Befunde an Claude, das sie behebt und erneut committet.
+  Es ist eine strikte Schleife: Nach einem `BLOCK` kommt derselbe Diff nie durch, nur ein geänderter Diff, den Codex danach
+  freigibt; ein freigegebener Diff wird gemerkt. Fail-closed: Ohne Codex-Anmeldung, Plugin oder `node`, oder wenn Codex oder `git`
+  scheitert, wird der Commit blockiert. Notausgang, nur für dich: `rootbridge codex-off` / `codex-on` (Claude Code neu
+  starten) oder `CODEX_PRECOMMIT=off` in der Umgebung, mit der Claude Code startet. **Bis du dich bei Codex angemeldet hast,
+  ist jeder Commit von Claude Code blockiert.** Der Hook zerlegt den Befehl wie eine Shell und prüft ein `git commit`, das ausgeführt wird (auch nach `cd`, mit
+  `git -C`, hinter `sudo` / `env` / `time`, in `bash -c '…'` und `$(…)`); Text in Anführungszeichen oder Heredocs zählt nicht.
+  Git-Aliase (`git ci`) und Skripte, die committen, erkennt er nicht, und die Prüfung betrachtet den ganzen Arbeitsbaum
+  (staged und unstaged, Binäränderungen eingeschlossen) sowie, wenn derselbe Befehl `git add` ausführt, die noch nicht
+  verfolgten Dateien, die dabei dazukommen können (sie stehen in keinem Diff).
+  Codex blockiert nur bei hoher Schwere (ein Bug, der etwas kaputt macht, eine Sicherheitslücke, ein Secret, Datenverlust,
+  ein verschluckter Fehler); Kleineres kommt als Hinweis hinter `ALLOW`. Die Prüfung sieht den Arbeitsbaum, wie er beim
+  Start des Befehls ist: Was derselbe Befehl vor dem Commit noch ändert (`sed -i … && git commit -a`, ein Build-Skript),
+  ist nicht erfasst.
+* **Daten.** Der Diff und alles, was Codex im Arbeitsbaum liest, gehen an OpenAI, unter dem Konto, mit dem du dich angemeldet
+  hast. Die Sandbox von Codex beschränkt das Schreiben, nicht das Lesen: Es kann mehr vom Gast lesen als das Repository.
+
 ## Bedienung
 
 | Befehl (Termux) | Wirkung |
 |---|---|
 | `rootbridge start` | Daemon + Session; mit `--no-attach` im Hintergrund (Termux:Boot ruft das nach einem Neustart auf) |
 | `rootbridge attach` / Alias `ubuntu` | an die Claude-Code-Session anhängen |
+| `rootbridge attach codex` | an das Codex-Fenster anhängen (Widget **Codex**; die Session wird angelegt, wenn sie fehlt) |
 | `rootbridge shell` | normale Ubuntu-Shell in diesem Terminal (startet den Daemon für `androidsu`, aber weder Claude Code noch eine tmux-Sitzung; Widget „Ubuntu“) |
 | `rootbridge status` | Daemon, Session, Gast-Installation, letzte Audit-Zeilen |
 | `rootbridge login <server>` | `claude mcp login <server>` mit Browser-Übergabe |
+| `rootbridge codex-login` | `codex login` mit Browser-Übergabe (`--device-auth` ohne Browser) |
 | `rootbridge stop` | Session und Daemon stoppen |
 | `rootbridge guard-off` / `guard-on` | Notschalter für die Hooks |
+| `rootbridge codex-off` / `codex-on` | Notschalter für die Codex-Pre-Commit-Review (Claude Code neu starten) |
 
 In Claude Code ändert sich nichts: Du sagst, was du willst. Braucht Claude Root, ruft es `androidsu '<befehl>'`
 auf, und du siehst eine Rückfrage mit genau diesem Befehl. Jede Entscheidung steht in `~/.rootbridge/audit.log`.
@@ -218,6 +268,7 @@ Kurzfassung (Details: [docs/LOGIN.md](docs/LOGIN.md)):
 | Daemon: Ticket einmalig/Ablauf/Hash, lange Befehle, URL-Prüfung (49 Checks) | — |
 | Login-Hook (19 Tests: Antwortformen, URL-Regeln, Modi) | — |
 | Installer: Staging-Root, Idempotenz, v1-Migration, Deinstallation | — |
+| Codex neben Claude Code: Installationsoptionen und gespeicherte Wahl, Update-Schritte mit Stempeln und Sperre, tmux-Fenster, `codex-login` / `codex-off` / `status`, die Pre-Commit-Schleife (Stub-`node`) | `codex-login` und das Widget **Codex** auf einem Gerät; `claude plugin update`, `codex update` und `onFailure: "block"` nach einem Absturz des Hooks; `bwrap` auf anderen Geräten |
 
 Auf einem Gerät bestätigt (Hisense A9, 04.11.2026): Installer, Farben und Theme, apt-Upgrade, `claude update`, das
 Dateideskriptor-Limit, Widgets, Sitzungsende mit `/exit`, die Root-Rückfrage im Bypass-Modus (der Hook fragte in Claude Code, `androidsu` lief erst nach
@@ -236,6 +287,9 @@ Termux-Home mit dem Daemon. Die ehrliche Liste steht in [SECURITY.md](SECURITY.m
 ```bash
 bash uninstall.sh      # behält ~/.rootbridge (Audit-Log, Sicherungen) und die Konfiguration
 ```
+
+Er entfernt die Widgets (auch **Codex**), die Programme und die Hooks, die Codex-Pre-Commit-Review eingeschlossen. Codex selbst,
+seine Anmeldung (`~/.codex`) und das Plugin bleiben im Gast.
 
 ## Verwandte Projekte
 

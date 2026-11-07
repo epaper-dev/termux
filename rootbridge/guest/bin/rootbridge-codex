@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# rootbridge-codex - guest entry point of the Codex window (started by `rootbridge attach codex`, the widget "Codex"):
+#   1. apt-get update + upgrade (rootbridge-apt, at most once every 6 h by default, never blocks the start)
+#   2. rootbridge-update: claude update, codex update and the Codex plugin (CLAUDE_UPDATE / CODEX_UPDATE, at most
+#      once every 6 h by default, never blocks the start). Starting Codex also updates Claude Code and the other
+#      way round (rootbridge-claude does the same): the two review each other.
+#   3. Codex, in the working directory
+#
+# Codex starts with its own defaults (its sandbox and its approval questions): the installer does not turn on
+# any "dangerous" mode for it. CODEX_ARGS in /etc/termux-rootbridge.conf adds options of your own, for example
+# CODEX_ARGS="--model gpt-5.5". The android-root-guard hook protects Claude Code only; Codex gets root through
+# androidsu like everything else, and androidsu refuses without a ticket that only that hook hands out.
+
+# (the tests set ROOTBRIDGE_CODEX_KEEP_PATH and ROOTBRIDGE_CODEX_BIN to run it with stubs)
+[ -n "${ROOTBRIDGE_CODEX_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
+
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
+conf_get() {
+    [ -r "$CONF" ] || return 1
+    local v
+    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    [ -n "$v" ] && printf '%s' "$v"
+}
+
+workdir="$(conf_get WORKDIR || echo /root/work)"
+cd "$workdir" 2>/dev/null || cd /root || exit 1
+
+# the browser hand-off for `codex login` (and links Codex opens): Android's browser, like for Claude Code
+export BROWSER=/usr/local/bin/rootbridge-open
+
+codex_bin="${ROOTBRIDGE_CODEX_BIN:-/root/.local/bin/codex}"
+[ -x "$codex_bin" ] || codex_bin="$(command -v codex || true)"
+if [ -z "$codex_bin" ]; then
+    echo "rootbridge-codex: codex nicht gefunden. Installation: curl -fsSL https://chatgpt.com/codex/install.sh | sh" >&2
+    exec bash -l
+fi
+
+if command -v rootbridge-apt >/dev/null 2>&1; then
+    rootbridge-apt || true
+fi
+
+# claude update, codex update, Codex plugin (CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
+if command -v rootbridge-update >/dev/null 2>&1; then
+    rootbridge-update || true
+fi
+
+# After Codex: a clean end (quit = 0, Ctrl+C = 130) ends the script, so the tmux window (and, if it is the last
+# one, the session and the widget's Termux window) close too. On an error the shell stays open.
+after_codex() {
+    case "$1" in 0|130) exit 0 ;; esac
+    echo
+    echo "Codex wurde mit Code $1 beendet. Neu starten mit: codex   (Shell bleibt offen)"
+    exec bash -l
+}
+
+read -r -a extra <<< "$(conf_get CODEX_ARGS || true)"
+( exec "$codex_bin" "${extra[@]}" )
+after_codex "$?"

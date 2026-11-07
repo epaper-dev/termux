@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Test: `claude update` at the start of the Claude Code session runs at most once a day (CLAUDE_UPDATE).
-#   1. update_claude() from guest/bin/rootbridge-claude with a stub `claude` (the script itself never
-#      runs: it would start the real `claude update` and rootbridge-apt; only conf_get, limit_nofile
-#      and update_claude are cut out of it)
+#   1. update_claude() from guest/bin/rootbridge-update (with the helpers it uses) and a stub `claude`
+#      (the main part of the script never runs: it would start the real `claude update`; the functions are
+#      cut out of it). rootbridge-claude only calls rootbridge-update, after rootbridge-apt.
 #   2. guest installer: config key, --claude-update, uninstall
 #   3. install.sh with a fake HOME/PREFIX and a stub proot-distro: --claude-update / --no-claude-update,
 #      stored in the Termux config
@@ -10,7 +10,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT="$ROOT/guest/bin/rootbridge-claude"
+SCRIPT="$ROOT/guest/bin/rootbridge-update"
+CLAUDEBIN="$ROOT/guest/bin/rootbridge-claude"
 GUEST="$ROOT/guest/install-guest.sh"
 INSTALL="$ROOT/install.sh"
 
@@ -25,12 +26,14 @@ check() {   # check <name> <expected> <actual>
 }
 
 bash -n "$SCRIPT" 2>/dev/null
+check "rootbridge-update: Syntax in Ordnung" 0 "$?"
+bash -n "$CLAUDEBIN" 2>/dev/null
 check "rootbridge-claude: Syntax in Ordnung" 0 "$?"
 
 # ------------------------------------------------ 1. update_claude() with a stub claude
-FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^update_claude() {/,/^}/p' "$SCRIPT")"
+FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^update_due() {/,/^}/p;/^stamp_success() /p;/^state_dir() /p;/^update_claude() {/,/^}/p' "$SCRIPT")"
 export FUNCS
-for fn in conf_get limit_nofile update_claude; do
+for fn in conf_get limit_nofile update_due stamp_success state_dir update_claude; do
     case "$FUNCS" in
         *"$fn() {"*) ;;
         *) echo "ABBRUCH: $fn() nicht in $SCRIPT gefunden." >&2; exit 1 ;;
@@ -207,11 +210,11 @@ check "claude update mit NOFILE_LIMIT=1024"           1 "$(grep -c "hard=$(w 102
 
 # --- how the script uses it
 check "genau eine Kopfzeile 'claude update'"          1 "$(grep -c '^    echo "== claude update"$' "$SCRIPT")"
-check "update_claude wird genau einmal aufgerufen"    1 "$(grep -c '^update_claude$' "$SCRIPT")"
-rc_apt="$(grep -n 'rootbridge-apt ||' "$SCRIPT" | head -n 1 | cut -d: -f1)"
-rc_upd="$(grep -n '^update_claude$' "$SCRIPT" | head -n 1 | cut -d: -f1)"
-check "apt läuft vor claude update"                   1 "$([ -n "$rc_apt" ] && [ -n "$rc_upd" ] && [ "$rc_apt" -lt "$rc_upd" ] && echo 1 || echo 0)"
-check "kein ungeschützter claude update-Aufruf mehr"  1 "$(grep -c 'update ); then' "$SCRIPT")"
+check "update_claude wird genau einmal aufgerufen"    1 "$(grep -c '&& update_claude$' "$SCRIPT")"
+rc_apt="$(grep -n 'rootbridge-apt ||' "$CLAUDEBIN" | head -n 1 | cut -d: -f1)"
+rc_upd="$(grep -n 'rootbridge-update ||' "$CLAUDEBIN" | head -n 1 | cut -d: -f1)"
+check "apt läuft vor claude update (rootbridge-claude)" 1 "$([ -n "$rc_apt" ] && [ -n "$rc_upd" ] && [ "$rc_apt" -lt "$rc_upd" ] && echo 1 || echo 0)"
+check "kein ungeschützter claude update-Aufruf mehr"  1 "$(grep -c '"\$claude_bin" update ); then' "$SCRIPT")"
 
 # ------------------------------------------------------ 2. guest installer
 gconf() { printf '%s' "$1/etc/termux-rootbridge.conf"; }
@@ -228,7 +231,8 @@ ginstall "$S"
 check "Gast ohne Option: Installer läuft"             0 "$?"
 check "Gast: CLAUDE_UPDATE=6h als Standard"           "CLAUDE_UPDATE=6h" "$(gval "$S" CLAUDE_UPDATE)"
 check "Gast: genau eine Zeile"                        1 "$(gcount "$S" CLAUDE_UPDATE)"
-check "Gast: rootbridge-claude hat update_claude"     1 "$(grep -c '^update_claude$' "$S/usr/local/bin/rootbridge-claude")"
+check "Gast: rootbridge-update installiert"           ja "$([ -x "$S/usr/local/bin/rootbridge-update" ] && echo ja || echo nein)"
+check "Gast: rootbridge-claude ruft rootbridge-update" 1 "$(grep -c 'rootbridge-update || true' "$S/usr/local/bin/rootbridge-claude")"
 
 before="$(cksum < "$(gconf "$S")")"; b0="$(cbak "$S")"
 ginstall "$S"

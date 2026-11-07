@@ -274,7 +274,7 @@ fi
 
 # --- rootbridge-claude calls it before `claude update`, and never lets it stop the start
 rc_apt="$(grep -n 'rootbridge-apt ||' "$ROOT/guest/bin/rootbridge-claude" | head -n 1 | cut -d: -f1)"
-rc_upd="$(grep -n 'echo "== claude update"' "$ROOT/guest/bin/rootbridge-claude" | head -n 1 | cut -d: -f1)"
+rc_upd="$(grep -n 'rootbridge-update ||' "$ROOT/guest/bin/rootbridge-claude" | head -n 1 | cut -d: -f1)"
 check "rootbridge-claude: apt vor claude update"      1 "$([ -n "$rc_apt" ] && [ -n "$rc_upd" ] && [ "$rc_apt" -lt "$rc_upd" ] && echo 1 || echo 0)"
 check "rootbridge-claude: Fehler von apt egal (|| true)" 1 "$(grep -c 'rootbridge-apt || true' "$ROOT/guest/bin/rootbridge-claude")"
 
