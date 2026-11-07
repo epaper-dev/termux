@@ -234,9 +234,9 @@ class TestTamper(GuardCase):
                     "mv /usr/local/bin/androidsu /tmp/x",
                     "sed -i 's/ask/allow/' /etc/claude-code/managed-settings.json",
                     "rm /data/data/com.termux/files/home/.rootbridge/audit.log",
-                    "cp x /usr/local/lib/termux-root-bridge/android-root-guard.py",
+                    "cp x /usr/local/lib/termux-rootbridge/android-root-guard.py",
                     "chmod 000 /usr/local/bin/androidsu",
-                    "tee /etc/termux-root-bridge.conf < x"):
+                    "tee /etc/termux-rootbridge.conf < x"):
             self.assertAsk(cmd)
 
     def test_reading_protected_is_free(self):

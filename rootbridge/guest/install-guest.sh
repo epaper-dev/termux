@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-guest.sh - guest (proot-distro Ubuntu) part of termux-root-bridge.
+# install-guest.sh - guest (proot-distro Ubuntu) part of termux-rootbridge.
 # Normally started by ../install.sh; can also be run by hand as root in the guest.
 #
 #   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
@@ -21,14 +21,14 @@
 #                     only if settings.json has no model yet; with the option the value is always written;
 #                     none leaves the model alone
 #   --remote-name N   name shown in the Remote Control view (claude.ai/code): sets
-#                     `--remote-control N` in CLAUDE_ARGS of /etc/termux-root-bridge.conf
+#                     `--remote-control N` in CLAUDE_ARGS of /etc/termux-rootbridge.conf
 #                     (other arguments stay; a new line also gets --continue) and, unless you set it
 #                     yourself, remoteControlAtStartup=true in ~/.claude/settings.json
-#   --apt-upgrade M   APT_UPGRADE in /etc/termux-root-bridge.conf: rootbridge-apt runs apt-get
+#   --apt-upgrade M   APT_UPGRADE in /etc/termux-rootbridge.conf: rootbridge-apt runs apt-get
 #                     update + upgrade at the start of the Claude Code session (6h = at most once
 #                     every 6 hours, <N>h = every N hours (1-999), daily = 24h, always, off).
 #                     Without the option an existing value stays and a missing one becomes "6h".
-#   --claude-update M CLAUDE_UPDATE in /etc/termux-root-bridge.conf: rootbridge-claude runs
+#   --claude-update M CLAUDE_UPDATE in /etc/termux-rootbridge.conf: rootbridge-claude runs
 #                     `claude update` at the start of the session (6h = at most once every 6 hours
 #                     after a success, <N>h, daily = 24h, always, off). Same rules as --apt-upgrade.
 #   --uninstall      remove everything this script installed
@@ -110,15 +110,15 @@ case "$AUTONOMOUS" in
 esac
 
 STAMP="$(date +%Y%m%d%H%M%S)"
-LIBDIR=/usr/local/lib/termux-root-bridge
+LIBDIR=/usr/local/lib/termux-rootbridge
 BINDIR=/usr/local/bin
-CONF=/etc/termux-root-bridge.conf
+CONF=/etc/termux-rootbridge.conf
 MANAGED_DIR=/etc/claude-code
 MANAGED="$MANAGED_DIR/managed-settings.json"
 BRIDGE_DIR=/data/data/com.termux/files/home/.rootbridge
 HOME_DIR="${ROOTBRIDGE_GUEST_HOME:-/root}"
-BEGIN='# >>> termux-root-bridge >>>'
-END='# <<< termux-root-bridge <<<'
+BEGIN='# >>> termux-rootbridge >>>'
+END='# <<< termux-rootbridge <<<'
 
 say() { printf '%s\n' "$*"; }
 backup() { [ -e "$1" ] && cp -p "$1" "$1.bak-$STAMP" && say "  Sicherung: $1.bak-$STAMP" || true; }
@@ -174,7 +174,7 @@ try:
     cur = json.load(open(target, encoding="utf-8"))
 except (OSError, ValueError):
     cur = {}
-MARK = "termux-root-bridge"
+MARK = "termux-rootbridge"
 hooks = cur.setdefault("hooks", {})
 for event, entries in tpl["hooks"].items():
     kept = [e for e in hooks.get(event, [])
@@ -276,7 +276,7 @@ unmerge_managed() {
 import json, sys
 path = sys.argv[1]
 cur = json.load(open(path, encoding="utf-8"))
-MARK = "termux-root-bridge"
+MARK = "termux-rootbridge"
 for event in list(cur.get("hooks", {})):
     cur["hooks"][event] = [e for e in cur["hooks"][event]
         if not any(MARK in h.get("command", "") for h in e.get("hooks", []))]
@@ -286,7 +286,7 @@ cur["hooks"] = cur.get("hooks") or {}
 if not cur["hooks"]:
     cur.pop("hooks")
 ask = [r for r in cur.get("permissions", {}).get("ask", [])
-       if "androidsu" not in r and "termux-root-bridge" not in r
+       if "androidsu" not in r and "termux-rootbridge" not in r
        and "/etc/claude-code" not in r and "rootbridge" not in r
        and "/usr/local/bin/xdg-open" not in r]
 if "permissions" in cur:
@@ -308,7 +308,7 @@ if [ "$UNINSTALL" = 1 ]; then
     unmerge_managed
     for f in androidsu rootbridge-open rootbridge-claude rootbridge-apt; do rm -f "$ROOT$BINDIR/$f"; done
     [ -L "$ROOT$BINDIR/xdg-open" ] && rm -f "$ROOT$BINDIR/xdg-open"
-    rm -rf "$ROOT$LIBDIR" "$ROOT/var/lib/termux-root-bridge"
+    rm -rf "$ROOT$LIBDIR" "$ROOT/var/lib/termux-rootbridge"
     rm -f "$ROOT$CONF"
     strip_block "$ROOT$HOME_DIR/.bashrc"
     say "Fertig. ($ROOT$HOME_DIR/.claude/settings.json bleibt unverändert.)"

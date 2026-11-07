@@ -3,14 +3,14 @@
 # Started by rootbridge-claude before `claude update`; can also be run by hand.
 # It never blocks the start: every problem is reported and the exit code is always 0.
 #
-# Config (/etc/termux-root-bridge.conf, read as data):
+# Config (/etc/termux-rootbridge.conf, read as data):
 #   APT_UPGRADE=6h|<N>h|daily|always|off
 #                                  6h (default): at most once per 6 h after a success; <N>h: the same with
 #                                  N hours (1-999); daily: same as 24h; always: at every start; off: do nothing
 #   APT_TIMEOUT=600                seconds allowed for `apt-get upgrade` (60-3600)
 #   APT_HOLD="rust-coreutils ..."  installed packages that are held back from the upgrade
 #                                  (default: the uutils/GNU coreutils packages; empty = none)
-# Log: /var/log/termux-root-bridge-apt.log        Last success: /var/lib/termux-root-bridge/apt-last-success
+# Log: /var/log/termux-rootbridge-apt.log        Last success: /var/lib/termux-rootbridge/apt-last-success
 #
 # Why the safeguards (proot-distro, Ubuntu 26.04): coreutils is rust-coreutils (uutils), a multicall
 # binary that aborts with "Security violation" under proot's link2symlink, so
@@ -22,10 +22,10 @@
 # ROOTBRIDGE_APT_KEEP_PATH so that their stub directory stays in front.
 [ -n "${ROOTBRIDGE_APT_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-root-bridge.conf}"
-STATE_DIR="${ROOTBRIDGE_APT_STATE_DIR:-/var/lib/termux-root-bridge}"
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
+STATE_DIR="${ROOTBRIDGE_APT_STATE_DIR:-/var/lib/termux-rootbridge}"
 STAMP="$STATE_DIR/apt-last-success"
-LOG="${ROOTBRIDGE_APT_LOG:-/var/log/termux-root-bridge-apt.log}"
+LOG="${ROOTBRIDGE_APT_LOG:-/var/log/termux-rootbridge-apt.log}"
 DEFAULT_HOLD="rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"
 
 # conf_raw KEY: value of KEY (quotes stripped); fails if the key is not there, even if empty

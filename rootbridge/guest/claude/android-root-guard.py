@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""android-root-guard - Claude Code PreToolUse hook (termux-root-bridge v2).
+"""android-root-guard - Claude Code PreToolUse hook (termux-rootbridge v2).
 
 Every execution that can reach Android root (androidsu, adb, fastboot, su,
 magisk, ...) has to be confirmed inside the Claude Code session. The hook
@@ -24,23 +24,23 @@ import secrets
 import sys
 import time
 
-CONF_PATH = os.environ.get("ROOTBRIDGE_CONF", "/etc/termux-root-bridge.conf")
+CONF_PATH = os.environ.get("ROOTBRIDGE_CONF", "/etc/termux-rootbridge.conf")
 DEFAULT_BRIDGE_DIR = "/data/data/com.termux/files/home/.rootbridge"
 DEFAULT_TTL = 1800
 
 BUILTIN_PROTECTED = [
     "/etc/claude-code",
-    "/etc/termux-root-bridge.conf",
-    "/usr/local/lib/termux-root-bridge",
+    "/etc/termux-rootbridge.conf",
+    "/usr/local/lib/termux-rootbridge",
     "/usr/local/bin/androidsu",
     "/usr/local/bin/rootbridge-open",
     "/usr/local/bin/rootbridge-claude",
     "/usr/local/bin/xdg-open",
     "/data/data/com.termux/files/home/.rootbridge",
-    "/data/data/com.termux/files/home/.config/termux-root-bridge",
+    "/data/data/com.termux/files/home/.config/termux-rootbridge",
     "/data/data/com.termux/files/usr/bin/rootbridge",
     "/data/data/com.termux/files/usr/bin/rootbridge-daemon",
-    "/data/data/com.termux/files/usr/lib/termux-root-bridge",
+    "/data/data/com.termux/files/usr/lib/termux-rootbridge",
 ]
 
 # Commands that always need a confirmation.
@@ -677,7 +677,7 @@ def decide(data, conf=None, issue_tickets=True):
         return None
 
     updated = None
-    reasons = ["⚠ termux-root-bridge"] + ctx.asks
+    reasons = ["⚠ termux-rootbridge"] + ctx.asks
     if ctx.tickets and isinstance(command, str):
         if issue_tickets:
             try:
@@ -711,7 +711,7 @@ def main():
             raise ValueError("kein JSON-Objekt")
         result = decide(data)
     except Exception as exc:  # fail closed: ask instead of silently allowing
-        result = _out("ask", "⚠ termux-root-bridge: Guard-Fehler (%s: %s) - "
+        result = _out("ask", "⚠ termux-rootbridge: Guard-Fehler (%s: %s) - "
                       "bitte prüfen, bevor du bestätigst."
                       % (type(exc).__name__, exc))
     if result is not None:

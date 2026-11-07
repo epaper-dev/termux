@@ -12,7 +12,7 @@
 
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-root-bridge.conf}"
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
 conf_get() {
     [ -r "$CONF" ] || return 1
     local v
@@ -55,9 +55,9 @@ if command -v rootbridge-apt >/dev/null 2>&1; then
     rootbridge-apt || true
 fi
 
-# claude update. CLAUDE_UPDATE=6h (default) | <N>h | daily | always | off (/etc/termux-root-bridge.conf, like APT_UPGRADE).
+# claude update. CLAUDE_UPDATE=6h (default) | <N>h | daily | always | off (/etc/termux-rootbridge.conf, like APT_UPGRADE).
 # 6h / <N>h (1-999 hours): at most once per N hours after a success; daily = 24h
-# (stamp /var/lib/termux-root-bridge/claude-update-last-success).
+# (stamp /var/lib/termux-rootbridge/claude-update-last-success).
 # A failed or aborted update leaves no stamp, so the next start tries again. Never stops the start.
 update_claude() {
     local mode stamp now last interval=0
@@ -73,7 +73,7 @@ update_claude() {
                return 0
            fi ;;
     esac
-    stamp="${ROOTBRIDGE_STATE_DIR:-/var/lib/termux-root-bridge}/claude-update-last-success"
+    stamp="${ROOTBRIDGE_STATE_DIR:-/var/lib/termux-rootbridge}/claude-update-last-success"
     now="$(date +%s)"
     if [ "$interval" -gt 0 ] && [ -r "$stamp" ]; then
         last="$(head -n 1 "$stamp" 2>/dev/null)"

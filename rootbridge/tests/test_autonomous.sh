@@ -76,7 +76,7 @@ check "Standard: Modell opusplan"                         opusplan "$(sget "$S" 
 check "Standard: Bypass-Schalter weiter gesetzt"          True "$(sget "$S" skipDangerousModePermissionPrompt)"
 check "Standard: /root/work angelegt"                     yes "$(isdir "$S/root/work")"
 check "Standard: kein altes /root/workspace"              no "$(isdir "$S/root/workspace")"
-check "Standard: Konfiguration enthält WORKDIR=/root/work" 1 "$(grep -c '^WORKDIR=/root/work$' "$S/etc/termux-root-bridge.conf")"
+check "Standard: Konfiguration enthält WORKDIR=/root/work" 1 "$(grep -c '^WORKDIR=/root/work$' "$S/etc/termux-rootbridge.conf")"
 check "Standard: ein Schreibvorgang, keine Sicherung"     0 "$(baks "$S")"
 ginstall "$S"
 check "Zweiter Lauf: Startmodus unverändert"              bypassPermissions "$(sget "$S" permissions.defaultMode)"
@@ -107,12 +107,12 @@ S="$T/s5"; ginstall "$S" --model "bad name"
 check "--model ungültig: Code 2"                          2 "$?"
 check "--model ungültig: nichts installiert"              no "$(isdir "$S/etc")"
 
-S="$T/s6"; mkdir -p "$S/etc"; printf 'WORKDIR=/root/custom\n' > "$S/etc/termux-root-bridge.conf"
+S="$T/s6"; mkdir -p "$S/etc"; printf 'WORKDIR=/root/custom\n' > "$S/etc/termux-rootbridge.conf"
 ginstall "$S"
 check "Eigener WORKDIR wird angelegt"                     yes "$(isdir "$S/root/custom")"
 check "Eigener WORKDIR: /root/work nicht zusätzlich"      no "$(isdir "$S/root/work")"
 
-S="$T/s7"; mkdir -p "$S/etc"; printf 'WORKDIR=/root/../tmp/x\n' > "$S/etc/termux-root-bridge.conf"
+S="$T/s7"; mkdir -p "$S/etc"; printf 'WORKDIR=/root/../tmp/x\n' > "$S/etc/termux-rootbridge.conf"
 ginstall "$S"
 check "WORKDIR mit '..': Rückfall auf /root/work"         yes "$(isdir "$S/root/work")"
 check "WORKDIR mit '..': nichts außerhalb angelegt"       no "$(isdir "$S/tmp/x")"
@@ -126,19 +126,19 @@ check "Kaputte settings.json: genau eine Warnung"         1 "$(grep -c 'kein gü
 check "Kaputte settings.json: keine Sicherung"            0 "$(baks "$S")"
 
 # old default WORKDIR=/root/workspace (never created) moves to /root/work; a folder that exists stays
-S="$T/m1"; mkdir -p "$S/etc"; printf 'DISTRO=ubuntu\nWORKDIR=/root/workspace\nSESSION=ubuntu\n' > "$S/etc/termux-root-bridge.conf"
+S="$T/m1"; mkdir -p "$S/etc"; printf 'DISTRO=ubuntu\nWORKDIR=/root/workspace\nSESSION=ubuntu\n' > "$S/etc/termux-rootbridge.conf"
 ginstall "$S"
-check "Altes WORKDIR ohne Ordner: wird /root/work"          1 "$(grep -c '^WORKDIR=/root/work$' "$S/etc/termux-root-bridge.conf")"
+check "Altes WORKDIR ohne Ordner: wird /root/work"          1 "$(grep -c '^WORKDIR=/root/work$' "$S/etc/termux-rootbridge.conf")"
 check "Altes WORKDIR ohne Ordner: /root/work angelegt"      yes "$(isdir "$S/root/work")"
 check "Altes WORKDIR ohne Ordner: kein /root/workspace"     no "$(isdir "$S/root/workspace")"
 check "Altes WORKDIR ohne Ordner: Meldung"                  1 "$(grep -c 'WORKDIR: /root/workspace -> /root/work' "$T/guest.log")"
-check "Altes WORKDIR ohne Ordner: andere Zeilen bleiben"    1 "$(grep -c '^SESSION=ubuntu$' "$S/etc/termux-root-bridge.conf")"
+check "Altes WORKDIR ohne Ordner: andere Zeilen bleiben"    1 "$(grep -c '^SESSION=ubuntu$' "$S/etc/termux-rootbridge.conf")"
 ginstall "$S"
 check "Zweiter Lauf: keine erneute Umstellung"              0 "$(grep -c 'WORKDIR: /root/workspace' "$T/guest.log")"
 
-S="$T/m2"; mkdir -p "$S/etc" "$S/root/workspace"; printf 'WORKDIR=/root/workspace\n' > "$S/etc/termux-root-bridge.conf"
+S="$T/m2"; mkdir -p "$S/etc" "$S/root/workspace"; printf 'WORKDIR=/root/workspace\n' > "$S/etc/termux-rootbridge.conf"
 ginstall "$S"
-check "Vorhandenes /root/workspace: WORKDIR bleibt"         1 "$(grep -c '^WORKDIR=/root/workspace$' "$S/etc/termux-root-bridge.conf")"
+check "Vorhandenes /root/workspace: WORKDIR bleibt"         1 "$(grep -c '^WORKDIR=/root/workspace$' "$S/etc/termux-rootbridge.conf")"
 check "Vorhandenes /root/workspace: kein /root/work"        no "$(isdir "$S/root/work")"
 
 # ------------------------------------------------------------ install.sh -> guest (stub proot-distro)
@@ -188,20 +188,20 @@ check "install.sh ohne --model: reicht keins an den Gast" 0 "$(grep -c -- '--mod
 check "install.sh ohne --model: Standardmodell im Gast"   opusplan "$(sget "$GUEST_ROOT" model)"
 check "install.sh: Startmodus bypassPermissions im Gast"  bypassPermissions "$(sget "$GUEST_ROOT" permissions.defaultMode)"
 check "install.sh: /root/work im Gast angelegt"           yes "$(isdir "$GUEST_ROOT/root/work")"
-check "install.sh: Termux-Konfig WORKDIR=/root/work"      1 "$(grep -c '^WORKDIR=/root/work$' "$H/.config/termux-root-bridge/config")"
+check "install.sh: Termux-Konfig WORKDIR=/root/work"      1 "$(grep -c '^WORKDIR=/root/work$' "$H/.config/termux-rootbridge/config")"
 check "install.sh: Abschlussmeldung nennt Bypass+work"    1 "$(grep -c 'Bypass-Modus im Ordner /root/work' "$T/install.log")"
 
 # Termux config written by an earlier version: old default is migrated (no folder in the guest), the guest follows
-mkdir -p "$H/.config/termux-root-bridge"
-printf 'DISTRO=ubuntu\nWORKDIR=/root/workspace\nSESSION=ubuntu\n' > "$H/.config/termux-root-bridge/config"
+mkdir -p "$H/.config/termux-rootbridge"
+printf 'DISTRO=ubuntu\nWORKDIR=/root/workspace\nSESSION=ubuntu\n' > "$H/.config/termux-rootbridge/config"
 rinstall
-check "install.sh: alte Termux-Konfig wird auf /root/work gestellt" 1 "$(grep -c '^WORKDIR=/root/work$' "$H/.config/termux-root-bridge/config")"
-check "install.sh: alte Termux-Konfig: Sicherung angelegt"          1 "$(ls "$H/.config/termux-root-bridge"/config.bak-* 2>/dev/null | wc -l | tr -d ' ')"
+check "install.sh: alte Termux-Konfig wird auf /root/work gestellt" 1 "$(grep -c '^WORKDIR=/root/work$' "$H/.config/termux-rootbridge/config")"
+check "install.sh: alte Termux-Konfig: Sicherung angelegt"          1 "$(ls "$H/.config/termux-rootbridge"/config.bak-* 2>/dev/null | wc -l | tr -d ' ')"
 check "install.sh: alte Konfig: /root/work im Gast"                 yes "$(isdir "$GUEST_ROOT/root/work")"
-printf 'DISTRO=ubuntu\nWORKDIR=/root/workspace\n' > "$H/.config/termux-root-bridge/config"
+printf 'DISTRO=ubuntu\nWORKDIR=/root/workspace\n' > "$H/.config/termux-rootbridge/config"
 mkdir -p "$GROOT/root/workspace"
 rinstall
-check "install.sh: vorhandenes /root/workspace im Gast: bleibt"     1 "$(grep -c '^WORKDIR=/root/workspace$' "$H/.config/termux-root-bridge/config")"
+check "install.sh: vorhandenes /root/workspace im Gast: bleibt"     1 "$(grep -c '^WORKDIR=/root/workspace$' "$H/.config/termux-rootbridge/config")"
 rmdir "$GROOT/root/workspace"
 
 rinstall --model none

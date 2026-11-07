@@ -1,4 +1,4 @@
-# termux-root-bridge
+# termux-rootbridge
 
 **Run Claude Code on Android (Termux + proot-distro) with every real-root action confirmed inside Claude Code — and with logins that just work.**
 
@@ -88,7 +88,7 @@ leaves both settings alone (a value set earlier stays), `--autonomous ask` asks 
 
 The installer also sets the **model** to `opusplan` (Opus plans, Sonnet works), again only if `settings.json` has no model
 yet. `--model NAME` always writes the given model, `--model none` leaves it alone. And it creates the **working directory
-`/root/work`** in the guest, where Claude Code starts (`WORKDIR` in `/etc/termux-root-bridge.conf`; a value you set there
+`/root/work`** in the guest, where Claude Code starts (`WORKDIR` in `/etc/termux-rootbridge.conf`; a value you set there
 stays). Before, the folder was never created, so a fresh installation started Claude Code in `/root`. An old default
 `WORKDIR=/root/workspace` is moved to `/root/work` if the folder `/root/workspace` does not exist.
 
@@ -133,17 +133,17 @@ the start (no network, an error or a timeout just print a note and Claude Code s
 safeguards matter on proot-distro with Ubuntu 26.04: dpkg gets `-o DPkg::Path` including `/usr/local/bin`, because the
 uutils coreutils need the GNU-named symlinks there (otherwise maintainer scripts abort with "Security violation"), and
 the coreutils packages (`APT_HOLD`) are held back, because upgrading the multicall binary itself breaks the guest. Log:
-`/var/log/termux-root-bridge-apt.log` in the guest — every run ends with a `Ende: ok` (or the reason) line, a run
+`/var/log/termux-rootbridge-apt.log` in the guest — every run ends with a `Ende: ok` (or the reason) line, a run
 without it was interrupted; held packages: `apt-mark showhold`. Turn it off with
 `bash install.sh --no-apt-upgrade` (stored in the Termux config as `APT_UPGRADE`, so later installs keep it, also with a
 fresh guest), or run it at every start with `--apt-upgrade always`. Run it by hand: `rootbridge-apt` in the guest. Everything installed with `apt` is covered, `nodejs` and `npm` included
 if you add them; global packages from `npm -g` are not. Claude Code itself is a native binary that `claude update`
-replaces, no npm involved. A value already in `/etc/termux-root-bridge.conf` stays when you run the installer without
+replaces, no npm involved. A value already in `/etc/termux-rootbridge.conf` stays when you run the installer without
 the option; switch an older `daily` once with `bash install.sh --apt-upgrade 6h --claude-update 6h`.
 
 **`claude update`.** Same rules as the package updates (`CLAUDE_UPDATE=6h|<N>h|daily|always|off`, default `6h`): the session
 start runs `claude update` at most once per 6 h after a success (stamp
-`/var/lib/termux-root-bridge/claude-update-last-success` in the guest). A failed or aborted update leaves no stamp, prints a
+`/var/lib/termux-rootbridge/claude-update-last-success` in the guest). A failed or aborted update leaves no stamp, prints a
 note and Claude Code starts anyway; the next start tries again. With the default Claude Code can be up to 6 hours behind the
 newest version. `bash install.sh --no-claude-update` turns it off, `--claude-update always` runs it at every start (stored in
 the Termux config as `CLAUDE_UPDATE`, so later installs keep it, also with a fresh guest). A `claude update` you run by
@@ -162,7 +162,7 @@ the "High contrast text" threshold; a file of yours stays). Claude Code's own `a
 `client-light-theme` / `client-dark-theme` run `rootbridge theme light|dark`: it switches the base between
 `light-ansi` and `dark-ansi` (or `light-daltonized`/`dark-daltonized`, `light`/`dark` if you put that in). A running
 Claude Code session picks up the changed theme file and switches its colours live (confirmed on the device, no restart).
-`THEME_RESTART=on` in `~/.config/termux-root-bridge/config` is only a fallback for a version that does not: it restarts
+`THEME_RESTART=on` in `~/.config/termux-rootbridge/config` is only a fallback for a version that does not: it restarts
 Claude Code with `--continue` (an answer in progress is cut off). `THEME_FOLLOW=off` switches the hooks off. Pick another theme any time with `/theme`. Every new interactive Termux shell
 runs `termux-reload-settings`, and so do the Termux:Widget shortcuts before they attach. Other Termux builds have no
 built-in light scheme; copy a scheme to `~/.termux/colors.properties` there.
@@ -204,9 +204,9 @@ Short version (details and troubleshooting: [docs/LOGIN.md](docs/LOGIN.md)):
 
 ## Configuration
 
-Termux: `~/.config/termux-root-bridge/config` (parsed as data, never executed): `DISTRO`, `WORKDIR`, `SESSION`,
+Termux: `~/.config/termux-rootbridge/config` (parsed as data, never executed): `DISTRO`, `WORKDIR`, `SESSION`,
 `TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE` and `CLAUDE_UPDATE` (all read by `install.sh`).
-Guest: `/etc/termux-root-bridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
+Guest: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
 upgrade, default 600), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `NOFILE_LIMIT` (see below).
 

@@ -181,7 +181,7 @@ check "A1 Reihenfolge: pkg < Gast anlegen < setup-guest < install-guest" ja \
       "$([ "$a" -lt "$b" ] && [ "$b" -lt "$c" ] && [ "$c" -lt "$d" ] && echo ja || echo "nein ($a $b $c $d)")"
 check "A1 Hinweis auf die Handarbeit am Ende"                   1 "$(count "$E/out.log" 'Noch von Hand')"
 check "A1 Bridge ist eingerichtet (Widget Claude)"              ja "$([ -f "$E/home/.shortcuts/Claude" ] && echo ja || echo nein)"
-check "A1 Staging im Gast ist wieder aufgeräumt"                nein "$([ -e "$E/prefix/var/lib/proot-distro/containers/ubuntu/rootfs/var/tmp/termux-root-bridge-install" ] && echo ja || echo nein)"
+check "A1 Staging im Gast ist wieder aufgeräumt"                nein "$([ -e "$E/prefix/var/lib/proot-distro/containers/ubuntu/rootfs/var/tmp/termux-rootbridge-install" ] && echo ja || echo nein)"
 
 : > "$LOG"
 rinstall

@@ -24,7 +24,7 @@ bash "$INSTALLER" --root "$STAGE" --autonomous no > "$T/install.log" 2>&1
 check "Installer läuft im Staging-Root" 0 "$?"
 check "bashrc: Syntax in Ordnung" 0 "$(bash -n "$BASHRC" 2>/dev/null; echo $?)"
 
-BLOCK="$(sed -n '/# >>> termux-root-bridge >>>/,/# <<< termux-root-bridge <<</p' "$BASHRC" 2>/dev/null)"
+BLOCK="$(sed -n '/# >>> termux-rootbridge >>>/,/# <<< termux-rootbridge <<</p' "$BASHRC" 2>/dev/null)"
 export BLOCK
 if [ -z "$BLOCK" ]; then
     echo "ABBRUCH: kein claude()-Block im Staging-.bashrc gefunden, siehe $T/install.log:" >&2
@@ -75,11 +75,11 @@ baks() { find "$STAGE$ROOTBRIDGE_GUEST_HOME" -name '.bashrc.bak-*' | wc -l | tr 
 baks_before="$(baks)"
 bash "$INSTALLER" --root "$STAGE" --autonomous no > "$T/install2.log" 2>&1
 check "zweiter Lauf: .bashrc unverändert"           "$before"                                       "$(cksum < "$BASHRC")"
-check "zweiter Lauf: genau ein Block"               1 "$(grep -c '# >>> termux-root-bridge >>>' "$BASHRC")"
+check "zweiter Lauf: genau ein Block"               1 "$(grep -c '# >>> termux-rootbridge >>>' "$BASHRC")"
 check "zweiter Lauf: keine neue .bashrc-Sicherung"  "$baks_before"                                  "$(baks)"
 
 bash "$INSTALLER" --root "$STAGE" --uninstall > "$T/uninstall.log" 2>&1
-check "Deinstallation entfernt den Block"           0 "$(grep -c 'termux-root-bridge' "$BASHRC")"
+check "Deinstallation entfernt den Block"           0 "$(grep -c 'termux-rootbridge' "$BASHRC")"
 
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"

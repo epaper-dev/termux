@@ -17,9 +17,9 @@ check() {   # check <name> <expected> <actual>
     else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
 }
 
-mkdir -p "$T/bin" "$T/lib/termux-root-bridge" "$T/stubs" "$T/home/.config/termux-root-bridge"
+mkdir -p "$T/bin" "$T/lib/termux-rootbridge" "$T/stubs" "$T/home/.config/termux-rootbridge"
 sed "1s|^#!.*|#!$(command -v bash)|" "$ROOT/termux/bin/rootbridge" > "$T/bin/rootbridge"
-cp "$ROOT/termux/lib/rootbridge-lib.sh" "$T/lib/termux-root-bridge/rootbridge-lib.sh"
+cp "$ROOT/termux/lib/rootbridge-lib.sh" "$T/lib/termux-rootbridge/rootbridge-lib.sh"
 cat > "$T/stubs/tmux" <<'EOF'
 #!/bin/bash
 echo "tmux $*" >> "$STUB_LOG"
@@ -28,7 +28,7 @@ exit 0
 EOF
 chmod +x "$T/bin/rootbridge" "$T/stubs/tmux"
 export STUB_LOG="$T/stub.log" BRIDGE_DIR="$T/bridge"
-CONF="$T/home/.config/termux-root-bridge/config"
+CONF="$T/home/.config/termux-rootbridge/config"
 RFS="$T/prefix/var/lib/proot-distro/installed-rootfs/ubuntu"
 EP="$RFS/root/.claude/themes/epaper.json"
 

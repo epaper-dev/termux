@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034  # the settings below are read by the scripts that source this file
-# rootbridge-lib.sh - shared helpers of termux-root-bridge (sourced, not run).
+# rootbridge-lib.sh - shared helpers of termux-rootbridge (sourced, not run).
 # Used by rootbridge-daemon and the rootbridge CLI inside Termux.
 
 # --- defaults ---------------------------------------------------------------
 BRIDGE_DIR="${BRIDGE_DIR:-$HOME/.rootbridge}"
-RB_CONFIG="${ROOTBRIDGE_CONFIG:-$HOME/.config/termux-root-bridge/config}"
+RB_CONFIG="${ROOTBRIDGE_CONFIG:-$HOME/.config/termux-rootbridge/config}"
 
 DISTRO="ubuntu"
 WORKDIR="/root/work"

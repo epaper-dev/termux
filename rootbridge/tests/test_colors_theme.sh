@@ -201,7 +201,7 @@ check "Schlussmeldung nennt die eingebauten Schemata" 1 "$(grep -c '^Farben: der
 rinstall "$H"
 check "Zweiter Lauf: läuft durch"                     0 "$?"
 check "Zweiter Lauf: weiterhin keine Farbdatei"       0 "$(nocolors "$H")"
-check "Zweiter Lauf: .bashrc-Block genau einmal"      1 "$(grep -c '^# >>> termux-root-bridge >>>$' "$H/.bashrc")"
+check "Zweiter Lauf: .bashrc-Block genau einmal"      1 "$(grep -c '^# >>> termux-rootbridge >>>$' "$H/.bashrc")"
 
 # files that earlier versions installed and that are unchanged go (no backup needed: the content is in the repo history)
 for pair in "former-colors:colors.properties:$FORMER" "former-light:colors-light.properties:$FORMER_LIGHT"; do
@@ -292,20 +292,20 @@ check "Alias ubuntu bleibt"                                 "alias ubuntu='rootb
 H6="$T/home6"; mkdir -p "$H6"
 cat > "$H6/.bashrc" <<'EOF'
 # my own line
-# >>> termux-root-bridge >>>
+# >>> termux-rootbridge >>>
 alias ubuntu='rootbridge attach'
 if [[ $- == *i* ]] && [ -z "${TMUX:-}" ] && [ -z "${ROOTBRIDGE_NO_AUTOSTART:-}" ] \
         && command -v rootbridge >/dev/null 2>&1; then
     rootbridge start
 fi
-# <<< termux-root-bridge <<<
+# <<< termux-rootbridge <<<
 export MYVAR=1
 EOF
 check "Altes .bashrc: startet vor der Migration"            "rootbridge start|" "$(run_bashrc "$H6" | sed 's/^reload|//')"
 rinstall "$H6" --no-guest
 check "Altes .bashrc: Installer läuft"                     0 "$?"
 check "Altes .bashrc: kein 'rootbridge start' mehr"         0 "$(grep -c 'rootbridge start' "$H6/.bashrc")"
-check "Altes .bashrc: Block genau einmal"                   1 "$(grep -c '^# >>> termux-root-bridge >>>$' "$H6/.bashrc")"
+check "Altes .bashrc: Block genau einmal"                   1 "$(grep -c '^# >>> termux-rootbridge >>>$' "$H6/.bashrc")"
 check "Altes .bashrc: eigene Zeilen bleiben"                2 "$(grep -c '^# my own line$\|^export MYVAR=1$' "$H6/.bashrc")"
 check "Altes .bashrc: danach nur Reload"                    "reload|" "$(run_bashrc "$H6")"
 

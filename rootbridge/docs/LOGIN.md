@@ -1,7 +1,7 @@
 # Logins and MCP links
 
 Signing in on a phone has three annoyances: the browser does not open, the link is huge, and copying it from the
-terminal brings line breaks and spaces. This is what termux-root-bridge changes — and how to fix it when it does not.
+terminal brings line breaks and spaces. This is what termux-rootbridge changes — and how to fix it when it does not.
 
 ## Why copying was so painful
 
@@ -29,7 +29,7 @@ browser is opened by the daemon (reliable) or, if the daemon does not run, direc
 
 ## Settings
 
-Guest `/etc/termux-root-bridge.conf` (or environment variables of the same name):
+Guest `/etc/termux-rootbridge.conf` (or environment variables of the same name):
 
 | Key | Values | Meaning |
 |---|---|---|

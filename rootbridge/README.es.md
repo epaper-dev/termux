@@ -1,4 +1,4 @@
-# termux-root-bridge
+# termux-rootbridge
 
 **Ejecuta Claude Code en Android (Termux + proot-distro) con cada acción de root real confirmada dentro de Claude Code, y con inicios de sesión que simplemente funcionan.**
 
@@ -132,18 +132,18 @@ aviso y Claude Code arranca; el siguiente arranque lo intenta de nuevo). Dos sal
 Ubuntu 26.04: dpkg recibe `-o DPkg::Path` incluyendo `/usr/local/bin`, porque los coreutils de uutils necesitan allí los
 enlaces simbólicos con nombres GNU (si no, los scripts de mantenimiento abortan con «Security violation»), y los
 paquetes de coreutils (`APT_HOLD`) se mantienen retenidos, porque actualizar el propio binario multicall rompe el
-invitado. Registro: `/var/log/termux-root-bridge-apt.log` en el invitado; cada ejecución termina con una línea
+invitado. Registro: `/var/log/termux-rootbridge-apt.log` en el invitado; cada ejecución termina con una línea
 `Ende: ok` (o el motivo), y una ejecución sin ella fue interrumpida; paquetes retenidos: `apt-mark showhold`. Se
 desactiva con `bash install.sh --no-apt-upgrade` (se guarda en la configuración de Termux como `APT_UPGRADE`, de modo
 que las instalaciones posteriores lo conservan, también con un invitado nuevo), o se ejecuta en cada arranque con
 `--apt-upgrade always`. A mano: `rootbridge-apt` en el invitado. Todo lo instalado con `apt` queda cubierto, también `nodejs` y `npm` si los
 añades; los paquetes globales de `npm -g` no. Claude Code es un binario nativo que `claude update` sustituye sin npm. Un
-valor que ya está en `/etc/termux-root-bridge.conf` se conserva al instalar sin la opción; cambia un `daily` anterior una
+valor que ya está en `/etc/termux-rootbridge.conf` se conserva al instalar sin la opción; cambia un `daily` anterior una
 vez con `bash install.sh --apt-upgrade 6h --claude-update 6h`.
 
 **`claude update`.** Mismas reglas que las actualizaciones de paquetes (`CLAUDE_UPDATE=6h|<N>h|daily|always|off`, por defecto
 `6h`): el inicio de la sesión ejecuta `claude update` como máximo una vez cada 6 h tras un éxito (marca
-`/var/lib/termux-root-bridge/claude-update-last-success` en el invitado). Una actualización fallida o interrumpida no
+`/var/lib/termux-rootbridge/claude-update-last-success` en el invitado). Una actualización fallida o interrumpida no
 deja marca, muestra un aviso y Claude Code arranca igualmente; el siguiente arranque lo intenta de nuevo. Con el valor por defecto,
 Claude Code puede ir hasta 6 horas por detrás de la última versión. `bash install.sh --no-claude-update` lo desactiva y
 `--claude-update always` lo ejecuta en cada arranque (se guarda en la configuración de Termux como `CLAUDE_UPDATE`, de
@@ -163,7 +163,7 @@ un cambio entre claro y oscuro (DECSET 2031) a tmux, cuyos hooks `client-light-t
 `rootbridge theme light|dark`: esto cambia el tema base entre `light-ansi` y `dark-ansi` (o
 `light-daltonized`/`dark-daltonized`, `light`/`dark` si lo has configurado así). Una sesión
 de Claude Code en marcha recoge el archivo de tema modificado y cambia los colores en directo (confirmado en el
-dispositivo, sin reiniciar). `THEME_RESTART=on` en `~/.config/termux-root-bridge/config` es solo un recurso para una
+dispositivo, sin reiniciar). `THEME_RESTART=on` en `~/.config/termux-rootbridge/config` es solo un recurso para una
 versión que no lo haga: reinicia Claude Code con `--continue` (se interrumpe cualquier respuesta en curso).
 `THEME_FOLLOW=off` desactiva los hooks. Puedes elegir otro tema en cualquier momento con `/theme`. Cada nueva shell interactiva de Termux ejecuta `termux-reload-settings`, y
 también los accesos directos de Termux:Widget antes de conectarse. Otras compilaciones de Termux no traen un esquema claro;
@@ -206,10 +206,10 @@ Versión corta (detalles y solución de problemas: [docs/LOGIN.md](docs/LOGIN.md
 
 ## Configuración
 
-Termux: `~/.config/termux-root-bridge/config` (se interpreta como datos, nunca se ejecuta): `DISTRO`, `WORKDIR`,
+Termux: `~/.config/termux-rootbridge/config` (se interpreta como datos, nunca se ejecuta): `DISTRO`, `WORKDIR`,
 `SESSION`, `TICKET_TTL`, `SU_ARGS` (`-c` o `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE` y `CLAUDE_UPDATE`
 (todos los lee `install.sh`).
-Invitado: `/etc/termux-root-bridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
+Invitado: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
 la actualización, por defecto 600), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
 `daily`, `always`, `off`), `NOFILE_LIMIT` (ver abajo).

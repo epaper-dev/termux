@@ -2,7 +2,7 @@
 
 ## What this project protects — and what it does not
 
-termux-root-bridge makes **unintended** Android-root actions by an AI agent much less likely. It is **not** a
+termux-rootbridge makes **unintended** Android-root actions by an AI agent much less likely. It is **not** a
 sandbox against a hostile agent or a compromised guest. Read the limits before relying on it.
 
 ### Protections

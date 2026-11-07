@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rootbridge - control program of termux-root-bridge (runs in Termux).
+# rootbridge - control program of termux-rootbridge (runs in Termux).
 #
 #   rootbridge start [--no-attach]   daemon + Claude Code session (Termux:Boot: --no-attach)
 #   rootbridge attach                attach to the session (create if missing)
@@ -18,7 +18,7 @@ self="$(readlink -f "${BASH_SOURCE[0]}")"
 here="${self%/*}"
 lib=""
 for cand in "${ROOTBRIDGE_LIB:-}" \
-            "$here/../lib/termux-root-bridge/rootbridge-lib.sh" \
+            "$here/../lib/termux-rootbridge/rootbridge-lib.sh" \
             "$here/../lib/rootbridge-lib.sh"; do
     if [ -n "$cand" ] && [ -r "$cand" ]; then lib="$cand"; break; fi
 done

@@ -279,14 +279,14 @@ check "rootbridge-claude: apt vor claude update"      1 "$([ -n "$rc_apt" ] && [
 check "rootbridge-claude: Fehler von apt egal (|| true)" 1 "$(grep -c 'rootbridge-apt || true' "$ROOT/guest/bin/rootbridge-claude")"
 
 # ------------------------------------------------------ 2. guest installer
-gconf() { printf '%s' "$1/etc/termux-root-bridge.conf"; }
+gconf() { printf '%s' "$1/etc/termux-rootbridge.conf"; }
 gval() { grep "^$2=" "$(gconf "$1")" 2>/dev/null || true; }
 gcount() { grep -c "^$2=" "$(gconf "$1")" 2>/dev/null || true; }
 ginstall() {  # ginstall <stage> [args...]
     local stage="$1"; shift
     bash "$GUEST" --root "$stage" --autonomous no "$@" > "$T/guest.log" 2>&1
 }
-cbak() { find "$1/etc" -name 'termux-root-bridge.conf.bak-*' 2>/dev/null | wc -l | tr -d ' '; }
+cbak() { find "$1/etc" -name 'termux-rootbridge.conf.bak-*' 2>/dev/null | wc -l | tr -d ' '; }
 
 S="$T/g1"
 ginstall "$S"
@@ -339,10 +339,10 @@ done
 bash "$GUEST" --root "$T/bad" --apt-upgrade > /dev/null 2>&1
 check "--apt-upgrade ohne Wert: Abbruch mit 2"        2 "$?"
 
-S="$T/g3"; ginstall "$S"; mkdir -p "$S/var/lib/termux-root-bridge"; echo 1 > "$S/var/lib/termux-root-bridge/apt-last-success"
+S="$T/g3"; ginstall "$S"; mkdir -p "$S/var/lib/termux-rootbridge"; echo 1 > "$S/var/lib/termux-rootbridge/apt-last-success"
 bash "$GUEST" --root "$S" --uninstall > "$T/guest.log" 2>&1
 check "Deinstallation: rootbridge-apt entfernt"       nein "$([ -e "$S/usr/local/bin/rootbridge-apt" ] && echo ja || echo nein)"
-check "Deinstallation: Stempel-Ordner entfernt"       nein "$([ -e "$S/var/lib/termux-root-bridge" ] && echo ja || echo nein)"
+check "Deinstallation: Stempel-Ordner entfernt"       nein "$([ -e "$S/var/lib/termux-rootbridge" ] && echo ja || echo nein)"
 
 # ----------------------------------------------- 3. install.sh (fake Termux)
 H="$T/home"; P="$T/prefix"; GROOT="$T/groot"; GUEST_ROOT="$T/guestroot"
@@ -374,10 +374,10 @@ rinstall() {  # rinstall <home> [args...]  (fake HOME/PREFIX, stub proot-distro,
     HOME="$home" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$home/.rootbridge" \
         bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-setup --autonomous no "$@" > "$T/install.log" 2>&1
 }
-CFG="$H/.config/termux-root-bridge/config"
+CFG="$H/.config/termux-rootbridge/config"
 tval() { grep '^APT_UPGRADE=' "$CFG" 2>/dev/null || true; }
 tcount() { grep -c '^APT_UPGRADE=' "$CFG" 2>/dev/null || true; }
-gv() { grep '^APT_UPGRADE=' "$GUEST_ROOT/etc/termux-root-bridge.conf" 2>/dev/null || true; }
+gv() { grep '^APT_UPGRADE=' "$GUEST_ROOT/etc/termux-rootbridge.conf" 2>/dev/null || true; }
 passed() { grep -c -- "--apt-upgrade $1" "$PROOT_LOG" || true; }
 
 rinstall "$H" --no-apt-upgrade
@@ -416,7 +416,7 @@ H2="$T/home2"; mkdir -p "$H2"; : > "$PROOT_LOG"; rm -rf "$GUEST_ROOT"
 rinstall "$H2"
 check "Ohne Option und Konfig: Installer läuft"       0 "$?"
 check "Ohne Option und Konfig: nichts an den Gast"    0 "$(grep -c -- '--apt-upgrade' "$PROOT_LOG")"
-check "Ohne Option und Konfig: keine Zeile in Termux" 0 "$(grep -c '^APT_UPGRADE=' "$H2/.config/termux-root-bridge/config")"
+check "Ohne Option und Konfig: keine Zeile in Termux" 0 "$(grep -c '^APT_UPGRADE=' "$H2/.config/termux-rootbridge/config")"
 check "Ohne Option und Konfig: Gast-Standard 6h"      "APT_UPGRADE=6h" "$(gv)"
 
 # invalid option values: abort with 2 before anything is written
@@ -432,7 +432,7 @@ check "install.sh --apt-upgrade ohne Wert: Abbruch mit 2" 2 "$?"
 # --no-guest: mode is stored, guest installer not called
 H4="$T/home4"; mkdir -p "$H4"; : > "$PROOT_LOG"
 rinstall "$H4" --no-guest --no-apt-upgrade
-check "--no-guest: Modus gespeichert"                 "APT_UPGRADE=off" "$(grep '^APT_UPGRADE=' "$H4/.config/termux-root-bridge/config")"
+check "--no-guest: Modus gespeichert"                 "APT_UPGRADE=off" "$(grep '^APT_UPGRADE=' "$H4/.config/termux-rootbridge/config")"
 check "--no-guest: Gast-Installer nicht aufgerufen"   0 "$(wc -l < "$PROOT_LOG" | tr -d ' ')"
 
 # --help mentions the options
