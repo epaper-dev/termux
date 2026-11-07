@@ -57,10 +57,17 @@ In einer **Termux**-Shell (nicht in proot):
 
 ```bash
 pkg install -y git
-git clone --depth 1 https://github.com/epaper-dev/termux
-cd termux/rootbridge
+git clone --depth 1 --filter=blob:none --sparse https://github.com/epaper-dev/termux
+cd termux
+git sparse-checkout set rootbridge
+cd rootbridge
 bash install.sh
 ```
+
+`epaper-dev/termux` enthält auch die Termux-Apps (`termux-app/`, `termux-float/` und weitere, etwa 110 MB). Der
+Sparse-Checkout holt nur `rootbridge/` (etwa 1,5 MB); mehr braucht der Installer nicht. Zum Aktualisieren später
+`git pull` in `~/termux` und `bash install.sh` noch einmal ausführen. Ein einfaches
+`git clone --depth 1 https://github.com/epaper-dev/termux` geht ebenfalls und lädt das ganze Repository.
 
 Der Installer richtet selbst und ohne Rückfrage ein, was fehlt: die Termux-Pakete (`pkg install`), den Ubuntu-Gast
 (`proot-distro install`, ein Download von einigen hundert MB), `python3`, `curl` und die Zertifikate im Gast sowie Claude Code

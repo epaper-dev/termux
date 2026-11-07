@@ -64,19 +64,51 @@ Eigene Dateien gehen weiterhin vor: `~/.termux/colors.properties`, `colors-light
 
 ## Installation
 
+Das Paket besteht aus zwei Teilen: den **Termux-Apps** (Schritt 1, immer) und **Claude Code mit rootbridge** (Schritt 2,
+optional). Du brauchst Android 7 oder neuer. Root (`su`, z. B. Magisk oder KernelSU) wird nur für die Root-Funktionen
+von rootbridge gebraucht.
+
+### 1. Termux-Apps
+
 1. Lade die APKs aus dem **[neuesten Release-Set](https://github.com/epaper-dev/termux/releases/latest)** herunter:
-   die App (`termux-app_…_arm64-v8a.apk` für die meisten Telefone, im Zweifel `universal`) und die gewünschten Plugins
-   (`termux-api`, `termux-boot`, `termux-widget`, `termux-styling`, `termux-float`, `termux-tasker`).
-2. Installiere zuerst die App, dann die Plugins. Du kommst von Termux aus F-Droid oder Google Play? Dann deinstalliere
-   vorher das ganze Set, denn Android lehnt ein Update mit einem anderen Schlüssel ab.
-3. Optional Claude Code auf dem Telefon (in Termux):
-   ```bash
-   pkg install git
-   git clone --depth 1 https://github.com/epaper-dev/termux
-   cd termux/rootbridge && bash install.sh
-   ```
-   Details: [rootbridge/README.de.md](rootbridge/README.de.md) ([English](rootbridge/README.md) ·
-   [Español](rootbridge/README.es.md)).
+   die App (`termux-app_…_arm64-v8a.apk` für die meisten Telefone, im Zweifel `universal`) und die gewünschten Plugins.
+   `termux-api`, `termux-boot` und `termux-widget` nutzt rootbridge (Zwischenablage und Browser, Autostart nach einem
+   Neustart, die Widgets **Claude** und **Ubuntu**); `termux-styling`, `termux-float` und `termux-tasker` sind optional.
+   Jedes Release enthält eine `sha256sums.txt`, mit der du die Downloads prüfen kannst.
+2. Du kommst von Termux aus F-Droid oder Google Play? Dann deinstalliere vorher das ganze Set, denn Android lehnt ein
+   Update mit einem anderen Schlüssel ab. Beim Deinstallieren wird das Termux-Home gelöscht, kopiere also vorher heraus,
+   was du brauchst.
+3. Installiere zuerst die App, dann die Plugins. Alle müssen aus demselben Set stammen.
+4. Öffne **Termux** einmal. Beim ersten Start werden die Basispakete eingerichtet, dafür brauchst du eine
+   Internetverbindung. Öffne auch **Termux:Boot** einmal, sonst führt es nach einem Neustart keine Skripte aus.
+
+Farben und Schrift brauchen keine Einrichtung: Das Terminal folgt dem Hell/Dunkel-Modus des Telefons.
+
+### 2. Claude Code auf dem Telefon (optional)
+
+In einer Termux-Shell:
+
+```bash
+pkg install -y git
+git clone --depth 1 --filter=blob:none --sparse https://github.com/epaper-dev/termux
+cd termux
+git sparse-checkout set rootbridge
+cd rootbridge
+bash install.sh
+```
+
+Das Repository enthält auch die Quellen der Apps (etwa 110 MB); der Sparse-Checkout holt nur `rootbridge/` (etwa
+1,5 MB), mehr braucht der Installer nicht. Den Rest richtet der Installer selbst ein: Pakete, den Ubuntu-Gast, Claude
+Code und sein Theme **Auto epaper**. Weiter von Hand: die Root-Freigabe für Termux (dein Root-Manager fragt bei der
+ersten Anfrage), das Widget **Claude** auf den Homescreen legen und die Claude-Anmeldung (`/login`).
+Details: [rootbridge/README.de.md](rootbridge/README.de.md) ([English](rootbridge/README.md) ·
+[Español](rootbridge/README.es.md)).
+
+### Aktualisieren
+
+Neue Release-Sets erscheinen unter **Releases**. Installiere die neuen APKs über die alten; der Schlüssel ist derselbe,
+Daten und Einstellungen bleiben. Für rootbridge führst du `git pull` im geklonten Ordner `termux` aus und danach in dessen
+Ordner `rootbridge/` noch einmal `bash install.sh` (der Installer ist idempotent).
 
 ## Aufbau des Repositorys
 

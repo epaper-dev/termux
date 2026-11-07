@@ -60,10 +60,17 @@ In a **Termux** shell (not inside proot):
 
 ```bash
 pkg install -y git
-git clone --depth 1 https://github.com/epaper-dev/termux
-cd termux/rootbridge
+git clone --depth 1 --filter=blob:none --sparse https://github.com/epaper-dev/termux
+cd termux
+git sparse-checkout set rootbridge
+cd rootbridge
 bash install.sh
 ```
+
+`epaper-dev/termux` also holds the Termux apps (`termux-app/`, `termux-float/` and others, about 110 MB). The sparse
+checkout fetches only `rootbridge/` (about 1.5 MB), which is all the installer needs. To update later, run `git pull` in
+`~/termux` and `bash install.sh` again. A plain `git clone --depth 1 https://github.com/epaper-dev/termux` works too and
+gives you the whole repository.
 
 The installer sets up what is missing, by itself and without asking: the Termux packages (`pkg install`), the Ubuntu guest
 (`proot-distro install`, a download of a few hundred MB), `python3`, `curl` and the certificates in the guest, and Claude Code
