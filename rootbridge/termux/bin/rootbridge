@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# rootbridge - control program of termux-root-bridge (runs in Termux).
+#
+#   rootbridge start [--no-attach]   daemon + Claude Code session (Termux:Boot: --no-attach)
+#   rootbridge attach                attach to the session (create if missing)
+#   rootbridge shell                 plain guest shell here (does not start Claude Code)
+#   rootbridge stop                  stop session and daemon
+#   rootbridge status                daemon, session, guest install, audit log
+#   rootbridge login <server>        `claude mcp login <server>` with browser hand-off
+#   rootbridge guard-off | guard-on  emergency switch for the Claude Code hooks
+#   rootbridge daemon-start | daemon-stop
+#   rootbridge version
+
+set -u
+
+self="$(readlink -f "${BASH_SOURCE[0]}")"
+here="${self%/*}"
+lib=""
+for cand in "${ROOTBRIDGE_LIB:-}" \
+            "$here/../lib/termux-root-bridge/rootbridge-lib.sh" \
+            "$here/../lib/rootbridge-lib.sh"; do
+    if [ -n "$cand" ] && [ -r "$cand" ]; then lib="$cand"; break; fi
+done
+[ -n "$lib" ] || { echo "rootbridge: rootbridge-lib.sh nicht gefunden" >&2; exit 1; }
+# shellcheck source=../lib/rootbridge-lib.sh
+. "$lib"
+rb_load_config
+
+VERSION="2.0.0-dev"
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+GUEST_BIN="/usr/local/bin"
+
+die() { echo "rootbridge: $*" >&2; exit 1; }
+
+# --- daemon ------------------------------------------------------------------
+daemon_pid() {
+    local pid
+    pid="$(cat "$BRIDGE_DIR/.lock/pid" 2>/dev/null)"
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "$pid"
+}
+
+daemon_start() {
+    daemon_pid >/dev/null && return 0
+    mkdir -p "$BRIDGE_DIR"
+    rm -f "$BRIDGE_DIR/.alive"
+    setsid nohup "$here/rootbridge-daemon" >> "$BRIDGE_DIR/daemon.log" 2>&1 < /dev/null &
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [ -e "$BRIDGE_DIR/.alive" ] && return 0
+        sleep 0.3
+    done
+    die "Daemon startet nicht (siehe $BRIDGE_DIR/daemon.log)"
+}
+
+daemon_stop() {
+    local pid
+    pid="$(daemon_pid)" || return 0
+    kill "$pid" 2>/dev/null
+    sleep 0.5
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+    rm -rf "$BRIDGE_DIR/.lock" "$BRIDGE_DIR/.alive"
+}
+
+# --- guest -------------------------------------------------------------------
+guest_root() {
+    local c
+    for c in "$PREFIX/var/lib/proot-distro/containers/$DISTRO/rootfs" \
+             "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
+        [ -d "$c" ] && { printf '%s' "$c"; return 0; }
+    done
+    return 1
+}
+
+guest_login() {   # guest_login <command...>
+    proot-distro login "$DISTRO" -- "$@"
+}
+
+session_exists() { tmux has-session -t "$SESSION" 2>/dev/null; }
+
+session_create() {
+    command -v tmux >/dev/null 2>&1 || die "tmux fehlt (pkg install tmux)"
+    session_exists && return 0
+    tmux new-session -d -s "$SESSION" -n claude \
+        "proot-distro login $DISTRO -- $GUEST_BIN/rootbridge-claude"
+}
+
+cmd_attach() {
+    daemon_start
+    session_create
+    if [ -n "${TMUX:-}" ]; then
+        tmux switch-client -t "$SESSION"
+    else
+        tmux attach -t "$SESSION"
+    fi
+}
+
+cmd_start() {
+    local attach=1
+    [ "${1:-}" = "--no-attach" ] && attach=0
+    daemon_start
+    [ "$attach" = 1 ] && [ -t 0 ] && [ -t 1 ] || { session_create; return 0; }
+    if ! session_exists; then
+        printf 'Claude Code startet in %ss - beliebige Taste für die Termux-Shell ' "$AUTOSTART_DELAY"
+        if read -r -s -n 1 -t "$AUTOSTART_DELAY" _; then
+            echo; return 0
+        fi
+        echo
+    fi
+    cmd_attach
+}
+
+# A plain guest shell in THIS terminal: no tmux, and no Claude Code session in the background
+# (session_create would start rootbridge-claude: apt, `claude update`, Claude Code). Only the
+# daemon is started, so that `androidsu` works in the shell.
+cmd_shell() {
+    command -v proot-distro >/dev/null 2>&1 || die "proot-distro fehlt (pkg install proot-distro)"
+    daemon_start
+    exec proot-distro login "$DISTRO"
+}
+
+cmd_stop() {
+    session_exists && tmux kill-session -t "$SESSION"
+    daemon_stop
+    echo "Session und Daemon gestoppt."
+}
+
+cmd_status() {
+    local pid root
+    echo "rootbridge $VERSION"
+    if pid="$(daemon_pid)"; then
+        echo "Daemon:       läuft (PID $pid)"
+    else
+        echo "Daemon:       gestoppt"
+    fi
+    if session_exists; then echo "Session:      '$SESSION' läuft"; else echo "Session:      keine"; fi
+    if root="$(guest_root)"; then
+        echo "Gast ($DISTRO):"
+        [ -x "$root$GUEST_BIN/androidsu" ] && echo "  androidsu:           ok" || echo "  androidsu:           FEHLT"
+        [ -f "$root/etc/claude-code/managed-settings.json" ] && echo "  Managed Settings:    aktiv" \
+            || { [ -f "$root/etc/claude-code/managed-settings.json.off" ] && echo "  Managed Settings:    AUSGESCHALTET (guard-off)" || echo "  Managed Settings:    FEHLT"; }
+    else
+        echo "Gast ($DISTRO):    nicht gefunden"
+    fi
+    if [ -f "$BRIDGE_DIR/audit.log" ]; then
+        echo "Letzte Audit-Einträge:"
+        tail -n 5 "$BRIDGE_DIR/audit.log" | sed 's/^/  /'
+    fi
+}
+
+cmd_login() {
+    local server="${1:-}"
+    [[ "$server" =~ ^[A-Za-z0-9._:-]+$ ]] || die "Aufruf: rootbridge login <mcp-server>"
+    daemon_start
+    guest_login bash -lc 'export PATH="$HOME/.local/bin:$PATH" BROWSER=/usr/local/bin/rootbridge-open; claude mcp login "$1"' _ "$server"
+}
+
+cmd_guard() {   # guard-off | guard-on
+    local root f
+    root="$(guest_root)" || die "Gast $DISTRO nicht gefunden"
+    f="$root/etc/claude-code/managed-settings.json"
+    if [ "$1" = off ]; then
+        [ -f "$f" ] || die "Managed Settings nicht gefunden: $f"
+        mv "$f" "$f.off"
+        echo "Hooks AUS. Claude Code neu starten. Wieder an: rootbridge guard-on"
+    else
+        [ -f "$f.off" ] || die "Nichts zum Einschalten ($f.off fehlt)"
+        mv "$f.off" "$f"
+        echo "Hooks wieder AN. Claude Code neu starten."
+    fi
+    rb_audit "GUARD-$1" 0 "$f"
+}
+
+case "${1:-}" in
+    start)        shift; cmd_start "$@" ;;
+    attach)       cmd_attach ;;
+    shell)        cmd_shell ;;
+    stop)         cmd_stop ;;
+    status)       cmd_status ;;
+    login)        shift; cmd_login "$@" ;;
+    guard-off)    cmd_guard off ;;
+    guard-on)     cmd_guard on ;;
+    daemon-start) daemon_start; echo "Daemon läuft." ;;
+    daemon-stop)  daemon_stop; echo "Daemon gestoppt." ;;
+    version|--version) echo "rootbridge $VERSION" ;;
+    ""|help|-h|--help) sed -n '2,13p' "$self" | sed 's/^# \{0,1\}//' ;;
+    *) die "unbekannter Befehl: $1 (rootbridge help)" ;;
+esac

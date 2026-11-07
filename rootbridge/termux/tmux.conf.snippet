@@ -1,0 +1,5 @@
+# termux-root-bridge: clipboard hand-off. Claude Code's "c" key (login dialogs)
+# copies links via OSC 52; tmux has to pass it on to Termux.
+set -g mouse on
+set -g set-clipboard on
+set -gq allow-passthrough on

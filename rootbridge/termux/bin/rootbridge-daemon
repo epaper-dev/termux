@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+# rootbridge-daemon - headless root bridge of termux-root-bridge v2.
+#
+# Runs in Termux (outside proot). Executes Android-root requests of the guest
+# ONLY when they carry a valid single-use ticket that the Claude Code hook
+# issued after the user confirmed the command inside Claude Code. There is no
+# popup and no fallback: no ticket, no root.
+#
+# Also opens validated https URLs (login pages) in the Android browser.
+#
+#   rootbridge-daemon          run in the foreground (use `rootbridge start`)
+#   rootbridge-daemon --once   handle pending requests once and exit (tests)
+
+set -u
+
+self="$(readlink -f "${BASH_SOURCE[0]}")"
+here="${self%/*}"
+lib=""
+for cand in "${ROOTBRIDGE_LIB:-}" \
+            "$here/../lib/termux-root-bridge/rootbridge-lib.sh" \
+            "$here/../lib/rootbridge-lib.sh"; do
+    if [ -n "$cand" ] && [ -r "$cand" ]; then lib="$cand"; break; fi
+done
+[ -n "$lib" ] || { echo "rootbridge-daemon: rootbridge-lib.sh nicht gefunden" >&2; exit 1; }
+# shellcheck source=../lib/rootbridge-lib.sh
+. "$lib"
+rb_load_config
+mkdir -p "$BRIDGE_DIR/tickets"
+chmod 700 "$BRIDGE_DIR" "$BRIDGE_DIR/tickets" 2>/dev/null
+
+write_res() { rb_write_atomic "$BRIDGE_DIR/res-$1.txt" "$2" "$3"; }
+
+# --- root requests -----------------------------------------------------------
+handle_request() {
+    local id="$1" req work tk cmd tid mtime age out code want
+    local -a su_args
+    req="$BRIDGE_DIR/req-$id.txt"
+    work="$req.work"
+    tk="$BRIDGE_DIR/req-$id.ticket"
+    mv "$req" "$work" 2>/dev/null || return 0          # someone else owns it
+    cmd="$(cat "$work" 2>/dev/null)"
+
+    if [ -z "$cmd" ]; then
+        write_res "$id" 98 "Leere oder verschwundene Anfrage."
+        rb_audit EMPTY 98 ""
+        rm -f "$work" "$tk"; return 0
+    fi
+
+    mtime="$(stat -c %Y "$work" 2>/dev/null)"
+    if [ -n "$mtime" ]; then
+        age=$(( $(date +%s) - mtime ))
+        if [ "$age" -gt "$STALE_TIMEOUT" ]; then
+            write_res "$id" 99 "Abgelehnt (Anfrage war bereits abgelaufen)."
+            rb_audit STALE 99 "$cmd"
+            rm -f "$work" "$tk"; return 0
+        fi
+    fi
+
+    if ! command -v "$RB_SU" >/dev/null 2>&1; then
+        write_res "$id" 127 "su nicht gefunden - kein Android-Root verfügbar."
+        rb_audit NO-SU 127 "$cmd"
+        rm -f "$work" "$tk"; return 0
+    fi
+
+    tid=""
+    [ -r "$tk" ] && IFS= read -r tid < "$tk"
+    want="$(rb_sha256 "$cmd")"
+    if [ -z "$tid" ]; then
+        write_res "$id" 99 "Abgelehnt: keine Freigabe aus Claude Code. Rufe androidsu direkt als Bash-Befehl mit wörtlichem, einfach gequotetem Argument auf; Claude Code fragt dann nach."
+        rb_audit DENY-NOTICKET 99 "$cmd"
+        rm -f "$work" "$tk"; return 0
+    fi
+    if ! rb_consume_ticket "$tid" "$want"; then
+        write_res "$id" 99 "Abgelehnt: $RB_TICKET_REASON."
+        rb_audit "DENY-TICKET" 99 "$cmd ($RB_TICKET_REASON)"
+        rm -f "$work" "$tk"; return 0
+    fi
+
+    : > "$BRIDGE_DIR/ack-$id"                             # tells the client: accepted
+    read -r -a su_args <<< "$SU_ARGS"
+    out="$("$RB_SU" "${su_args[@]}" "$cmd" 2>&1)"
+    code=$?
+    write_res "$id" "$code" "$out"
+    rb_audit ALLOW "$code" "$cmd"
+    rm -f "$work" "$tk"
+}
+
+# --- open URL requests -------------------------------------------------------
+open_result() { rb_write_atomic "$BRIDGE_DIR/open-res-$1" "$2" "$3"; }
+
+open_rate_ok() {                      # at most 10 openings per minute
+    local f="$BRIDGE_DIR/.open-rate" now keep line n=0
+    now="$(date +%s)"; keep=""
+    if [ -r "$f" ]; then
+        while IFS= read -r line; do
+            [[ "$line" =~ ^[0-9]+$ ]] && [ $(( now - line )) -lt 60 ] && { keep="$keep$line"$'\n'; n=$(( n + 1 )); }
+        done < "$f"
+    fi
+    [ "$n" -lt 10 ] || return 1
+    printf '%s%s\n' "$keep" "$now" > "$f"
+}
+
+handle_open() {
+    local id="$1" file work url host rc=0 note="" copy_only=0
+    file="$BRIDGE_DIR/open-$id.url"
+    work="$file.work"
+    mv "$file" "$work" 2>/dev/null || return 0
+    IFS= read -r url < "$work"
+    rm -f "$work"
+    case "$url" in "COPY "*) copy_only=1; url="${url#COPY }" ;; esac
+    if ! rb_valid_url "$url"; then
+        open_result "$id" 2 "URL abgelehnt (nur https, keine Sonderzeichen, höchstens 8 KiB)."
+        rb_audit "OPEN-DENY" 2 "ungültige URL"
+        return 0
+    fi
+    host="$(rb_url_host "$url")"
+    if ! open_rate_ok; then
+        open_result "$id" 3 "Zu viele Öffnungen pro Minute."
+        rb_audit "OPEN-DENY" 3 "$host (Ratenbegrenzung)"
+        return 0
+    fi
+    if [ "$copy_only" = 0 ]; then
+        timeout 15 "$RB_OPEN_CMD" "$url" >/dev/null 2>&1 || rc=$?
+    fi
+    if command -v "$RB_CLIP_CMD" >/dev/null 2>&1; then
+        printf '%s' "$url" | timeout 5 "$RB_CLIP_CMD" >/dev/null 2>&1 \
+            && note="in Zwischenablage kopiert" || note="Zwischenablage nicht verfügbar"
+    fi
+    open_result "$id" "$rc" "$host $note"
+    rb_audit "OPEN" "$rc" "$host"
+}
+
+# --- main loop ---------------------------------------------------------------
+scan_once() {
+    local f id
+    for f in "$BRIDGE_DIR"/req-*.txt; do
+        [ -e "$f" ] || continue
+        id="${f##*/req-}"; id="${id%.txt}"
+        rb_valid_id "$id" || { rm -f "$f"; continue; }
+        ( handle_request "$id" ) &
+    done
+    for f in "$BRIDGE_DIR"/open-*.url; do
+        [ -e "$f" ] || continue
+        id="${f##*/open-}"; id="${id%.url}"
+        rb_valid_id "$id" || { rm -f "$f"; continue; }
+        ( handle_open "$id" ) &
+    done
+}
+
+startup_cleanup() {
+    local f now mtime
+    now="$(date +%s)"
+    rm -f "$BRIDGE_DIR"/res-*.txt "$BRIDGE_DIR"/ack-* "$BRIDGE_DIR"/open-res-* \
+          "$BRIDGE_DIR"/*.work "$BRIDGE_DIR"/*.tmp.* 2>/dev/null
+    for f in "$BRIDGE_DIR"/req-*.txt "$BRIDGE_DIR"/req-*.ticket \
+             "$BRIDGE_DIR"/open-*.url "$BRIDGE_DIR/tickets"/*; do
+        [ -e "$f" ] || continue
+        mtime="$(stat -c %Y "$f" 2>/dev/null)" || continue
+        [ $(( now - mtime )) -gt $(( TICKET_TTL * 2 )) ] && rm -f "$f"
+    done
+}
+
+if [ "${1:-}" = "--once" ]; then
+    scan_once
+    wait
+    exit 0
+fi
+
+LOCK="$BRIDGE_DIR/.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+    other="$(cat "$LOCK/pid" 2>/dev/null)"
+    if [ -n "$other" ] && kill -0 "$other" 2>/dev/null; then
+        echo "rootbridge-daemon läuft bereits (PID $other)." >&2
+        exit 0
+    fi
+    rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null || exit 0
+fi
+echo "$$" > "$LOCK/pid"
+# Remove the lock only while it is still ours: after someone deleted it (an installer run) a newer
+# daemon may own it, and deleting that lock would let yet another daemon start.
+cleanup() {
+    if [ "$(cat "$LOCK/pid" 2>/dev/null)" = "$$" ]; then rm -rf "$LOCK" 2>/dev/null; fi
+    return 0
+}
+trap cleanup EXIT
+trap 'cleanup; exit 0' INT TERM HUP
+
+# own_lock: does the lock still name this daemon? If it vanished, take it again; if another daemon
+# owns it, this one is a leftover and must stop (two daemons would race for the same requests).
+own_lock() {
+    local cur
+    cur="$(cat "$LOCK/pid" 2>/dev/null)"
+    [ "$cur" = "$$" ] && return 0
+    if [ -z "$cur" ] && mkdir "$LOCK" 2>/dev/null; then
+        echo "$$" > "$LOCK/pid"
+        return 0
+    fi
+    return 1
+}
+
+startup_cleanup
+while true; do
+    own_lock || { echo "rootbridge-daemon: Lock gehört einem anderen Daemon - beende mich (PID $$)." >&2; exit 0; }
+    scan_once
+    : > "$BRIDGE_DIR/.alive"          # heartbeat for the guest
+    sleep "$POLL_INTERVAL"
+done

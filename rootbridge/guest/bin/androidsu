@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# androidsu <command...> - run a command as real Android root via the
+# termux-root-bridge daemon (outside proot).
+#
+# Inside Claude Code the PreToolUse hook asks for confirmation and injects a
+# single-use ROOTBRIDGE_TICKET for exactly this command. Without a ticket the
+# daemon refuses. In a real terminal (no Claude Code) androidsu asks for 'y'
+# itself and issues the ticket.
+#
+# Environment: ROOTBRIDGE_TICKET   ticket id (set by the Claude Code hook)
+#              ROOTBRIDGE_DIR      bridge directory (default: see conf file)
+#              ROOTBRIDGE_TTY_CONFIRM=0   disable the terminal question
+#              ROOTBRIDGE_ACK_TIMEOUT     seconds to wait for the daemon (70)
+
+CONF="${ROOTBRIDGE_CONF:-/etc/termux-root-bridge.conf}"
+conf_get() {
+    [ -r "$CONF" ] || return 1
+    local v
+    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    [ -n "$v" ] && printf '%s' "$v"
+}
+
+BRIDGE_DIR="${ROOTBRIDGE_DIR:-$(conf_get BRIDGE_DIR || true)}"
+BRIDGE_DIR="${BRIDGE_DIR:-/data/data/com.termux/files/home/.rootbridge}"
+ACK_TIMEOUT="${ROOTBRIDGE_ACK_TIMEOUT:-70}"
+TTY_CONFIRM="${ROOTBRIDGE_TTY_CONFIRM:-$(conf_get TTY_CONFIRM || echo 1)}"
+
+if [ "$#" -eq 0 ]; then
+    echo "Usage: androidsu <befehl>" >&2
+    exit 2
+fi
+if [ ! -d "$BRIDGE_DIR" ]; then
+    echo "androidsu: Bridge-Ordner $BRIDGE_DIR fehlt (Daemon in Termux starten: rootbridge start)" >&2
+    exit 125
+fi
+
+cmd="$*"
+tid="${ROOTBRIDGE_TICKET:-}"
+[[ -z "$tid" || "$tid" =~ ^[0-9a-f]{32}$ ]] || tid=""
+
+# Real terminal outside Claude Code: ask here and issue the ticket ourselves.
+if [ -z "$tid" ] && [ "$TTY_CONFIRM" != 0 ] && [ -t 0 ] && [ -t 1 ] \
+        && [ -z "${CLAUDECODE:-}" ] && [ -z "${CLAUDE_CODE_ENTRYPOINT:-}" ]; then
+    printf '\n⚠  ANDROID-ROOT ANGEFRAGT\nBefehl: %s\n' "$cmd" >&2
+    read -r -p "Mit 'y' + Enter bestätigen: " ans < /dev/tty
+    if [ "$ans" != "y" ]; then
+        echo "androidsu: abgelehnt." >&2
+        exit 99
+    fi
+    mkdir -p "$BRIDGE_DIR/tickets"
+    tid="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+    hash="$(printf '%s' "$cmd" | sha256sum | cut -d' ' -f1)"
+    printf '%s\n%s\n%s\n' "$(( $(date +%s) + 120 ))" "$hash" "$cmd" \
+        > "$BRIDGE_DIR/tickets/$tid"
+fi
+
+id="$$_$(date +%s%N)"
+req="$BRIDGE_DIR/req-$id.txt"
+res="$BRIDGE_DIR/res-$id.txt"
+ack="$BRIDGE_DIR/ack-$id"
+
+[ -n "$tid" ] && printf '%s\n' "$tid" > "$BRIDGE_DIR/req-$id.ticket"
+printf '%s\n' "$cmd" > "$req"        # the ticket file must exist before this
+
+cleanup() { rm -f "$req" "$BRIDGE_DIR/req-$id.ticket" "$ack"; }
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+# phase 1: wait for ack or result; phase 2: wait for the result without limit
+waited=0
+until [ -e "$res" ] || [ -e "$ack" ]; do
+    sleep 0.3
+    waited=$(( waited + 3 ))
+    if [ "$waited" -ge $(( ACK_TIMEOUT * 10 )) ]; then
+        echo "androidsu: keine Antwort vom Root-Bridge-Daemon (läuft er? In Termux: rootbridge status)" >&2
+        exit 124
+    fi
+done
+until [ -e "$res" ]; do sleep 0.3; done
+
+code="$(head -n 1 "$res")"
+tail -n +2 "$res"
+rm -f "$res"
+exit "${code:-1}"

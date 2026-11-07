@@ -1,0 +1,54 @@
+name: Rootbridge tests
+
+# The installer in rootbridge/ (moved here from hisense-a9/termux-root-bridge). Runs when it changes.
+on:
+  push:
+    paths: ['rootbridge/**', '.github/workflows/rootbridge_tests.yml']
+  pull_request:
+    paths: ['rootbridge/**', '.github/workflows/rootbridge_tests.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rootbridge
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests (guard + login hook)
+        run: python3 -I -m unittest discover -s tests -p 'test_*.py'
+      - name: Integration test (daemon, client, installers' helpers)
+        run: bash tests/test_daemon.sh
+      - name: claude() wrapper in the generated .bashrc (stubbed claude)
+        run: bash tests/test_claude_wrapper.sh
+      - name: NOFILE_LIMIT, Claude Code starts with a lower fd limit (stubbed command, staging root)
+        run: bash tests/test_nofile_limit.sh
+      - name: claude update at most once a day, CLAUDE_UPDATE (stubbed claude / proot-distro, staging root)
+        run: bash tests/test_claude_update.sh
+      - name: Termux extra keys row, S-TAB and KEYBOARD (fake HOME/PREFIX, stubbed reload)
+        run: bash tests/test_extra_keys.sh
+      - name: Session ends with Claude Code, shell only after an error (stub claude / bash)
+        run: bash tests/test_session_exit.sh
+      - name: --autonomous defaults to yes, no / ask / invalid values (guest installer and install.sh, stubbed proot-distro)
+        run: bash tests/test_autonomous.sh
+      - name: automatic setup of a fresh device and setup-guest.sh (stubbed pkg / proot-distro / apt-get / curl)
+        run: bash tests/test_setup.sh
+      - name: Remote Control name (install.sh / install-guest.sh, stubbed proot-distro)
+        run: bash tests/test_remote_name.sh
+      - name: Colours, reload at start and Claude Code theme (stubbed proot-distro / termux-reload-settings)
+        run: bash tests/test_colors_theme.sh
+      - name: apt update + upgrade at session start (stubbed apt-get / apt-mark / dpkg / proot-distro)
+        run: bash tests/test_apt_upgrade.sh
+      - name: rootbridge shell is a plain shell, attach creates the session (stub daemon / tmux / proot-distro)
+        run: bash tests/test_rootbridge_shell.sh
+      - name: Daemon lock (one daemon, install.sh keeps a live lock; real daemon loop in a temp dir)
+        run: bash tests/test_daemon_lock.sh
+      - name: Widgets and icons (install.sh / uninstall.sh, fake HOME, stubs)
+        run: bash tests/test_widgets.sh
+      - name: ShellCheck
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck -x -S warning \
+            install.sh uninstall.sh \
+            termux/bin/rootbridge termux/bin/rootbridge-daemon termux/lib/rootbridge-lib.sh \
+            guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude guest/bin/rootbridge-apt \
+            guest/install-guest.sh guest/setup-guest.sh tests/test_setup.sh tests/test_autonomous.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/test_nofile_limit.sh tests/test_claude_update.sh tests/test_remote_name.sh tests/test_colors_theme.sh tests/test_apt_upgrade.sh tests/test_rootbridge_shell.sh tests/test_daemon_lock.sh tests/test_widgets.sh tests/test_session_exit.sh tests/test_extra_keys.sh tests/headless-proof.sh
