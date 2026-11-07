@@ -279,8 +279,11 @@ crun STUB_CODEX_RC=3
 check "rootbridge-codex: Fehler lässt die Shell offen"     "1" "$(count "$CLOG" '^bash -l')"
 crun STUB_APT_RC=1 STUB_UPD_RC=1
 check "rootbridge-codex: Fehler von apt/update egal, Codex startet" 1 "$(count "$CLOG" '^codex')"
-printf 'WORKDIR=/gibt/es/nicht\n' > "$CCONF"; crun
-check "rootbridge-codex: fehlender Arbeitsordner: Rückfall auf /root" "ja" "$(grep -q '^codex' "$CLOG" && echo ja || echo nein)"
+# the fallback is the guest's /root; a CI runner has none
+if [ -d /root ]; then
+    printf 'WORKDIR=/gibt/es/nicht\n' > "$CCONF"; crun
+    check "rootbridge-codex: fehlender Arbeitsordner: Rückfall auf /root" "ja" "$(grep -q '^codex' "$CLOG" && echo ja || echo nein)"
+fi
 printf 'WORKDIR=%s\n' "$T/cwork" > "$CCONF"
 check "rootbridge-codex: Codex-Argumente leer ohne CODEX_ARGS" "codex  | cwd=$T/cwork | BROWSER=/usr/local/bin/rootbridge-open" "$(crun; grep '^codex' "$CLOG")"
 mv "$CB/codex" "$CB/codex.off"; crun ROOTBRIDGE_CODEX_BIN="$CB/gibt-es-nicht"
