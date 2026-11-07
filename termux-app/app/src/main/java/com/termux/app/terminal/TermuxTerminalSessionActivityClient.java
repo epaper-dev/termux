@@ -523,6 +523,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             TerminalSession session = mActivity.getCurrentSession();
             if (session != null && session.getEmulator() != null) {
                 session.getEmulator().mColors.reset();
+                session.getEmulator().onColorSchemeChanged();
             }
             resetColorsOfSessionsIfOutdated();
             updateBackgroundColor();
@@ -547,8 +548,11 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         for (int i = 0, size = service.getTermuxSessionsSize(); i < size; i++) {
             TermuxSession termuxSession = service.getTermuxSession(i);
             TerminalSession session = termuxSession != null ? termuxSession.getTerminalSession() : null;
-            if (session != null && session.getEmulator() != null)
+            if (session != null && session.getEmulator() != null) {
                 session.getEmulator().mColors.reset();
+                // Programs that asked for it (DECSET 2031) learn about a change between dark and light
+                session.getEmulator().onColorSchemeChanged();
+            }
         }
     }
 

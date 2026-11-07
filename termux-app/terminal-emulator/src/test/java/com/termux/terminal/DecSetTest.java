@@ -35,6 +35,38 @@ public class DecSetTest extends TerminalTestCase {
 		assertTrue(mTerminal.isCursorEnabled());
 	}
 
+	/** DECSET 2031 and DSR 996: report of the color scheme (dark or light) and of changes between them. */
+	public void testColorSchemeUpdates() {
+		withTerminalSized(3, 3);
+		// The default background is black: dark.
+		assertEnteringStringGivesResponse("\033[?996n", "\033[?997;1n");
+		assertEnteringStringGivesResponse("\033[?2031$p", "\033[?2031;2$y");
+
+		// Without DECSET 2031 a change is not reported.
+		assertEnteringStringGivesResponse("\033]11;#ffffff\007", "");
+		assertEnteringStringGivesResponse("\033[?996n", "\033[?997;2n");
+		enterString("\033]111\007");
+		mOutput.getOutputAndClear();
+
+		enterString("\033[?2031h");
+		assertEnteringStringGivesResponse("\033[?2031$p", "\033[?2031;1$y");
+		// Light background: reported once, a second light background is no change.
+		assertEnteringStringGivesResponse("\033]11;#ffffff\007", "\033[?997;2n");
+		assertEnteringStringGivesResponse("\033]11;#eeeeee\007", "");
+		// Back to dark, also through a reset of the colors from outside (new color scheme of the app).
+		assertEnteringStringGivesResponse("\033]11;#000000\007", "\033[?997;1n");
+		enterString("\033]11;#ffffff\007");
+		mOutput.getOutputAndClear();
+		mTerminal.mColors.reset();
+		mTerminal.onColorSchemeChanged();
+		assertEquals("\033[?997;1n", mOutput.getOutputAndClear());
+		mTerminal.onColorSchemeChanged();
+		assertEquals("", mOutput.getOutputAndClear());
+
+		enterString("\033[?2031l");
+		assertEnteringStringGivesResponse("\033]11;#ffffff\007", "");
+	}
+
 	/** DECSET 2004, controls bracketed paste mode. */
 	public void testBracketedPasteMode() {
 		withTerminalSized(3, 3);
