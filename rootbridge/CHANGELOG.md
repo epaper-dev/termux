@@ -22,6 +22,8 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
 * E-Paper Termux build: the grey that Claude Code's ANSI themes use behind your messages (`userMessageBackground`) is
   a background shade now, `color7` #E4E4E4 in the light scheme and `color8` #404040 in the dark one: with "High contrast
   text" the text on it is solid black/white without a visible outline.
+* tmux status line in the terminal colours (`status-style default`, active window bold, `termux/tmux.conf.snippet`)
+  instead of black on green, which was hard to read on E-Ink in both modes.
 * **Auto epaper** now uses the ANSI base (`light-ansi` / `dark-ansi`), i.e. the 16 colours of the Termux scheme: the
   E-Paper Termux build keeps them clear of the threshold of Android's "High contrast text" (on by default on many
   E-Ink phones), which drew the grey of the RGB themes as hollow letters. A theme file exactly as the previous version

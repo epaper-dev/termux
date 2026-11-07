@@ -7,3 +7,7 @@ set -gq allow-passthrough on
 # mode of the phone (Termux reports it with DECSET 2031, tmux 3.6 or newer).
 set-hook -g client-light-theme 'run-shell -b "rootbridge theme light"'
 set-hook -g client-dark-theme 'run-shell -b "rootbridge theme dark"'
+# termux-root-bridge: status line in the terminal colours (black on white / white on black) instead of
+# black on green, readable on E-Ink also with Android's "High contrast text"; the active window in bold.
+set -g status-style default
+set -g window-status-current-style bold
