@@ -18,7 +18,7 @@ AUTH_OPEN="auto"        # auto | copy | off   (used by the Claude hook)
 CLAUDE_ARGS=""
 AUTOSTART_DELAY=3
 THEME_FOLLOW="on"       # on | off: "Auto epaper" follows light/dark (rootbridge theme)
-THEME_RESTART="off"     # on | off: restart Claude Code (--continue) right after a change
+THEME_RESTART="off"     # on | off: fallback, restart Claude Code (--continue) after a change
 
 # Test hooks / binaries. Taken from the environment only, never from the
 # config file, because the config file lies in a directory the guest can write.

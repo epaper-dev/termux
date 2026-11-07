@@ -29,9 +29,9 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   on E-Ink) if it is missing. Claude Code's `auto` only picks `light`/`dark`, so the tmux hooks `client-light-theme` /
   `client-dark-theme` (`termux/tmux.conf.snippet`) run the new `rootbridge theme light|dark`, which switches only the
   light/dark part of the base (`-daltonized`, `-ansi` stay). Needs the E-Paper Termux build that reports light/dark
-  (DECSET 2031, `CSI ? 996 n`). Claude Code reads the theme at its start: `THEME_RESTART=on` in
-  `~/.config/termux-root-bridge/config` restarts it at once (`rootbridge-claude --continue`), `THEME_FOLLOW=off` stops
-  the switching. New `tests/test_theme_follow.sh` (25 checks), `tests/test_colors_theme.sh` has 114 checks.
+  (DECSET 2031, `CSI ? 996 n`). A running Claude Code session switches its colours live (confirmed on the device);
+  `THEME_RESTART=on` in `~/.config/termux-root-bridge/config` is a fallback that restarts it
+  (`rootbridge-claude --continue`), `THEME_FOLLOW=off` stops the switching. New `tests/test_theme_follow.sh` (25 checks), `tests/test_colors_theme.sh` has 114 checks.
 * The apt upgrade and `claude update` at the session start now run at most once every **6 hours** (before: once per
   24 h). `APT_UPGRADE` and `CLAUDE_UPDATE` take `6h` (new default), any `<N>h` (1-999 hours), `daily` (= 24 h, as before),
   `always` or `off`; `install.sh --apt-upgrade` and `--claude-update` accept the same values. A value already in

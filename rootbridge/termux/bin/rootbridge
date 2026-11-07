@@ -174,8 +174,8 @@ cmd_guard() {   # guard-off | guard-on
 # Claude Code's own "auto" only picks "light" or "dark", so the tmux hooks client-light-theme /
 # client-dark-theme call this when Termux reports a change between light and dark (DECSET 2031).
 # Only the light/dark part of "base" changes, the variant stays: light-daltonized <-> dark-daltonized,
-# light-ansi <-> dark-ansi, light <-> dark. Claude Code reads the theme at its start, so a running
-# session shows it after a restart; THEME_RESTART=on restarts it right away (claude --continue).
+# light-ansi <-> dark-ansi, light <-> dark. A running Claude Code session picks up the changed file
+# and switches live; THEME_RESTART=on (fallback) restarts it with claude --continue.
 # THEME_FOLLOW=off switches this off. Prints nothing and changes nothing without the file.
 cmd_theme() {
     local want="${1:-}" root f cur variant new tmp
