@@ -15,7 +15,7 @@
 #                     stays); ask: ask on a terminal
 #   --theme NAME      set the Claude Code theme in ~/.claude/settings.json (auto = match the terminal,
 #                     dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi, or custom:epaper =
-#                     "Auto epaper": ~/.claude/themes/epaper.json, created with base light-daltonized if missing,
+#                     "Auto epaper": ~/.claude/themes/epaper.json, created with base light-ansi if missing,
 #                     whose base `rootbridge theme` switches between light and dark); other keys stay
 #   --model NAME      model in ~/.claude/settings.json. Default "opusplan" (Opus plans, Sonnet works), written
 #                     only if settings.json has no model yet; with the option the value is always written;
@@ -476,11 +476,23 @@ fi
 # Claude Code theme (only when asked for: install.sh passes --theme unless --no-colors)
 if [ "$THEME_SET" = 1 ]; then
     settings_queue theme "\"$THEME\""
-    # "Auto epaper": created once, an existing file (your base, your overrides) stays as it is
+    # "Auto epaper": created once with the ANSI base (the 16 colours of the Termux scheme). A file exactly as an
+    # earlier version created it (daltonized base) moves to the ANSI base, light or dark stays; any other file
+    # (your base, your overrides) stays as it is.
     T="$ROOT$HOME_DIR/.claude/themes/epaper.json"
-    if [ "$THEME" = custom:epaper ] && [ ! -e "$T" ]; then
-        mkdir -p "$(dirname "$T")"
-        printf '%s\n' '{' '  "name": "Auto epaper",' '  "base": "light-daltonized",' '  "overrides": {}' '}' > "$T"
+    epaper_theme() { printf '%s\n' '{' '  "name": "Auto epaper",' "  \"base\": \"$1\"," '  "overrides": {}' '}'; }
+    if [ "$THEME" = custom:epaper ]; then
+        if [ ! -e "$T" ]; then
+            mkdir -p "$(dirname "$T")"
+            epaper_theme light-ansi > "$T"
+        else
+            for m in light dark; do
+                if [ "$(cat "$T")" = "$(epaper_theme "$m-daltonized")" ]; then
+                    epaper_theme "$m-ansi" > "$T.new.$$" && mv -f "$T.new.$$" "$T"
+                    echo "Theme Auto epaper: Basis $m-daltonized -> $m-ansi"
+                fi
+            done
+        fi
     fi
 fi
 settings_apply

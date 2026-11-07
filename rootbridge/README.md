@@ -149,10 +149,11 @@ Colour files that earlier versions installed (`colors.properties` with the light
 removed when they are still exactly as installed, because they would override the built-in scheme; a file you changed
 stays. `--no-colors` leaves colour files and the Claude Code theme alone. The installer sets `"theme": "custom:epaper"` in the
 guest's `~/.claude/settings.json` (other keys stay) and creates the theme **Auto epaper**
-(`~/.claude/themes/epaper.json`, base `light-daltonized`; a file of yours stays). Claude Code's own `auto` only picks
+(`~/.claude/themes/epaper.json`, base `light-ansi`: the 16 colours of the Termux scheme, which keeps them clear of
+the "High contrast text" threshold; a file of yours stays). Claude Code's own `auto` only picks
 `light` or `dark`, so Termux reports a change between light and dark (DECSET 2031) to tmux, whose hooks
 `client-light-theme` / `client-dark-theme` run `rootbridge theme light|dark`: it switches the base between
-`light-daltonized` and `dark-daltonized` (or `light-ansi`/`dark-ansi`, `light`/`dark` if you put that in). Claude Code
+`light-ansi` and `dark-ansi` (or `light-daltonized`/`dark-daltonized`, `light`/`dark` if you put that in). Claude Code
 reads the theme at its start, so a running session shows the change after a restart; `THEME_RESTART=on` in
 `~/.config/termux-root-bridge/config` restarts it right away with `--continue` (an answer in progress is cut off),
 `THEME_FOLLOW=off` switches the hooks off. Pick another theme any time with `/theme`. Every new interactive Termux shell

@@ -99,12 +99,24 @@ done
 
 # custom:epaper creates ~/.claude/themes/epaper.json once; a file of yours stays
 EP="$T/v-custom:epaper$ROOTBRIDGE_GUEST_HOME/.claude/themes/epaper.json"
-check "custom:epaper: Theme-Datei angelegt"           "Auto epaper light-daltonized" "$(jget "$EP" name) $(jget "$EP" base)"
+check "custom:epaper: Theme-Datei angelegt"           "Auto epaper light-ansi" "$(jget "$EP" name) $(jget "$EP" base)"
 check "Andere Themes legen keine Theme-Datei an"      0 "$(ls "$T/v-dark-ansi$ROOTBRIDGE_GUEST_HOME/.claude/themes" 2>/dev/null | wc -l)"
 printf '%s\n' '{"name":"Mein epaper","base":"dark-ansi","overrides":{"text":"ansi:black"}}' > "$EP"
 before="$(cksum < "$EP")"
 ginstall "$T/v-custom:epaper" --theme custom:epaper
 check "custom:epaper: vorhandene Theme-Datei bleibt"  "$before" "$(cksum < "$EP")"
+
+# a file exactly as the earlier version created it (daltonized base) moves to the ANSI base, light/dark stays
+for m in light dark; do
+    printf '%s\n' '{' '  "name": "Auto epaper",' "  \"base\": \"$m-daltonized\"," '  "overrides": {}' '}' > "$EP"
+    ginstall "$T/v-custom:epaper" --theme custom:epaper
+    check "Frühere Datei $m-daltonized -> $m-ansi"     "$m-ansi Auto epaper" "$(jget "$EP" base) $(jget "$EP" name)"
+done
+check "Umstellung: keine Temp-Datei übrig"            0 "$(find "$(dirname "$EP")" -name '*.new.*' | wc -l)"
+# changed in any way (here: an override): stays daltonized
+printf '%s\n' '{' '  "name": "Auto epaper",' '  "base": "dark-daltonized",' '  "overrides": {"text": "ansi:white"}' '}' > "$EP"
+ginstall "$T/v-custom:epaper" --theme custom:epaper
+check "Geänderte frühere Datei bleibt daltonized"     dark-daltonized "$(jget "$EP" base)"
 
 # invalid names: abort with 2 before anything is written
 for bad in "" Light neon "light;id" 'a b' '$(id)' "-x" "../light"; do
@@ -183,7 +195,7 @@ check "Frisches Home: keine Farbdatei angelegt"       0 "$(nocolors "$H")"
 check "Frisches Home: kein Reload durch den Installer" 0 "$(reloads)"
 check "Gast bekam --theme custom:epaper"              1 "$(grep -c -- '--theme custom:epaper' "$STUB_LOG")"
 check "Gast: theme=custom:epaper in settings.json"    custom:epaper "$(jget "$(gsettings)" theme)"
-check "Gast: Auto epaper mit Basis light-daltonized"  light-daltonized "$(jget "$GUEST_ROOT$ROOTBRIDGE_GUEST_HOME/.claude/themes/epaper.json" base)"
+check "Gast: Auto epaper mit Basis light-ansi"        light-ansi "$(jget "$GUEST_ROOT$ROOTBRIDGE_GUEST_HOME/.claude/themes/epaper.json" base)"
 check "Schlussmeldung nennt die eingebauten Schemata" 1 "$(grep -c '^Farben: der E-Paper-Termux bringt' "$T/install.log")"
 
 rinstall "$H"
