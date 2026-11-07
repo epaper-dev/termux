@@ -157,10 +157,11 @@ demás claves se mantienen) y crea el tema **Auto epaper** (`~/.claude/themes/ep
 tu propio archivo se mantiene). La opción `auto` de Claude Code solo elige entre `light` o `dark`, así que Termux notifica
 un cambio entre claro y oscuro (DECSET 2031) a tmux, cuyos hooks `client-light-theme` / `client-dark-theme` ejecutan
 `rootbridge theme light|dark`: esto cambia el tema base entre `light-ansi` y `dark-ansi` (o
-`light-daltonized`/`dark-daltonized`, `light`/`dark` si lo has configurado así). Claude Code lee el tema al iniciarse, así que una
-sesión en marcha muestra el cambio tras reiniciar; `THEME_RESTART=on` en `~/.config/termux-root-bridge/config` lo
-reinicia al instante con `--continue` (se interrumpe cualquier respuesta en curso), mientras que `THEME_FOLLOW=off`
-desactiva los hooks. Puedes elegir otro tema en cualquier momento con `/theme`. Cada nueva shell interactiva de Termux ejecuta `termux-reload-settings`, y
+`light-daltonized`/`dark-daltonized`, `light`/`dark` si lo has configurado así). Una sesión
+de Claude Code en marcha recoge el archivo de tema modificado y cambia los colores en directo (confirmado en el
+dispositivo, sin reiniciar). `THEME_RESTART=on` en `~/.config/termux-root-bridge/config` es solo un recurso para una
+versión que no lo haga: reinicia Claude Code con `--continue` (se interrumpe cualquier respuesta en curso).
+`THEME_FOLLOW=off` desactiva los hooks. Puedes elegir otro tema en cualquier momento con `/theme`. Cada nueva shell interactiva de Termux ejecuta `termux-reload-settings`, y
 también los accesos directos de Termux:Widget antes de conectarse. Otras compilaciones de Termux no traen un esquema claro;
 allí copia un esquema a `~/.termux/colors.properties`.
 

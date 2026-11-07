@@ -587,5 +587,5 @@ if [ "$DO_EXTRAKEYS" = 1 ]; then
     say "Zusatztasten: S-TAB (Shift+Tab; Wisch nach oben = Tab) und KEYBOARD stehen in ~/.termux/termux.properties."
 fi
 if [ "$DO_COLORS" = 1 ]; then
-    say "Farben: der E-Paper-Termux bringt das helle und das dunkle Schema selbst mit und folgt dem Telefon (eigene Dateien: ~/.termux/colors-light.properties, colors-dark.properties, colors.properties). Claude Code nutzt das Theme '$CLAUDE_THEME' (Auto epaper: ANSI-Farben des Termux-Schemas, wechselt mit dem Telefon zwischen hell und dunkel und wirkt ab dem nächsten Claude-Start; sofort mit THEME_RESTART=on in ~/.config/termux-root-bridge/config)."
+    say "Farben: der E-Paper-Termux bringt das helle und das dunkle Schema selbst mit und folgt dem Telefon (eigene Dateien: ~/.termux/colors-light.properties, colors-dark.properties, colors.properties). Claude Code nutzt das Theme '$CLAUDE_THEME' (Auto epaper: ANSI-Farben des Termux-Schemas, wechselt mit dem Telefon live zwischen hell und dunkel)."
 fi

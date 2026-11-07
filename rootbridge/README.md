@@ -153,10 +153,10 @@ guest's `~/.claude/settings.json` (other keys stay) and creates the theme **Auto
 the "High contrast text" threshold; a file of yours stays). Claude Code's own `auto` only picks
 `light` or `dark`, so Termux reports a change between light and dark (DECSET 2031) to tmux, whose hooks
 `client-light-theme` / `client-dark-theme` run `rootbridge theme light|dark`: it switches the base between
-`light-ansi` and `dark-ansi` (or `light-daltonized`/`dark-daltonized`, `light`/`dark` if you put that in). Claude Code
-reads the theme at its start, so a running session shows the change after a restart; `THEME_RESTART=on` in
-`~/.config/termux-root-bridge/config` restarts it right away with `--continue` (an answer in progress is cut off),
-`THEME_FOLLOW=off` switches the hooks off. Pick another theme any time with `/theme`. Every new interactive Termux shell
+`light-ansi` and `dark-ansi` (or `light-daltonized`/`dark-daltonized`, `light`/`dark` if you put that in). A running
+Claude Code session picks up the changed theme file and switches its colours live (confirmed on the device, no restart).
+`THEME_RESTART=on` in `~/.config/termux-root-bridge/config` is only a fallback for a version that does not: it restarts
+Claude Code with `--continue` (an answer in progress is cut off). `THEME_FOLLOW=off` switches the hooks off. Pick another theme any time with `/theme`. Every new interactive Termux shell
 runs `termux-reload-settings`, and so do the Termux:Widget shortcuts before they attach. Other Termux builds have no
 built-in light scheme; copy a scheme to `~/.termux/colors.properties` there.
 
