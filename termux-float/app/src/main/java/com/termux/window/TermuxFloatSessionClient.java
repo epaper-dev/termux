@@ -13,6 +13,8 @@ import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.shared.termux.terminal.io.BellHandler;
+import com.termux.shared.theme.NightMode;
+import com.termux.shared.theme.ThemeUtils;
 import com.termux.terminal.TerminalColors;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TextStyle;
@@ -154,12 +156,25 @@ public class TermuxFloatSessionClient extends TermuxTerminalSessionClientBase {
 
     public void checkForFontAndColors() {
         try {
-            File colorsFile = TermuxConstants.TERMUX_COLOR_PROPERTIES_FILE;
+            // Like the Termux app: colors-light.properties or colors-dark.properties instead of colors.properties if the
+            // file for the theme in use exists. The names are defined here because the termux-shared version this app
+            // uses does not have the constants yet (newer versions: TermuxConstants.TERMUX_COLOR_PROPERTIES_LIGHT_FILE,
+            // TERMUX_COLOR_PROPERTIES_DARK_FILE and TermuxThemeUtils.getTerminalColorsFile()).
+            boolean darkTheme = ThemeUtils.shouldEnableDarkTheme(mService, NightMode.getAppNightMode().getName());
+            File colorsFile = new File(TermuxConstants.TERMUX_DATA_HOME_DIR_PATH,
+                darkTheme ? "colors-dark.properties" : "colors-light.properties");
+            if (!colorsFile.isFile()) colorsFile = TermuxConstants.TERMUX_COLOR_PROPERTIES_FILE;
             File fontFile = TermuxConstants.TERMUX_FONT_FILE;
 
             final Properties props = new Properties();
             if (colorsFile.isFile()) {
                 try (InputStream in = new FileInputStream(colorsFile)) {
+                    props.load(in);
+                }
+            } else if (!darkTheme) {
+                // Without a colors file the light theme uses the built-in light scheme, a copy of the one in
+                // termux-shared (res/raw/colors_light_default.properties, newer versions: TermuxThemeUtils.getTerminalColors()).
+                try (InputStream in = mService.getResources().openRawResource(R.raw.colors_light_default)) {
                     props.load(in);
                 }
             }
