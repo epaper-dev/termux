@@ -1,0 +1,29 @@
+name: Termux app unit tests
+
+# The workflows of the subtrees are not run by GitHub (only the root .github/workflows is), so the
+# unit tests of termux-app (terminal-emulator, termux-shared, app) run here.
+on:
+  push:
+    branches: [main]
+    paths: ['termux-app/**', '.github/workflows/termux_app_tests.yml']
+  pull_request:
+    branches: [main]
+    paths: ['termux-app/**', '.github/workflows/termux_app_tests.yml']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: termux-app
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+      - name: Setup java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Execute tests
+        run: ./gradlew test
