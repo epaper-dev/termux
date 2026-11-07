@@ -14,7 +14,9 @@
 #                     Android-root command still asks); no: leave both as they are (an earlier value
 #                     stays); ask: ask on a terminal
 #   --theme NAME      set the Claude Code theme in ~/.claude/settings.json (auto = match the terminal,
-#                     dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi); other keys stay
+#                     dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi, or custom:epaper =
+#                     "Auto epaper": ~/.claude/themes/epaper.json, created with base light-daltonized if missing,
+#                     whose base `rootbridge theme` switches between light and dark); other keys stay
 #   --model NAME      model in ~/.claude/settings.json. Default "opusplan" (Opus plans, Sonnet works), written
 #                     only if settings.json has no model yet; with the option the value is always written;
 #                     none leaves the model alone
@@ -76,8 +78,8 @@ fi
 
 if [ "$THEME_SET" = 1 ]; then
     case "$THEME" in
-        auto|dark|light|light-daltonized|dark-daltonized|light-ansi|dark-ansi) ;;
-        *) echo "--theme: ungültiger Name '$THEME' (erlaubt: auto, dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi)" >&2
+        auto|dark|light|light-daltonized|dark-daltonized|light-ansi|dark-ansi|custom:epaper) ;;
+        *) echo "--theme: ungültiger Name '$THEME' (erlaubt: auto, dark, light, light-daltonized, dark-daltonized, light-ansi, dark-ansi, custom:epaper)" >&2
            exit 2 ;;
     esac
 fi
@@ -474,6 +476,12 @@ fi
 # Claude Code theme (only when asked for: install.sh passes --theme unless --no-colors)
 if [ "$THEME_SET" = 1 ]; then
     settings_queue theme "\"$THEME\""
+    # "Auto epaper": created once, an existing file (your base, your overrides) stays as it is
+    T="$ROOT$HOME_DIR/.claude/themes/epaper.json"
+    if [ "$THEME" = custom:epaper ] && [ ! -e "$T" ]; then
+        mkdir -p "$(dirname "$T")"
+        printf '%s\n' '{' '  "name": "Auto epaper",' '  "base": "light-daltonized",' '  "overrides": {}' '}' > "$T"
+    fi
 fi
 settings_apply
 

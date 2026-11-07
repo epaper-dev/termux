@@ -47,7 +47,7 @@
 #      extra-keys line of your own stays; --no-extra-keys skips it)
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
-#      theme "auto") via proot-distro. The guest runs apt-get update + upgrade
+#      theme "Auto epaper" = custom:epaper, colour-blind friendly, follows light/dark) via proot-distro. The guest runs apt-get update + upgrade
 #      at the start of the Claude Code session, at most once every 6 h (--apt-upgrade 12h
 #      or daily = 24 h changes the distance, --no-apt-upgrade turns it off, --apt-upgrade
 #      always runs it at every start; the choice is stored in the Termux config as
@@ -67,7 +67,7 @@ BEGIN='# >>> termux-root-bridge >>>'
 END='# <<< termux-root-bridge <<<'
 
 DO_SETUP=1; SETUP_DID=0; DO_GUEST=1; DO_BOOT=1; DO_MIGRATE=1; DO_COLORS=1; DO_WIDGETS=1; DO_EXTRAKEYS=1; DEPS=1; AUTONOMOUS=yes
-CLAUDE_THEME=auto   # follows the terminal: Claude Code asks it for its background colour (light or dark scheme)
+CLAUDE_THEME=custom:epaper   # "Auto epaper": light-/dark-daltonized, switched by the tmux hook (rootbridge theme)
 REMOTE_NAME="android"; REMOTE_NAME_SET=0   # default name in the Remote Control view
 APT_MODE=""; APT_MODE_SET=0
 MODEL=""; MODEL_SET=0
@@ -587,5 +587,5 @@ if [ "$DO_EXTRAKEYS" = 1 ]; then
     say "Zusatztasten: S-TAB (Shift+Tab; Wisch nach oben = Tab) und KEYBOARD stehen in ~/.termux/termux.properties."
 fi
 if [ "$DO_COLORS" = 1 ]; then
-    say "Farben: der E-Paper-Termux bringt das helle und das dunkle Schema selbst mit und folgt dem Telefon (eigene Dateien: ~/.termux/colors-light.properties, colors-dark.properties, colors.properties). Claude Code nutzt das Theme '$CLAUDE_THEME'."
+    say "Farben: der E-Paper-Termux bringt das helle und das dunkle Schema selbst mit und folgt dem Telefon (eigene Dateien: ~/.termux/colors-light.properties, colors-dark.properties, colors.properties). Claude Code nutzt das Theme '$CLAUDE_THEME' (Auto epaper: farbenblind-freundlich, wechselt mit dem Telefon zwischen hell und dunkel und wirkt ab dem nächsten Claude-Start; sofort mit THEME_RESTART=on in ~/.config/termux-root-bridge/config)."
 fi

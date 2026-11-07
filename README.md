@@ -18,6 +18,7 @@ widgets, logins) is `rootbridge/`, moved here from `hisense-a9/termux-root-bridg
 |----------|--------------|
 | `Sync upstream` | Every 6 hours: takes new upstream commits into `master`, merges `master` into `main`, then starts `Release set` (release key, publish). Without new upstream commits nothing happens. A merge conflict opens an issue with the steps to fix it; `master` stays up to date, `main` unchanged. Set the repository variable `RELEASE_AFTER_SYNC` to `false` to skip the release. |
 | `Rootbridge tests` | Runs the tests and ShellCheck of `rootbridge/` when it changes. |
+| `Termux app unit tests` | Runs `./gradlew test` of `termux-app/` (terminal emulator, termux-shared, app) when it changes. |
 | `Release set` | Builds the app and the six plugins, signs them all with **one** key and checks that they belong together (same certificate, `sharedUserId` `com.termux`). With `publish` and the release key the APKs appear as single files under **Releases**. `ephemeral-key` (throwaway key) tests the pipeline and publishes nothing. |
 
 Scripts: `.github/scripts/sync_upstream.sh`, `build_release_set.sh`, `make_signing_key.sh`.
@@ -33,6 +34,11 @@ Files in `~/.termux/` only override this: `colors-light.properties` and/or `colo
 scheme file works as it is) are used in their mode, otherwise `colors.properties` applies in both modes, as before. The
 same goes for Termux:Float. The change for the Termux app is also prepared for upstream (branch
 `terminal-colors-light-dark` of `epaper-dev/termux-app`).
+
+Programs learn about a change between light and dark: Termux supports DECSET 2031 (`CSI ? 2031 h`, reports
+`CSI ? 997 ; 1 n` for dark and `CSI ? 997 ; 2 n` for light whenever the scheme changes) and answers the query
+`CSI ? 996 n`. tmux 3.6 and later passes this on and runs its hooks `client-light-theme` / `client-dark-theme`;
+Claude Code with the theme `auto` follows at once, rootbridge's theme **Auto epaper** via those hooks.
 
 ## Signing key
 

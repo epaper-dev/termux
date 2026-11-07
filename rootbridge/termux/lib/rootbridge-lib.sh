@@ -17,6 +17,8 @@ SU_ARGS="-c"            # "-mm -c" = global mount namespace (Magisk)
 AUTH_OPEN="auto"        # auto | copy | off   (used by the Claude hook)
 CLAUDE_ARGS=""
 AUTOSTART_DELAY=3
+THEME_FOLLOW="on"       # on | off: "Auto epaper" follows light/dark (rootbridge theme)
+THEME_RESTART="off"     # on | off: restart Claude Code (--continue) right after a change
 
 # Test hooks / binaries. Taken from the environment only, never from the
 # config file, because the config file lies in a directory the guest can write.
@@ -46,6 +48,8 @@ rb_load_config() {
                 case "$val" in "-c"|"-mm -c") SU_ARGS="$val" ;; esac ;;
             AUTH_OPEN)
                 case "$val" in auto|copy|off) AUTH_OPEN="$val" ;; esac ;;
+            THEME_FOLLOW|THEME_RESTART)
+                case "$val" in on|off) printf -v "$key" '%s' "$val" ;; esac ;;
             CLAUDE_ARGS)
                 [[ "$val" =~ ^[A-Za-z0-9._\ =:/,-]*$ ]] && CLAUDE_ARGS="$val" ;;
         esac

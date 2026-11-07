@@ -8,6 +8,7 @@
 # Shift+Tab switches between the modes, "bypass permissions" included, because
 # --allow-dangerously-skip-permissions is set.
 # Root-related commands are still confirmed by the android-root-guard hook.
+# --continue (from `rootbridge theme` with THEME_RESTART=on) continues the last conversation.
 
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
 
@@ -101,5 +102,6 @@ after_claude() {
 }
 
 read -r -a extra <<< "$(conf_get CLAUDE_ARGS || true)"
+[ "${1:-}" = --continue ] && extra+=(--continue)
 ( limit_nofile; exec "$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}" )
 after_claude "$?"

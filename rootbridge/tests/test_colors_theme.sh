@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test: install.sh writes no colour file (the app has the schemes built in), removes colour files that earlier versions
-# installed and that are still unchanged, leaves everything else alone, reload at every start and the Claude Code theme (auto).
+# installed and that are still unchanged, leaves everything else alone, reload at every start and the Claude Code theme (custom:epaper, "Auto epaper").
 #   1. guest installer: --theme writes "theme" into ~/.claude/settings.json (staging root)
 #   2. install.sh with a fake HOME/PREFIX: no colour file, former files, reload, --no-colors, --theme hand-over
 #   3. the block in ~/.bashrc: reload in every new shell, nothing else (no autostart); an old
@@ -91,11 +91,20 @@ check "--autonomous yes + --theme: theme"             light-ansi "$(jget "$(sett
 check "--autonomous yes + --theme: model bleibt"      opusplan "$(jget "$(settings "$S")" model)"
 
 # every valid name is accepted
-for name in auto dark light light-daltonized dark-daltonized light-ansi dark-ansi; do
+for name in auto dark light light-daltonized dark-daltonized light-ansi dark-ansi custom:epaper; do
     S="$T/v-$name"
     ginstall "$S" --theme "$name"
     check "Gültiges Theme '$name'"                    "0 $name" "$? $(jget "$(settings "$S")" theme)"
 done
+
+# custom:epaper creates ~/.claude/themes/epaper.json once; a file of yours stays
+EP="$T/v-custom:epaper$ROOTBRIDGE_GUEST_HOME/.claude/themes/epaper.json"
+check "custom:epaper: Theme-Datei angelegt"           "Auto epaper light-daltonized" "$(jget "$EP" name) $(jget "$EP" base)"
+check "Andere Themes legen keine Theme-Datei an"      0 "$(ls "$T/v-dark-ansi$ROOTBRIDGE_GUEST_HOME/.claude/themes" 2>/dev/null | wc -l)"
+printf '%s\n' '{"name":"Mein epaper","base":"dark-ansi","overrides":{"text":"ansi:black"}}' > "$EP"
+before="$(cksum < "$EP")"
+ginstall "$T/v-custom:epaper" --theme custom:epaper
+check "custom:epaper: vorhandene Theme-Datei bleibt"  "$before" "$(cksum < "$EP")"
 
 # invalid names: abort with 2 before anything is written
 for bad in "" Light neon "light;id" 'a b' '$(id)' "-x" "../light"; do
@@ -172,8 +181,9 @@ rinstall "$H"
 check "install.sh: läuft durch"                       0 "$?"
 check "Frisches Home: keine Farbdatei angelegt"       0 "$(nocolors "$H")"
 check "Frisches Home: kein Reload durch den Installer" 0 "$(reloads)"
-check "Gast bekam --theme auto"                       1 "$(grep -c -- '--theme auto' "$STUB_LOG")"
-check "Gast: theme=auto in settings.json"             auto "$(jget "$(gsettings)" theme)"
+check "Gast bekam --theme custom:epaper"              1 "$(grep -c -- '--theme custom:epaper' "$STUB_LOG")"
+check "Gast: theme=custom:epaper in settings.json"    custom:epaper "$(jget "$(gsettings)" theme)"
+check "Gast: Auto epaper mit Basis light-daltonized"  light-daltonized "$(jget "$GUEST_ROOT$ROOTBRIDGE_GUEST_HOME/.claude/themes/epaper.json" base)"
 check "Schlussmeldung nennt die eingebauten Schemata" 1 "$(grep -c '^Farben: der E-Paper-Termux bringt' "$T/install.log")"
 
 rinstall "$H"
@@ -225,11 +235,11 @@ check "--no-colors: kein --theme an den Gast"         0 "$(grep -c -- '--theme' 
 check "--no-colors: theme nicht gesetzt"              - "$(jget "$(gsettings)" theme)"
 check "--no-colors: Farbschema-Hinweis fehlt am Ende" 0 "$(grep -c '^Farben:' "$T/install.log")"
 
-# an earlier install left theme "light" (or the user picked "dark"): the installer sets auto, keeps the rest
+# an earlier install left theme "light" (or the user picked "dark"): the installer sets custom:epaper, keeps the rest
 H5="$T/home5"; mkdir -p "$H5"; rm -rf "$GUEST_ROOT"; mkdir -p "$(dirname "$(gsettings)")"
 printf '%s\n' '{"model":"opusplan","theme":"light"}' > "$(gsettings)"
 rinstall "$H5"
-check "Altes Theme 'light' wird zu auto"              auto "$(jget "$(gsettings)" theme)"
+check "Altes Theme 'light' wird zu custom:epaper"     custom:epaper "$(jget "$(gsettings)" theme)"
 check "Altes Theme: model bleibt"                     opusplan "$(jget "$(gsettings)" model)"
 
 # --no-colors leaves existing colours files alone, even the colors.properties of earlier versions

@@ -210,6 +210,15 @@ public final class TerminalEmulator {
     private static final int DECSET_BIT_LEFTRIGHT_MARGIN_MODE = 1 << 11;
     /** Not really DECSET bit... - http://www.vt100.net/docs/vt510-rm/DECSACE */
     private static final int DECSET_BIT_RECTANGULAR_CHANGEATTRIBUTE = 1 << 12;
+    /**
+     * DECSET 2031 - report changes of the color scheme between dark and light as {@code CSI ? 997 ; 1 n} (dark) or
+     * {@code CSI ? 997 ; 2 n} (light), see {@link #onColorSchemeChanged()}. {@code CSI ? 996 n} asks for the current
+     * one. https://contour-terminal.org/vt-extensions/color-palette-update-notifications/
+     */
+    private static final int DECSET_BIT_COLOR_SCHEME_UPDATES = 1 << 13;
+
+    /** If the dark (or light) color scheme was the last one reported with DECSET 2031. */
+    private boolean mLastReportedColorSchemeDark;
 
 
     private String mTitle;
@@ -487,6 +496,8 @@ public final class TerminalEmulator {
                 return DECSET_BIT_MOUSE_PROTOCOL_SGR;
             case 2004:
                 return DECSET_BIT_BRACKETED_PASTE_MODE;
+            case 2031:
+                return DECSET_BIT_COLOR_SCHEME_UPDATES;
             default:
                 return -1;
             // throw new IllegalArgumentException("Unsupported decset: " + decsetBit);
@@ -1755,6 +1766,10 @@ public final class TerminalEmulator {
                         // Extended Cursor Position (DECXCPR - http://www.vt100.net/docs/vt510-rm/DECXCPR). Page=1.
                         mSession.write(String.format(Locale.US, "\033[?%d;%d;1R", mCursorRow + 1, mCursorCol + 1));
                         break;
+                    case 996:
+                        // Query of the color scheme (dark or light), see DECSET 2031.
+                        reportColorScheme();
+                        break;
                     default:
                         finishSequence();
                         return;
@@ -1878,6 +1893,10 @@ public final class TerminalEmulator {
             }
             case 2004:
                 // Bracketed paste mode - setting bit is enough.
+                break;
+            case 2031:
+                // Color scheme updates: only changes after this point are reported.
+                mLastReportedColorSchemeDark = isColorSchemeDark();
                 break;
             default:
                 unknownParameter(externalBit);
@@ -2799,7 +2818,7 @@ public final class TerminalEmulator {
                                 return;
                             } else {
                                 mColors.tryParseColor(colorIndex, textParameter.substring(parsingPairStart, i));
-                                mSession.onColorsChanged();
+                                onColorsChangedBySequence();
                                 colorIndex = -1;
                                 parsingPairStart = -1;
                             }
@@ -2835,7 +2854,7 @@ public final class TerminalEmulator {
                                     + String.format(Locale.US, "%04x", b) + bellOrStringTerminator);
                             } else {
                                 mColors.tryParseColor(specialIndex, colorSpec);
-                                mSession.onColorsChanged();
+                                onColorsChangedBySequence();
                             }
                             specialIndex++;
                             if (endOfInput || (specialIndex > TextStyle.COLOR_INDEX_CURSOR) || ++charIndex >= textParameter.length())
@@ -2863,7 +2882,7 @@ public final class TerminalEmulator {
                 // parameters are given, the entire table will be reset.
                 if (textParameter.isEmpty()) {
                     mColors.reset();
-                    mSession.onColorsChanged();
+                    onColorsChangedBySequence();
                 } else {
                     int lastIndex = 0;
                     for (int charIndex = 0; ; charIndex++) {
@@ -2872,7 +2891,7 @@ public final class TerminalEmulator {
                             try {
                                 int colorToReset = Integer.parseInt(textParameter.substring(lastIndex, charIndex));
                                 mColors.reset(colorToReset);
-                                mSession.onColorsChanged();
+                                onColorsChangedBySequence();
                                 if (endOfInput) break;
                                 charIndex++;
                                 lastIndex = charIndex;
@@ -2887,7 +2906,7 @@ public final class TerminalEmulator {
             case 111: // Reset background color.
             case 112: // Reset cursor color.
                 mColors.reset(TextStyle.COLOR_INDEX_FOREGROUND + (value - 110));
-                mSession.onColorsChanged();
+                onColorsChangedBySequence();
                 break;
             case 119: // Reset highlight color.
                 break;
@@ -3481,6 +3500,35 @@ public final class TerminalEmulator {
         mTopRow = topRow;
     }
 
+
+    /** If the current background color is dark (relative luminance below 0.5), i.e. a dark color scheme is in use. */
+    public boolean isColorSchemeDark() {
+        int rgb = mColors.mCurrentColors[TextStyle.COLOR_INDEX_BACKGROUND];
+        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 127.5;
+    }
+
+    /** Report the current color scheme as {@code CSI ? 997 ; 1 n} (dark) or {@code CSI ? 997 ; 2 n} (light). */
+    private void reportColorScheme() {
+        mLastReportedColorSchemeDark = isColorSchemeDark();
+        mSession.write(mLastReportedColorSchemeDark ? "\033[?997;1n" : "\033[?997;2n");
+    }
+
+    /**
+     * To be called after the colors of this terminal have been changed from outside (e.g. a new color scheme after
+     * the dark or light theme of the device has been switched). If DECSET 2031 is set and the color scheme changed
+     * between dark and light since the last report, the new one is reported.
+     */
+    public void onColorSchemeChanged() {
+        if (isDecsetInternalBitSet(DECSET_BIT_COLOR_SCHEME_UPDATES) && isColorSchemeDark() != mLastReportedColorSchemeDark)
+            reportColorScheme();
+    }
+
+    /** Colors changed by an OSC sequence: inform the session and report a change between dark and light. */
+    private void onColorsChangedBySequence() {
+        mSession.onColorsChanged();
+        onColorSchemeChanged();
+    }
 
     /** Reset terminal state so user can interact with it regardless of present state. */
     public void reset() {
