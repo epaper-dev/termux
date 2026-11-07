@@ -159,9 +159,6 @@ rinstall() {  # rinstall <home> [args...]  (fake HOME/PREFIX, stubs first in PAT
 reloads() { grep -c '^reload$' "$RB_LOG" || true; }
 cbaks() { find "$1/.termux" -name 'colors*.properties.bak-*' 2>/dev/null | wc -l | tr -d ' '; }
 gsettings() { printf '%s' "$GUEST_ROOT$ROOTBRIDGE_GUEST_HOME/.claude/settings.json"; }
-CF="$H/.termux/colors.properties"
-LF="$H/.termux/colors-light.properties"
-DF="$H/.termux/colors-dark.properties"
 nocolors() { find "$1/.termux" -maxdepth 1 -name 'colors*.properties*' 2>/dev/null | wc -l | tr -d ' '; }
 
 check "Repo liefert keine Farbdatei mehr (colors*.properties)" 0 "$(find "$ROOT/termux" -maxdepth 1 -name 'colors*.properties' | wc -l | tr -d ' ')"
