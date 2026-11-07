@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # rootbridge-claude - guest entry point (started by `rootbridge start`):
 #   1. apt-get update + upgrade (rootbridge-apt, at most once every 6 h by default, never blocks the start)
-#   2. claude update (CLAUDE_UPDATE, at most once every 6 h by default, never blocks the start)
+#   2. rootbridge-update: claude update, codex update and the Codex plugin (CLAUDE_UPDATE / CODEX_UPDATE, at most
+#      once every 6 h by default, never blocks the start). Starting Claude Code also updates Codex and the other way
+#      round (rootbridge-codex does the same): the two review each other.
 #   3. Claude Code with autonomous mode available
 #
 # The start mode comes from settings.json (the installer sets bypassPermissions with --autonomous yes);
@@ -55,42 +57,16 @@ if command -v rootbridge-apt >/dev/null 2>&1; then
     rootbridge-apt || true
 fi
 
-# claude update. CLAUDE_UPDATE=6h (default) | <N>h | daily | always | off (/etc/termux-rootbridge.conf, like APT_UPGRADE).
-# 6h / <N>h (1-999 hours): at most once per N hours after a success; daily = 24h
-# (stamp /var/lib/termux-rootbridge/claude-update-last-success).
-# A failed or aborted update leaves no stamp, so the next start tries again. Never stops the start.
-update_claude() {
-    local mode stamp now last interval=0
-    mode="$(conf_get CLAUDE_UPDATE || echo 6h)"
-    case "$mode" in
-        off) return 0 ;;
-        always) ;;
-        daily) interval=86400 ;;
-        *) if [[ "$mode" =~ ^[1-9][0-9]{0,2}h$ ]]; then
-               interval=$(( ${mode%h} * 3600 ))
-           else
-               echo "claude update: unbekannter Wert CLAUDE_UPDATE=$mode (erlaubt: 6h (Stunden, 1-999), daily, always, off) - übersprungen" >&2
-               return 0
-           fi ;;
-    esac
-    stamp="${ROOTBRIDGE_STATE_DIR:-/var/lib/termux-rootbridge}/claude-update-last-success"
-    now="$(date +%s)"
-    if [ "$interval" -gt 0 ] && [ -r "$stamp" ]; then
-        last="$(head -n 1 "$stamp" 2>/dev/null)"
-        if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt "$interval" ]; then
-            echo "claude update: vor $(( (now - last) / 3600 )) h erfolgreich - übersprungen (CLAUDE_UPDATE=$mode)"
-            return 0
-        fi
-    fi
-    echo "== claude update"
-    if ( limit_nofile; exec timeout 180 "$claude_bin" update ); then
-        { mkdir -p "$(dirname "$stamp")" && date +%s > "$stamp"; } 2>/dev/null || true
-    else
-        echo "Update fehlgeschlagen oder abgebrochen - starte die vorhandene Version."
-    fi
-    return 0
-}
-update_claude
+# claude update, codex update, Codex plugin (CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
+if command -v rootbridge-update >/dev/null 2>&1; then
+    rootbridge-update || true
+fi
+
+# Emergency switch of the Codex pre-commit review hook: `rootbridge codex-off` (in Termux) puts
+# CODEX_PRECOMMIT=off into the config, and the hook (a child of Claude Code) reads it from the environment.
+# Only the value "off" is handed on.
+[ "$(conf_get CODEX_PRECOMMIT || true)" = off ] && export CODEX_PRECOMMIT=off
+
 
 # After Claude Code: a clean end (/exit = 0, Ctrl+C = 130) ends the script, so the tmux window and
 # session close and the widget's Termux window closes too. On an error the shell stays open.

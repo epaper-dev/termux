@@ -6,7 +6,8 @@
 #                   [--autonomous yes|no|ask] [--no-deps-check] [--remote-name NAME] [--no-extra-keys]
 #                   [--apt-upgrade 6h|<N>h|daily|always|off | --no-apt-upgrade]
 #                   [--claude-update 6h|<N>h|daily|always|off | --no-claude-update] [--no-setup]
-#                   [--model NAME|none]
+#                   [--model NAME|none] [--claude | --no-claude] [--codex | --no-codex]
+#                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update]
 #
 # Setup (automatic, nothing to ask for): what is missing gets installed first: the Termux packages
 #   (pkg install), the Ubuntu guest (proot-distro install, a download of a few hundred MB),
@@ -25,6 +26,16 @@
 # --model NAME|none: model in the guest's ~/.claude/settings.json. Default "opusplan" (Opus plans,
 #   Sonnet works), written only if settings.json has no model yet; --model always writes it, none
 #   leaves the model alone.
+#
+# --no-claude / --no-codex: leave one of the two tools out (Codex only, or Claude Code only; at least one stays).
+#   Both are part of the installation by default: Claude Code (widget "Claude") and Codex (widget "Codex"), and each
+#   one starts with the update of the other (rootbridge-update), because the two review each other: the Codex plugin
+#   of Claude Code and a pre-commit review hook (Codex checks every `git commit` Claude Code makes; the strict loop,
+#   fail-closed, emergency switch `rootbridge codex-off`). Without Claude Code there is no plugin and no hook.
+#   Your choice is stored in the Termux config (TOOL_CLAUDE / TOOL_CODEX) and reused by every later install;
+#   --claude / --codex turn a tool on again. --codex-update sets how often `codex update` runs at the start of a
+#   session (6h default, like --claude-update; stored as CODEX_UPDATE). Still manual: the Codex login,
+#   `rootbridge codex-login`.
 #
 # Claude Code starts in /root/work in the guest (WORKDIR; the installer creates the folder).
 #
@@ -72,6 +83,8 @@ REMOTE_NAME="android"; REMOTE_NAME_SET=0   # default name in the Remote Control 
 APT_MODE=""; APT_MODE_SET=0
 MODEL=""; MODEL_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
+CODEX_UPD_MODE=""; CODEX_UPD_SET=0
+USE_CLAUDE=yes; USE_CLAUDE_SET=0; USE_CODEX=yes; USE_CODEX_SET=0   # which tools: yes | no
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 APT_RE='^(always|off|daily|[1-9][0-9]{0,2}h)$'
 while [ $# -gt 0 ]; do
@@ -97,10 +110,18 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "--claude-update braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
             CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift ;;
         --no-claude-update) CLAUDE_UPD_MODE=off; CLAUDE_UPD_SET=1 ;;
+        --codex-update)
+            [ $# -ge 2 ] || { echo "--codex-update braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
+            CODEX_UPD_MODE="$2"; CODEX_UPD_SET=1; shift ;;
+        --no-codex-update) CODEX_UPD_MODE=off; CODEX_UPD_SET=1 ;;
+        --claude) USE_CLAUDE=yes; USE_CLAUDE_SET=1 ;;
+        --no-claude) USE_CLAUDE=no; USE_CLAUDE_SET=1 ;;
+        --codex) USE_CODEX=yes; USE_CODEX_SET=1 ;;
+        --no-codex) USE_CODEX=no; USE_CODEX_SET=1 ;;
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift ;;
-        -h|--help) sed -n '2,58p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,69p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -131,6 +152,14 @@ if [ "$CLAUDE_UPD_SET" = 1 ] && ! [[ "$CLAUDE_UPD_MODE" =~ $APT_RE ]]; then
     echo "--claude-update: ungültiger Wert '$CLAUDE_UPD_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
     exit 2
 fi
+
+if [ "$CODEX_UPD_SET" = 1 ] && ! [[ "$CODEX_UPD_MODE" =~ $APT_RE ]]; then
+    echo "--codex-update: ungültiger Wert '$CODEX_UPD_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
+    exit 2
+fi
+
+BOTH_OFF_MSG="Mindestens eines von Claude Code und Codex muss installiert werden (nicht --no-claude und --no-codex zusammen)."
+if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then echo "$BOTH_OFF_MSG" >&2; exit 2; fi
 
 say() { printf '%s\n' "$*"; }
 die() { echo "install.sh: $*" >&2; exit 1; }
@@ -316,6 +345,9 @@ AUTOSTART_DELAY=3
 # REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); default android, change with install.sh --remote-name
 # APT_UPGRADE=6h        # apt-get update + upgrade in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
 # CLAUDE_UPDATE=6h      # claude update in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --claude-update / --no-claude-update
+# CODEX_UPDATE=6h       # codex update (and the Codex plugin) at session start: same values; set with install.sh --codex-update / --no-codex-update
+# TOOL_CLAUDE=on        # on | off: Claude Code is part of this installation; set with install.sh --claude / --no-claude
+# TOOL_CODEX=on         # on | off: Codex is part of this installation; set with install.sh --codex / --no-codex
 EOF
     say "  neu: $CFG"
 fi
@@ -380,6 +412,42 @@ else
     v="$(sed -n 's/^CLAUDE_UPDATE=//p' "$CFG" | tail -n 1)"
     v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
     if [[ "$v" =~ $APT_RE ]]; then CLAUDE_UPD_MODE="$v"; say "  claude-update-Modus aus der Konfig: $CLAUDE_UPD_MODE"; fi
+fi
+# cfg_get KEY: the value stored in the Termux config (quotes stripped; empty if there is none)
+cfg_get() {
+    local v
+    v="$(sed -n "s/^$1=//p" "$CFG" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    printf '%s' "$v"
+}
+# cfg_set KEY VALUE MESSAGE: store KEY=VALUE (replace the line or add it; a backup only on a change)
+cfg_set() {
+    local tmp="$CFG.new.$$"
+    cp "$CFG" "$tmp"
+    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
+    if grep -q "^$1=" "$tmp"; then sed -i "s|^$1=.*|$1=$2|" "$tmp"; else printf '%s=%s\n' "$1" "$2" >> "$tmp"; fi
+    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  $3"; fi
+}
+# the tools: an option wins (and is stored, so a reinstall keeps the choice), without one the stored value counts.
+# Both choices are settled and checked BEFORE either is stored: a refused combination leaves the config as it was.
+if [ "$USE_CLAUDE_SET" != 1 ] && [ "$(cfg_get TOOL_CLAUDE)" = off ]; then
+    USE_CLAUDE=no; say "  Claude Code: abgewählt (aus der Konfig; wieder an mit --claude)"
+fi
+if [ "$USE_CODEX_SET" != 1 ] && [ "$(cfg_get TOOL_CODEX)" = off ]; then
+    USE_CODEX=no; say "  Codex: abgewählt (aus der Konfig; wieder an mit --codex)"
+fi
+if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then die "$BOTH_OFF_MSG (die Konfig hat eines abgewählt: --claude oder --codex)"; fi
+if [ "$USE_CLAUDE_SET" = 1 ]; then
+    cfg_set TOOL_CLAUDE "$([ "$USE_CLAUDE" = yes ] && echo on || echo off)" "Claude Code: $USE_CLAUDE"
+fi
+if [ "$USE_CODEX_SET" = 1 ]; then
+    cfg_set TOOL_CODEX "$([ "$USE_CODEX" = yes ] && echo on || echo off)" "Codex: $USE_CODEX"
+fi
+if [ "$CODEX_UPD_SET" = 1 ]; then
+    cfg_set CODEX_UPDATE "$CODEX_UPD_MODE" "codex-update-Modus gespeichert: $CODEX_UPD_MODE"
+else
+    v="$(cfg_get CODEX_UPDATE)"
+    if [[ "$v" =~ $APT_RE ]]; then CODEX_UPD_MODE="$v"; say "  codex-update-Modus aus der Konfig: $CODEX_UPD_MODE"; fi
 fi
 TMP_SNIP="$(mktemp)"; cp "$REPO/termux/tmux.conf.snippet" "$TMP_SNIP"
 set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
@@ -460,7 +528,20 @@ if [ "$DO_WIDGETS" = 1 ]; then
             if [ -e "$f" ]; then mv "$f" "$BRIDGE_DIR/backups/"; say "  Sicherung aus der Widget-Liste verschoben: ${f##*/}"; fi
         done
     done
-    for pair in "claude:Claude" "ubuntu:Ubuntu"; do
+    # a tool that is switched off gets no widget (and our widget of an earlier install goes, with a copy in backups)
+    for pair in "claude:Claude:$USE_CLAUDE" "codex:Codex:$USE_CODEX"; do
+        if [ "${pair##*:}" = no ]; then
+            w="${pair#*:}"; w="${w%%:*}"
+            if [ -f "$SC/$w" ] && grep -q 'rootbridge' "$SC/$w" 2>/dev/null; then
+                mv "$SC/$w" "$BRIDGE_DIR/backups/$w.old-$STAMP"
+                say "  Widget entfernt: $w (abgewählt; Kopie in $BRIDGE_DIR/backups)"
+            fi
+        fi
+    done
+    WIDGET_LIST="ubuntu:Ubuntu"
+    [ "$USE_CODEX" = yes ] && WIDGET_LIST="codex:Codex $WIDGET_LIST"
+    [ "$USE_CLAUDE" = yes ] && WIDGET_LIST="claude:Claude $WIDGET_LIST"
+    for pair in $WIDGET_LIST; do
         src="${pair%%:*}"; name="${pair#*:}"
         inst "$REPO/termux/shortcuts/$src" "$SC/$name"
         # One default icon for both widgets: installed if there is none, and in place of an icon that is exactly a default
@@ -548,21 +629,35 @@ if [ "$DO_GUEST" = 1 ]; then
     # (a link that points outside the guest only counts as missing: setup-guest.sh then looks properly)
     guest_ready() {
         local h="${ROOTBRIDGE_GUEST_HOME:-/root}"
-        [ -e "$GROOT/usr/bin/python3" ] && [ -e "$GROOT/usr/bin/curl" ] && [ -s "$GROOT/etc/ssl/certs/ca-certificates.crt" ] \
-            && { [ -x "$GROOT$h/.local/bin/claude" ] || [ -x "$GROOT/usr/local/bin/claude" ] || [ -x "$GROOT/usr/bin/claude" ]; }
+        { [ -e "$GROOT/usr/bin/python3" ] && [ -e "$GROOT/usr/bin/curl" ] && [ -s "$GROOT/etc/ssl/certs/ca-certificates.crt" ]; } || return 1
+        if [ "$USE_CLAUDE" = yes ]; then
+            { [ -x "$GROOT$h/.local/bin/claude" ] || [ -x "$GROOT/usr/local/bin/claude" ] || [ -x "$GROOT/usr/bin/claude" ]; } || return 1
+        fi
+        if [ "$USE_CODEX" = yes ]; then
+            # ~/.local/bin/codex is a link with an absolute target inside the guest: the link itself counts
+            { [ -x "$GROOT$h/.local/bin/codex" ] || [ -L "$GROOT$h/.local/bin/codex" ]; } || return 1
+            [ -e "$GROOT/usr/bin/git" ] || return 1
+        fi
+        if [ "$USE_CLAUDE" = yes ] && [ "$USE_CODEX" = yes ]; then
+            { [ -e "$GROOT/usr/bin/node" ] || [ -e "$GROOT/usr/bin/nodejs" ]; } || return 1
+            compgen -G "$GROOT$h/.claude/plugins/cache/openai-codex/codex/*/" >/dev/null || return 1
+        fi
+        return 0
     }
     if [ "$DO_SETUP" = 1 ] && ! guest_ready; then
-        say "  Gast: Voraussetzungen und Claude Code einrichten"
+        say "  Gast: Voraussetzungen, Claude Code und Codex einrichten (Claude Code: $USE_CLAUDE, Codex: $USE_CODEX)"
         proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/setup-guest.sh \
+            --claude "$USE_CLAUDE" --codex "$USE_CODEX" \
             || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh"
         SETUP_DID=1
     fi
-    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS")
+    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
     if [ "$MODEL_SET" = 1 ]; then GUEST_ARGS+=(--model "$MODEL"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
     if [ -n "$APT_MODE" ]; then GUEST_ARGS+=(--apt-upgrade "$APT_MODE"); fi
     if [ -n "$CLAUDE_UPD_MODE" ]; then GUEST_ARGS+=(--claude-update "$CLAUDE_UPD_MODE"); fi
+    if [ -n "$CODEX_UPD_MODE" ]; then GUEST_ARGS+=(--codex-update "$CODEX_UPD_MODE"); fi
     proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/install-guest.sh "${GUEST_ARGS[@]}"
     rm -rf "$STAGE"
 else
@@ -572,16 +667,38 @@ fi
 say
 say "Fertig. Weiter:"
 say "  rootbridge status        # Zustand prüfen"
-say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude')"
+if [ "$USE_CLAUDE" = yes ]; then
+    say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude')"
+else
+    say "  ubuntu                   # an die Codex-Sitzung anhängen (legt sie an; auch Widget 'Codex')"
+fi
+if [ "$USE_CODEX" = yes ] && [ "$USE_CLAUDE" = yes ]; then
+    say "  rootbridge attach codex  # an das Codex-Fenster anhängen (auch Widget 'Codex')"
+fi
 say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
-say "Normale Termux-Fenster bleiben reine Shells; Claude Code startet nicht mehr automatisch."
-if [ "$DO_GUEST" = 1 ] && [ "$AUTONOMOUS" = yes ]; then
+say "Normale Termux-Fenster bleiben reine Shells; Claude Code und Codex starten nicht mehr automatisch."
+if [ "$DO_GUEST" = 1 ] && [ "$AUTONOMOUS" = yes ] && [ "$USE_CLAUDE" = yes ]; then
     say "Claude Code startet im Bypass-Modus im Ordner /root/work; Android-Root-Befehle fragen weiter nach."
 fi
-say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."
+if [ "$USE_CLAUDE" = yes ]; then
+    say "Nach dem ersten Start: Claude Code neu starten, damit die Managed Settings gelten."
+fi
+if [ "$DO_GUEST" = 1 ] && [ "$USE_CODEX" = yes ]; then
+    say "Codex: einmal anmelden mit   rootbridge codex-login   (der Browser öffnet sich)."
+    if [ "$USE_CLAUDE" = yes ]; then
+        say "Bis dahin blockiert der Pre-Commit-Review jeden Commit von Claude Code (Notausgang: rootbridge codex-off)."
+        say "Beim Start eines der beiden Fenster werden beide aktualisiert (claude update, codex update, Plugin)."
+    else
+        say "Beim Start von Codex wird Codex aktualisiert (codex update)."
+    fi
+fi
 if [ "$SETUP_DID" = 1 ]; then
     say "Noch von Hand: Root-Freigabe für Termux bestätigen (Root-Manager fragt bei der ersten Anfrage), Termux:Boot einmal öffnen,"
-    say "das Widget 'Claude' auf den Homescreen legen, beim ersten Start in Claude Code anmelden (/login, der Browser öffnet sich)."
+    if [ "$USE_CLAUDE" = yes ]; then
+        say "das Widget 'Claude' auf den Homescreen legen, beim ersten Start in Claude Code anmelden (/login, der Browser öffnet sich)."
+    else
+        say "das Widget 'Codex' auf den Homescreen legen, Codex anmelden (rootbridge codex-login)."
+    fi
 fi
 if [ "$DO_EXTRAKEYS" = 1 ]; then
     say "Zusatztasten: S-TAB (Shift+Tab; Wisch nach oben = Tab) und KEYBOARD stehen in ~/.termux/termux.properties."

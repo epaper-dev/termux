@@ -7,7 +7,8 @@
 #     lists EVERY file there)
 #   - backups of ~/.shortcuts and ~/.termux/boot files go to $BRIDGE_DIR/backups (Termux:Boot runs EVERY file)
 #   - --no-widgets, idempotence, uninstall keeps an icon the user chose
-#   - the committed PNGs (widget.png and the legacy ones) are valid
+#   - the committed PNGs (widget.png, the original logo.png and the legacy ones) are valid; the coloured icon of the
+#     previous version (legacy/widget-colour.png) is replaced by the new one like the older defaults
 # Nothing real is touched: fake HOME/PREFIX/BRIDGE_DIR; `rootbridge` (uninstall.sh calls `rootbridge stop`!),
 # `tmux`, `pkill` and `pgrep` are logging stubs, --no-guest --no-migrate.
 #   bash tests/test_widgets.sh
@@ -29,7 +30,7 @@ check() {   # check <name> <expected> <actual>
 has() { [ -e "$1" ] && echo ja || echo nein; }
 files() { ( cd "$1" && find .shortcuts .termux .rootbridge -type f 2>/dev/null | sort ); }
 
-W1="Claude"; W2="Ubuntu"
+W1="Claude"; W2="Ubuntu"; W3="Codex"
 P="$T/prefix"; mkdir -p "$P/bin" "$T/stubs"
 # uninstall.sh runs `rootbridge stop` if it finds one: never the real one (it would end the user's session)
 for s in rootbridge tmux pkill pgrep; do
@@ -60,6 +61,10 @@ check "frisch: '$W2' ruft rootbridge shell"            1 "$(grep -c '^exec rootb
 check "frisch: Termux-Shebang"                         "#!$P/bin/bash" "$(head -n 1 "$SC/$W1")"
 check "frisch: Icon '$W1.png' angelegt"                0 "$(cmp -s "$ICONS/widget.png" "$SC/icons/$W1.png"; echo $?)"
 check "frisch: Icon '$W2.png' angelegt"                0 "$(cmp -s "$ICONS/widget.png" "$SC/icons/$W2.png"; echo $?)"
+check "frisch: Widget '$W3' (Codex) angelegt"          ja "$(has "$SC/$W3")"
+check "frisch: Widget '$W3' ist ausführbar"            ja "$([ -x "$SC/$W3" ] && echo ja || echo nein)"
+check "frisch: Widget '$W3' startet das Codex-Fenster" 1 "$(grep -c '^exec rootbridge attach codex$' "$SC/$W3")"
+check "frisch: Icon '$W3.png' angelegt"                0 "$(cmp -s "$ICONS/widget.png" "$SC/icons/$W3.png"; echo $?)"
 check "frisch: keine alten Namen"                      nein "$(has "$SC/Claude Code")"
 
 before="$(files "$H1")"
@@ -119,7 +124,7 @@ check ">_-Umstieg: Kopie in backups"                   1 "$(find "$BR/backups" -
 check ">_-Umstieg: Icon des Users (Claude)"            USERICON-CLAUDE "$(cat "$SC/icons/$W1.png" 2>/dev/null)"
 check ">_-Umstieg: Icon des Users (Ubuntu)"            USERICON-UBUNTU "$(cat "$SC/icons/$W2.png" 2>/dev/null)"
 check ">_-Umstieg: alte Icon-Namen sind weg"           nein "$(has "$SC/icons/Claude >_.png")"
-check ">_-Umstieg: genau zwei Widgets in der Liste"    2 "$(find "$SC" -maxdepth 1 -type f | wc -l | tr -d ' ')"
+check ">_-Umstieg: genau drei Widgets in der Liste"    3 "$(find "$SC" -maxdepth 1 -type f | wc -l | tr -d ' ')"
 before="$(files "$H6")"
 rinstall "$H6"
 check ">_-Umstieg, zweiter Lauf: nichts ändert sich"   "$before" "$(files "$H6")"
@@ -158,11 +163,30 @@ rinstall "$H9"
 check "frühere Standard-Icons: '$W1.png' ersetzt"       0 "$(cmp -s "$ICONS/widget.png" "$H9/.shortcuts/icons/$W1.png"; echo $?)"
 check "frühere Standard-Icons: '>_' wandert und wird ersetzt" 0 "$(cmp -s "$ICONS/widget.png" "$H9/.shortcuts/icons/$W2.png"; echo $?)"
 check "frühere Standard-Icons: alter Name ist weg"       nein "$(has "$H9/.shortcuts/icons/Ubuntu >_.png")"
-check "frühere Standard-Icons: Meldung"                  2 "$(grep -c '^  Icon: ' "$T/install.log")"
+check "frühere Standard-Icons: Meldung (Claude, Ubuntu, Codex)" 3 "$(grep -c '^  Icon: ' "$T/install.log")"
 before="$(cksum < "$H9/.shortcuts/icons/$W1.png")"
 rinstall "$H9"
 check "zweiter Lauf: Icon unverändert"                   "$before" "$(cksum < "$H9/.shortcuts/icons/$W1.png")"
 check "zweiter Lauf: keine Icon-Meldung"                 0 "$(grep -c '^  Icon: ' "$T/install.log")"
+
+# the coloured icon (orange/brown ring) of the previous version is a default icon of an earlier version too: replaced
+H10="$T/h10"; mkdir -p "$H10/.shortcuts/icons"
+cp "$ICONS/legacy/widget-colour.png" "$H10/.shortcuts/icons/$W1.png"
+cp "$ICONS/legacy/widget-colour.png" "$H10/.shortcuts/icons/$W2.png"
+rinstall "$H10"
+check "buntes Vorgänger-Icon: '$W1.png' ersetzt"         0 "$(cmp -s "$ICONS/widget.png" "$H10/.shortcuts/icons/$W1.png"; echo $?)"
+check "buntes Vorgänger-Icon: '$W2.png' ersetzt"         0 "$(cmp -s "$ICONS/widget.png" "$H10/.shortcuts/icons/$W2.png"; echo $?)"
+
+# --no-codex: no Codex widget, the other two stay; a Codex widget of ours from an earlier run goes (copy in backups)
+H11="$T/h11"; mkdir -p "$H11"
+rinstall "$H11" --no-codex
+check "--no-codex: kein Codex-Widget"                    nein "$(has "$H11/.shortcuts/$W3")"
+check "--no-codex: Claude und Ubuntu bleiben"            "ja ja" "$(has "$H11/.shortcuts/$W1") $(has "$H11/.shortcuts/$W2")"
+rinstall "$H11" --codex
+check "--codex: Codex-Widget wieder da"                  ja "$(has "$H11/.shortcuts/$W3")"
+rinstall "$H11" --no-codex
+check "--no-codex danach: Codex-Widget wieder entfernt"  nein "$(has "$H11/.shortcuts/$W3")"
+check "--no-codex danach: Kopie in backups"              1 "$(find "$H11/.rootbridge/backups" -name 'Codex.old-*' | wc -l | tr -d ' ')"
 
 # ------------------------------------------------------------------------- 5. --no-widgets
 H5="$T/h5"; mkdir -p "$H5"
@@ -191,7 +215,7 @@ check "uninstall: 'Claude Code' (unseres) ist weg"     nein "$(has "$H8/.shortcu
 check "uninstall: Standard-Icon der >_-Generation weg" nein "$(has "$H8/.shortcuts/icons/Ubuntu >_.png")"
 
 # ----------------------------------------------------------------------------- 7. the icons
-for n in widget legacy/claude legacy/ubuntu; do
+for n in widget legacy/claude legacy/ubuntu legacy/widget-colour; do
     info="$(python3 -I - "$ICONS/$n.png" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read()
@@ -203,6 +227,17 @@ PY
     check "Icon $n.png: gültiges PNG, 192x192, 8 Bit RGBA" "True 192 192 8 6 True" "$info"
 done
 check "Das neue Icon unterscheidet sich von den früheren" 0 "$(cmp -s "$ICONS/widget.png" "$ICONS/legacy/claude.png" && echo 1 || echo 0)"
+check "Das neue Icon unterscheidet sich vom bunten Vorgänger" 0 "$(cmp -s "$ICONS/widget.png" "$ICONS/legacy/widget-colour.png" && echo 1 || echo 0)"
+# logo.png is the original (source of widget.png, made with tools/make-widget-icon.py); only widget.png gets installed
+info="$(python3 -I - "$ICONS/logo.png" <<'PY'
+import struct, sys
+d = open(sys.argv[1], "rb").read()
+ok = d[:8] == b"\x89PNG\r\n\x1a\n" and d[12:16] == b"IHDR"
+w, h, depth, ctype = struct.unpack(">IIBB", d[16:26])
+print(ok, w, h, depth, ctype, d.endswith(b"IEND\xaeB`\x82"))
+PY
+)"
+check "Logo logo.png: gültiges PNG, 1024x1024, 8 Bit RGBA" "True 1024 1024 8 6 True" "$info"
 
 check "Test hat nie das echte rootbridge/tmux/pkill gestartet" 0 "$(grep -c '^tmux\|^pkill' "$STUB_LOG")"
 

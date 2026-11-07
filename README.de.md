@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="rootbridge/termux/shortcuts/icons/widget.png" width="120" alt="Termux-E-Paper-Icon">
+  <img src="rootbridge/termux/shortcuts/icons/logo.png" width="120" alt="Termux-E-Paper-Icon">
 </p>
 
 <h1 align="center">Termux E-Paper</h1>

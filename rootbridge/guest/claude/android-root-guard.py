@@ -35,7 +35,11 @@ BUILTIN_PROTECTED = [
     "/usr/local/bin/androidsu",
     "/usr/local/bin/rootbridge-open",
     "/usr/local/bin/rootbridge-claude",
+    "/usr/local/bin/rootbridge-codex",
+    "/usr/local/bin/rootbridge-update",
     "/usr/local/bin/xdg-open",
+    # Codex pre-commit review: the hashes of the diffs Codex has approved (a forged one skips the review)
+    "/root/.claude/codex-precommit",
     "/data/data/com.termux/files/home/.rootbridge",
     "/data/data/com.termux/files/home/.config/termux-rootbridge",
     "/data/data/com.termux/files/usr/bin/rootbridge",

@@ -4,8 +4,16 @@
 #
 #   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
 #                    [--theme NAME] [--model NAME|none] [--apt-upgrade 6h|<N>h|daily|always|off]
-#                    [--claude-update 6h|<N>h|daily|always|off] [--uninstall]
+#                    [--claude yes|no] [--codex yes|no] [--claude-update M] [--codex-update M] [--uninstall]
 #
+#   --claude yes|no   Claude Code is part of the installation (default yes). no = Codex only: no Claude Code
+#                     settings, hooks, managed settings or claude() wrapper (an existing value in the config stays
+#                     without the option)
+#   --codex yes|no    Codex is part of the installation (default yes): rootbridge-codex (the Codex window), the
+#                     update step and, together with Claude Code, the Codex pre-commit review hook in the managed
+#                     settings (an existing value in the config stays without the option)
+#   --codex-update M  CODEX_UPDATE in /etc/termux-rootbridge.conf: `codex update` and the Codex plugin update at the
+#                     start of a session (rootbridge-update). Same values and rules as --claude-update.
 #   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
@@ -45,6 +53,8 @@ THEME=""; THEME_SET=0
 MODEL=opusplan; MODEL_SET=0
 APT_MODE=""; APT_MODE_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
+CODEX_UPD_MODE=""; CODEX_UPD_SET=0
+CLAUDE_ON=""; CODEX_ON=""
 UNINSTALL=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -66,6 +76,15 @@ while [ $# -gt 0 ]; do
         --claude-update)
             [ $# -ge 2 ] || { echo "--claude-update braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
             CLAUDE_UPD_MODE="$2"; CLAUDE_UPD_SET=1; shift 2 ;;
+        --codex-update)
+            [ $# -ge 2 ] || { echo "--codex-update braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
+            CODEX_UPD_MODE="$2"; CODEX_UPD_SET=1; shift 2 ;;
+        --claude)
+            [ $# -ge 2 ] || { echo "--claude braucht yes oder no" >&2; exit 2; }
+            CLAUDE_ON="$2"; shift 2 ;;
+        --codex)
+            [ $# -ge 2 ] || { echo "--codex braucht yes oder no" >&2; exit 2; }
+            CODEX_ON="$2"; shift 2 ;;
         --uninstall) UNINSTALL=1; shift ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
@@ -104,10 +123,23 @@ if [ "$CLAUDE_UPD_SET" = 1 ]; then
     }
 fi
 
+if [ "$CODEX_UPD_SET" = 1 ]; then
+    [[ "$CODEX_UPD_MODE" =~ ^(always|off|daily|[1-9][0-9]{0,2}h)$ ]] || {
+        echo "--codex-update: ungültiger Wert '$CODEX_UPD_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
+        exit 2
+    }
+fi
+
 case "$AUTONOMOUS" in
     yes|no|ask) ;;
     *) echo "--autonomous: ungültiger Wert '$AUTONOMOUS' (erlaubt: yes, no, ask)" >&2; exit 2 ;;
 esac
+for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON"; do
+    case "${pair#*:}" in
+        ""|yes|no) ;;
+        *) echo "--${pair%%:*}: ungültiger Wert '${pair#*:}' (erlaubt: yes, no)" >&2; exit 2 ;;
+    esac
+done
 
 STAMP="$(date +%Y%m%d%H%M%S)"
 LIBDIR=/usr/local/lib/termux-rootbridge
@@ -121,6 +153,16 @@ BEGIN='# >>> termux-rootbridge >>>'
 END='# <<< termux-rootbridge <<<'
 
 say() { printf '%s\n' "$*"; }
+
+# Which tools are part of the installation: the option, else what an earlier install stored in the config
+# (TOOL_CLAUDE / TOOL_CODEX = on|off), else yes.
+tool_on() {   # tool_on <config key> <option value yes|no|empty>
+    case "$2" in yes|no) printf '%s' "$2"; return ;; esac
+    if [ "$(sed -n "s/^$1=//p" "$ROOT$CONF" 2>/dev/null | tail -n 1 | tr -d '\042\047')" = off ]; then printf no; else printf yes; fi
+}
+CLAUDE_ON="$(tool_on TOOL_CLAUDE "$CLAUDE_ON")"
+CODEX_ON="$(tool_on TOOL_CODEX "$CODEX_ON")"
+
 backup() { [ -e "$1" ] && cp -p "$1" "$1.bak-$STAMP" && say "  Sicherung: $1.bak-$STAMP" || true; }
 
 # put <src> <dest> [mode] - copy with guest shebang, back up differing files
@@ -163,26 +205,35 @@ open(path, "w", encoding="utf-8").write("\n".join(out).rstrip("\n") + "\n")
 PY
 }
 
-merge_managed() {   # merge_managed <template> <current> <out> <python> <libdir>
-    python3 -I - "$1" "$2" "$3" "$4" "$5" <<'PY'
+merge_managed() {   # merge_managed <current> <out> <python> <libdir> <template>...
+    python3 -I - "$@" <<'PY'
 import json, os, sys
-template_path, target, out, python, libdir = sys.argv[1:6]
-raw = open(template_path, encoding="utf-8").read()
-raw = raw.replace("@PYTHON@", python).replace("@LIBDIR@", libdir)
-tpl = json.loads(raw)
+target, out, python, libdir = sys.argv[1:5]
+MARK = "termux-rootbridge"
+new, asks = {}, []
+for template_path in sys.argv[5:]:
+    raw = open(template_path, encoding="utf-8").read()
+    raw = raw.replace("@PYTHON@", python).replace("@LIBDIR@", libdir)
+    tpl = json.loads(raw)
+    for event, entries in tpl.get("hooks", {}).items():
+        new.setdefault(event, []).extend(entries)
+    for rule in tpl.get("permissions", {}).get("ask", []):
+        if rule not in asks:
+            asks.append(rule)
 try:
     cur = json.load(open(target, encoding="utf-8"))
 except (OSError, ValueError):
     cur = {}
-MARK = "termux-rootbridge"
+# Every entry of ours is replaced by the ones of the templates (so an entry that is no longer in them,
+# e.g. the Codex hook after --no-codex, goes); entries of anybody else stay.
 hooks = cur.setdefault("hooks", {})
-for event, entries in tpl["hooks"].items():
+for event, entries in new.items():
     kept = [e for e in hooks.get(event, [])
             if not any(MARK in h.get("command", "") for h in e.get("hooks", []))]
     hooks[event] = kept + entries
 perms = cur.setdefault("permissions", {})
 ask = perms.setdefault("ask", [])
-for rule in tpl["permissions"]["ask"]:
+for rule in asks:
     if rule not in ask:
         ask.append(rule)
 with open(out, "w", encoding="utf-8") as fh:
@@ -306,7 +357,7 @@ PY
 if [ "$UNINSTALL" = 1 ]; then
     say "== Gast: Deinstallation"
     unmerge_managed
-    for f in androidsu rootbridge-open rootbridge-claude rootbridge-apt; do rm -f "$ROOT$BINDIR/$f"; done
+    for f in androidsu rootbridge-open rootbridge-claude rootbridge-codex rootbridge-update rootbridge-apt; do rm -f "$ROOT$BINDIR/$f"; done
     [ -L "$ROOT$BINDIR/xdg-open" ] && rm -f "$ROOT$BINDIR/xdg-open"
     rm -rf "$ROOT$LIBDIR" "$ROOT/var/lib/termux-rootbridge"
     rm -f "$ROOT$CONF"
@@ -317,20 +368,48 @@ fi
 
 # ------------------------------------------------------------------ install
 say "== Gast: Installation (Quelle: $SRC)"
+if [ "$CLAUDE_ON" = no ] && [ "$CODEX_ON" = no ]; then
+    echo "Mindestens eines von Claude Code und Codex muss installiert werden (--claude yes / --codex yes)." >&2
+    exit 2
+fi
 for need in python3 bash sha256sum od timeout; do
     command -v "$need" >/dev/null 2>&1 || { echo "FEHLT: $need (apt install python3 coreutils)" >&2; exit 1; }
 done
-command -v claude >/dev/null 2>&1 || [ -x "$ROOT$HOME_DIR/.local/bin/claude" ] \
-    || say "  Hinweis: claude nicht gefunden (curl -fsSL https://claude.ai/install.sh | bash)"
+if [ "$CLAUDE_ON" = yes ]; then
+    command -v claude >/dev/null 2>&1 || [ -x "$ROOT$HOME_DIR/.local/bin/claude" ] \
+        || say "  Hinweis: claude nicht gefunden (curl -fsSL https://claude.ai/install.sh | bash)"
+fi
+if [ "$CODEX_ON" = yes ]; then
+    command -v codex >/dev/null 2>&1 || [ -x "$ROOT$HOME_DIR/.local/bin/codex" ] || [ -L "$ROOT$HOME_DIR/.local/bin/codex" ] \
+        || say "  Hinweis: codex nicht gefunden (curl -fsSL https://chatgpt.com/codex/install.sh | sh)"
+fi
+say "  Programme: Claude Code $CLAUDE_ON, Codex $CODEX_ON"
 
 PYTHON="$(command -v python3)"
 
 put "$SRC/bin/androidsu"         "$BINDIR/androidsu"
 put "$SRC/bin/rootbridge-open"   "$BINDIR/rootbridge-open"
-put "$SRC/bin/rootbridge-claude" "$BINDIR/rootbridge-claude"
 put "$SRC/bin/rootbridge-apt"    "$BINDIR/rootbridge-apt"
-put "$SRC/claude/android-root-guard.py" "$LIBDIR/android-root-guard.py"
-put "$SRC/claude/auth-url-hook.py"      "$LIBDIR/auth-url-hook.py"
+put "$SRC/bin/rootbridge-update" "$BINDIR/rootbridge-update"
+# what belongs to a tool that is switched off is removed again (a reinstall with --claude no / --codex no)
+if [ "$CLAUDE_ON" = yes ]; then
+    put "$SRC/bin/rootbridge-claude" "$BINDIR/rootbridge-claude"
+    put "$SRC/claude/android-root-guard.py" "$LIBDIR/android-root-guard.py"
+    put "$SRC/claude/auth-url-hook.py"      "$LIBDIR/auth-url-hook.py"
+else
+    rm -f "$ROOT$BINDIR/rootbridge-claude" "$ROOT$LIBDIR/android-root-guard.py" "$ROOT$LIBDIR/auth-url-hook.py"
+fi
+if [ "$CODEX_ON" = yes ]; then
+    put "$SRC/bin/rootbridge-codex" "$BINDIR/rootbridge-codex"
+else
+    rm -f "$ROOT$BINDIR/rootbridge-codex"
+fi
+# the Codex pre-commit review hook runs inside Claude Code: it needs both
+if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
+    put "$SRC/claude/codex-precommit-review.py" "$LIBDIR/codex-precommit-review.py"
+else
+    rm -f "$ROOT$LIBDIR/codex-precommit-review.py"
+fi
 
 # xdg-open shim: only if no real xdg-open would be hidden by it
 if [ ! -e "$ROOT$BINDIR/xdg-open" ] || [ -L "$ROOT$BINDIR/xdg-open" ]; then
@@ -345,8 +424,10 @@ mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"
 for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/work" \
           "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" "TTY_CONFIRM=1" \
-          "APT_UPGRADE=6h" "APT_TIMEOUT=600" "CLAUDE_UPDATE=6h" "NOFILE_LIMIT=2048" \
-          "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"; do
+          "APT_UPGRADE=6h" "APT_TIMEOUT=600" "CLAUDE_UPDATE=6h" "CODEX_UPDATE=6h" "NOFILE_LIMIT=2048" \
+          "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" \
+          "TOOL_CLAUDE=$([ "$CLAUDE_ON" = yes ] && echo on || echo off)" \
+          "TOOL_CODEX=$([ "$CODEX_ON" = yes ] && echo on || echo off)"; do
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"
 done
@@ -366,12 +447,32 @@ if [ "$CLAUDE_UPD_SET" = 1 ]; then
     commit_file "$tmp" "$ROOT$CONF"
     say "  CLAUDE_UPDATE=$CLAUDE_UPD_MODE"
 fi
+# CODEX_UPDATE from --codex-update: same (an existing value stays without the option)
+if [ "$CODEX_UPD_SET" = 1 ]; then
+    tmp="$ROOT$CONF.new.$$"
+    cp "$ROOT$CONF" "$tmp"
+    sed -i "s|^CODEX_UPDATE=.*|CODEX_UPDATE=$CODEX_UPD_MODE|" "$tmp"
+    commit_file "$tmp" "$ROOT$CONF"
+    say "  CODEX_UPDATE=$CODEX_UPD_MODE"
+fi
+# TOOL_CLAUDE / TOOL_CODEX (which tools this installation has; read by rootbridge-update and later installs) were
+# added above if missing; a changed choice (--claude no, --codex yes, ...) replaces the stored value
+for kv in "TOOL_CLAUDE=$([ "$CLAUDE_ON" = yes ] && echo on || echo off)" "TOOL_CODEX=$([ "$CODEX_ON" = yes ] && echo on || echo off)"; do
+    key="${kv%%=*}"
+    if [ "$(sed -n "s/^$key=//p" "$ROOT$CONF" | tail -n 1)" != "${kv#*=}" ]; then
+        tmp="$ROOT$CONF.new.$$"
+        cp "$ROOT$CONF" "$tmp"
+        sed -i "s|^$key=.*|$kv|" "$tmp"
+        commit_file "$tmp" "$ROOT$CONF"
+        say "  $kv"
+    fi
+done
 # Remote Control name -> CLAUDE_ARGS (other arguments stay; a new line also gets --continue,
 # because the name belongs to the session and --continue keeps that session).
 # --remote-control NAME turns Remote Control on and titles a new bridge session. The bridge session is reused
 # across restarts and /clear and keeps its title (also one set with /rename). Deliberately no --name: it would
 # also show the name in the frame of the input field.
-if [ -n "$REMOTE_NAME" ]; then
+if [ -n "$REMOTE_NAME" ] && [ "$CLAUDE_ON" = yes ]; then
     python3 -I - "$ROOT$CONF" "$ROOT$CONF.new.$$" "$REMOTE_NAME" <<'PY'
 import sys
 path, out, name = sys.argv[1:4]
@@ -435,15 +536,24 @@ say "  Arbeitsordner: $wd"
 # bridge directory must exist as a real node inside the guest (proot bind quirk)
 mkdir -p "$ROOT$BRIDGE_DIR" 2>/dev/null || say "  Hinweis: $BRIDGE_DIR nicht anlegbar (Termux-Home nicht gebunden?)"
 
-# managed settings (hooks + ask rules)
-mkdir -p "$ROOT$MANAGED_DIR"
-merge_managed "$SRC/claude/managed-settings.template.json" "$ROOT$MANAGED" \
-    "$ROOT$MANAGED.new.$$" "$PYTHON" "$LIBDIR"
-commit_file "$ROOT$MANAGED.new.$$" "$ROOT$MANAGED"
-say "  Managed Settings: $MANAGED"
+# managed settings (hooks + ask rules). Only with Claude Code; the Codex pre-commit review hook only with both.
+if [ "$CLAUDE_ON" = yes ]; then
+    templates=("$SRC/claude/managed-settings.template.json")
+    [ "$CODEX_ON" = yes ] && templates+=("$SRC/claude/managed-settings.codex.template.json")
+    mkdir -p "$ROOT$MANAGED_DIR"
+    merge_managed "$ROOT$MANAGED" "$ROOT$MANAGED.new.$$" "$PYTHON" "$LIBDIR" "${templates[@]}"
+    commit_file "$ROOT$MANAGED.new.$$" "$ROOT$MANAGED"
+    say "  Managed Settings: $MANAGED"
+    [ "$CODEX_ON" = yes ] && say "  Codex-Review vor dem Commit: Hook in den Managed Settings (Notausgang: rootbridge codex-off)"
+else
+    unmerge_managed
+    say "  Managed Settings: ohne Claude Code nichts zu tun (Einträge dieser Installation entfernt)"
+fi
 
-# autonomous mode: skip the one-time warning dialog of bypass mode
-if [ "$AUTONOMOUS" = ask ]; then
+# autonomous mode: skip the one-time warning dialog of bypass mode (Claude Code only)
+if [ "$CLAUDE_ON" = no ]; then
+    AUTONOMOUS=no
+elif [ "$AUTONOMOUS" = ask ]; then
     if [ -t 0 ]; then
         printf 'Bypass-Modus ohne Warndialog freischalten (skipDangerousModePermissionPrompt)? [J/n] '
         read -r ans || ans=n
@@ -460,12 +570,12 @@ fi
 
 # Remote Control on at every session start (user scope; a value you set yourself stays). The
 # `--remote-control NAME` flag in CLAUDE_ARGS does the same for sessions started by rootbridge-claude.
-if [ -n "$REMOTE_NAME" ]; then
+if [ -n "$REMOTE_NAME" ] && [ "$CLAUDE_ON" = yes ]; then
     settings_queue remoteControlAtStartup true missing
 fi
 
 # model: "opusplan" (Opus plans, Sonnet works) unless you already have one; --model always writes
-if [ "$MODEL" != none ]; then
+if [ "$MODEL" != none ] && [ "$CLAUDE_ON" = yes ]; then
     if [ "$MODEL_SET" = 1 ]; then
         settings_queue model "\"$MODEL\""
     else
@@ -474,7 +584,7 @@ if [ "$MODEL" != none ]; then
 fi
 
 # Claude Code theme (only when asked for: install.sh passes --theme unless --no-colors)
-if [ "$THEME_SET" = 1 ]; then
+if [ "$THEME_SET" = 1 ] && [ "$CLAUDE_ON" = yes ]; then
     settings_queue theme "\"$THEME\""
     # "Auto epaper": created once with the ANSI base (the 16 colours of the Termux scheme). A file exactly as an
     # earlier version created it (daltonized base) moves to the ANSI base, light or dark stays; any other file
@@ -507,8 +617,11 @@ sed -i '/# rootbridge_bin$/d' "$B.new.$$"
 cat >> "$B.new.$$" <<EOF
 
 $BEGIN
-# The official Claude Code installer puts claude into ~/.local/bin.
+# The official installers of Claude Code and Codex put claude and codex into ~/.local/bin.
 case ":\$PATH:" in *":\$HOME/.local/bin:"*) ;; *) export PATH="\$HOME/.local/bin:\$PATH" ;; esac
+EOF
+if [ "$CLAUDE_ON" = yes ]; then
+cat >> "$B.new.$$" <<EOF
 # Browser hand-off for logins (/login, /mcp) and bypass mode selectable with Shift+Tab.
 # A Remote Control name set in CLAUDE_ARGS ($CONF) is applied here too (the name only, no other flags).
 claude() {
@@ -537,9 +650,18 @@ claude() {
         esac
     )
 }
+EOF
+fi
+if [ "$CODEX_ON" = yes ]; then
+cat >> "$B.new.$$" <<EOF
+# Browser hand-off for \`codex login\`: the link opens in Android's browser (like for Claude Code).
+codex() { BROWSER=$BINDIR/rootbridge-open command codex "\$@"; }
+EOF
+fi
+cat >> "$B.new.$$" <<EOF
 $END
 EOF
 commit_file "$B.new.$$" "$B"
-say "  ~/.bashrc: claude()-Block"
+say "  ~/.bashrc: Block (PATH$([ "$CLAUDE_ON" = yes ] && echo ', claude()')$([ "$CODEX_ON" = yes ] && echo ', codex()'))"
 
 say "Fertig. Gast-Teil installiert."

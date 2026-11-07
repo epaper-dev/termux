@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # rootbridge - control program of termux-rootbridge (runs in Termux).
 #
-#   rootbridge start [--no-attach]   daemon + Claude Code session (Termux:Boot: --no-attach)
-#   rootbridge attach                attach to the session (create if missing)
-#   rootbridge shell                 plain guest shell here (does not start Claude Code)
+#   rootbridge start [--no-attach] [claude|codex]   daemon + session of that tool (Termux:Boot: --no-attach;
+#                                    default: Claude Code, Codex if installed without Claude Code)
+#   rootbridge attach [claude|codex] attach to the session, in the window of that tool (create if missing)
+#   rootbridge shell                 plain guest shell here (does not start Claude Code or Codex)
 #   rootbridge stop                  stop session and daemon
 #   rootbridge status                daemon, session, guest install, audit log
 #   rootbridge login <server>        `claude mcp login <server>` with browser hand-off
+#   rootbridge codex-login [args]    `codex login` with browser hand-off (--device-auth for no browser)
+#   rootbridge codex-off | codex-on  emergency switch for the Codex pre-commit review (Claude Code restart)
 #   rootbridge guard-off | guard-on  emergency switch for the Claude Code hooks
 #   rootbridge theme light|dark      Claude Code theme "Auto epaper" follows (tmux hook)
 #   rootbridge daemon-start | daemon-stop
@@ -77,16 +80,49 @@ guest_login() {   # guest_login <command...>
 
 session_exists() { tmux has-session -t "$SESSION" 2>/dev/null; }
 
+# The tool a bare `attach` / `start` opens: Claude Code, or Codex on an installation without Claude Code.
+default_tool() { if [ "$TOOL_CLAUDE" = on ]; then echo claude; else echo codex; fi; }
+
+# pick_tool [claude|codex]: the tool to open (the default one without an argument); it has to be installed
+pick_tool() {
+    local t="${1:-}"
+    [ -n "$t" ] || t="$(default_tool)"
+    case "$t" in
+        claude) [ "$TOOL_CLAUDE" = on ] || die "Claude Code ist in dieser Installation abgeschaltet (install.sh --no-claude)" ;;
+        codex)  [ "$TOOL_CODEX" = on ]  || die "Codex ist in dieser Installation abgeschaltet (install.sh --no-codex)" ;;
+        *) die "unbekanntes Programm: $t (claude oder codex)" ;;
+    esac
+    printf '%s' "$t"
+}
+
+tool_cmd() { printf 'proot-distro login %s -- %s/rootbridge-%s' "$DISTRO" "$GUEST_BIN" "$1"; }
+
+# session_create [tool]: a new session whose first window runs the tool (does nothing if it exists)
 session_create() {
+    local tool="${1:-}"
+    [ -n "$tool" ] || tool="$(default_tool)"
     command -v tmux >/dev/null 2>&1 || die "tmux fehlt (pkg install tmux)"
     session_exists && return 0
-    tmux new-session -d -s "$SESSION" -n claude \
-        "proot-distro login $DISTRO -- $GUEST_BIN/rootbridge-claude"
+    tmux new-session -d -s "$SESSION" -n "$tool" "$(tool_cmd "$tool")"
+}
+
+# window_ensure <tool>: the window of that tool in the running session (a tool that ended cleanly has
+# closed its window; the other tool's window keeps the session alive)
+window_ensure() {
+    tmux list-windows -t "$SESSION" -F '#W' 2>/dev/null | grep -qx "$1" \
+        || tmux new-window -d -t "$SESSION:" -n "$1" "$(tool_cmd "$1")"
 }
 
 cmd_attach() {
+    local tool
+    tool="$(pick_tool "${1:-}")" || exit 1
     daemon_start
-    session_create
+    if session_exists; then
+        window_ensure "$tool"
+        tmux select-window -t "$SESSION:$tool" 2>/dev/null || true
+    else
+        session_create "$tool"
+    fi
     if [ -n "${TMUX:-}" ]; then
         tmux switch-client -t "$SESSION"
     else
@@ -95,18 +131,25 @@ cmd_attach() {
 }
 
 cmd_start() {
-    local attach=1
-    [ "${1:-}" = "--no-attach" ] && attach=0
+    local attach=1 tool="" a
+    for a in "$@"; do
+        case "$a" in
+            --no-attach) attach=0 ;;
+            *) tool="$a" ;;
+        esac
+    done
+    tool="$(pick_tool "$tool")" || exit 1
     daemon_start
-    [ "$attach" = 1 ] && [ -t 0 ] && [ -t 1 ] || { session_create; return 0; }
+    [ "$attach" = 1 ] && [ -t 0 ] && [ -t 1 ] || { session_create "$tool"; return 0; }
     if ! session_exists; then
-        printf 'Claude Code startet in %ss - beliebige Taste für die Termux-Shell ' "$AUTOSTART_DELAY"
+        local label="Claude Code"; [ "$tool" = codex ] && label="Codex"
+        printf '%s startet in %ss - beliebige Taste für die Termux-Shell ' "$label" "$AUTOSTART_DELAY"
         if read -r -s -n 1 -t "$AUTOSTART_DELAY" _; then
             echo; return 0
         fi
         echo
     fi
-    cmd_attach
+    cmd_attach "$tool"
 }
 
 # A plain guest shell in THIS terminal: no tmux, and no Claude Code session in the background
@@ -124,6 +167,33 @@ cmd_stop() {
     echo "Session und Daemon gestoppt."
 }
 
+# guest_has <path as seen from Termux>: a file of the guest. The tools in ~/.local/bin are links with an
+# absolute target INSIDE the guest, which does not resolve out here: the link itself counts.
+guest_has() { [ -x "$1" ] || [ -L "$1" ]; }
+
+# status_codex <guest root>: what the Codex part of the guest looks like, read from the files (nothing is started)
+status_codex() {
+    local root="$1" conf="$1/etc/termux-rootbridge.conf"
+    guest_has "$root/root/.local/bin/codex" && echo "  Codex:               ok" || echo "  Codex:               FEHLT"
+    [ -s "$root/root/.codex/auth.json" ] && echo "  Codex-Login:         ok" \
+        || echo "  Codex-Login:         FEHLT (rootbridge codex-login)"
+    if [ "$TOOL_CLAUDE" = on ]; then
+        [ -n "$(ls -d "$root"/root/.claude/plugins/cache/openai-codex/codex/*/ 2>/dev/null)" ] \
+            && echo "  Codex-Plugin:        ok" || echo "  Codex-Plugin:        FEHLT"
+        if grep -qs 'codex-precommit-review' "$root/etc/claude-code/managed-settings.json"; then
+            if grep -qsx 'CODEX_PRECOMMIT=off' "$conf"; then
+                echo "  Pre-Commit-Review:   AUSGESCHALTET (codex-off)"
+            else
+                echo "  Pre-Commit-Review:   aktiv (Commits werden ohne Codex-Login blockiert)"
+            fi
+        elif [ -f "$root/etc/claude-code/managed-settings.json.off" ]; then
+            echo "  Pre-Commit-Review:   AUSGESCHALTET (guard-off)"
+        else
+            echo "  Pre-Commit-Review:   FEHLT"
+        fi
+    fi
+}
+
 cmd_status() {
     local pid root
     echo "rootbridge $VERSION"
@@ -136,8 +206,18 @@ cmd_status() {
     if root="$(guest_root)"; then
         echo "Gast ($DISTRO):"
         [ -x "$root$GUEST_BIN/androidsu" ] && echo "  androidsu:           ok" || echo "  androidsu:           FEHLT"
-        [ -f "$root/etc/claude-code/managed-settings.json" ] && echo "  Managed Settings:    aktiv" \
-            || { [ -f "$root/etc/claude-code/managed-settings.json.off" ] && echo "  Managed Settings:    AUSGESCHALTET (guard-off)" || echo "  Managed Settings:    FEHLT"; }
+        if [ "$TOOL_CLAUDE" = on ]; then
+            guest_has "$root/root/.local/bin/claude" && echo "  Claude Code:         ok" || echo "  Claude Code:         FEHLT"
+            [ -f "$root/etc/claude-code/managed-settings.json" ] && echo "  Managed Settings:    aktiv" \
+                || { [ -f "$root/etc/claude-code/managed-settings.json.off" ] && echo "  Managed Settings:    AUSGESCHALTET (guard-off)" || echo "  Managed Settings:    FEHLT"; }
+        else
+            echo "  Claude Code:         nicht Teil der Installation (--no-claude)"
+        fi
+        if [ "$TOOL_CODEX" = on ]; then
+            status_codex "$root"
+        else
+            echo "  Codex:               nicht Teil der Installation (--no-codex)"
+        fi
     else
         echo "Gast ($DISTRO):    nicht gefunden"
     fi
@@ -152,6 +232,39 @@ cmd_login() {
     [[ "$server" =~ ^[A-Za-z0-9._:-]+$ ]] || die "Aufruf: rootbridge login <mcp-server>"
     daemon_start
     guest_login bash -lc 'export PATH="$HOME/.local/bin:$PATH" BROWSER=/usr/local/bin/rootbridge-open; claude mcp login "$1"' _ "$server"
+}
+
+# codex-login [args]: `codex login` with the browser hand-off (the link opens in Android's browser; the
+# redirect to localhost reaches the guest because proot shares the phone's network). On a device without
+# a usable browser: rootbridge codex-login --device-auth
+cmd_codex_login() {
+    [ "$TOOL_CODEX" = on ] || die "Codex ist in dieser Installation abgeschaltet (install.sh --no-codex)"
+    local a
+    for a in "$@"; do
+        [[ "$a" =~ ^--?[A-Za-z0-9-]+$ ]] || die "Aufruf: rootbridge codex-login [--device-auth] [--with-api-key]"
+    done
+    daemon_start
+    guest_login bash -lc 'export PATH="$HOME/.local/bin:$PATH" BROWSER=/usr/local/bin/rootbridge-open; codex login "$@"' _ "$@"
+}
+
+# codex-off | codex-on: switch the Codex pre-commit review off / on again. Only you can do this: the
+# switch is the line CODEX_PRECOMMIT=off in the guest's /etc/termux-rootbridge.conf, which rootbridge-claude
+# hands to Claude Code (restart it for the change to apply).
+cmd_codex_precommit() {   # off | on
+    local root f tmp
+    root="$(guest_root)" || die "Gast $DISTRO nicht gefunden"
+    f="$root/etc/termux-rootbridge.conf"
+    [ -f "$f" ] || die "Konfiguration des Gasts nicht gefunden: $f"
+    tmp="$f.new.$$"
+    grep -v '^CODEX_PRECOMMIT=' "$f" > "$tmp" || true
+    [ "$1" = off ] && echo 'CODEX_PRECOMMIT=off' >> "$tmp"
+    cat "$tmp" > "$f"; rm -f "$tmp"
+    if [ "$1" = off ]; then
+        echo "Codex-Review vor dem Commit AUS. Claude Code neu starten. Wieder an: rootbridge codex-on"
+    else
+        echo "Codex-Review vor dem Commit wieder AN. Claude Code neu starten."
+    fi
+    rb_audit "CODEX-PRECOMMIT-$1" 0 "$f"
 }
 
 cmd_guard() {   # guard-off | guard-on
@@ -203,17 +316,20 @@ cmd_theme() {
 
 case "${1:-}" in
     start)        shift; cmd_start "$@" ;;
-    attach)       cmd_attach ;;
+    attach)       shift; cmd_attach "$@" ;;
     shell)        cmd_shell ;;
     stop)         cmd_stop ;;
     status)       cmd_status ;;
     login)        shift; cmd_login "$@" ;;
+    codex-login)  shift; cmd_codex_login "$@" ;;
+    codex-off)    cmd_codex_precommit off ;;
+    codex-on)     cmd_codex_precommit on ;;
     guard-off)    cmd_guard off ;;
     guard-on)     cmd_guard on ;;
     theme)        shift; cmd_theme "$@" ;;
     daemon-start) daemon_start; echo "Daemon läuft." ;;
     daemon-stop)  daemon_stop; echo "Daemon gestoppt." ;;
     version|--version) echo "rootbridge $VERSION" ;;
-    ""|help|-h|--help) sed -n '2,14p' "$self" | sed 's/^# \{0,1\}//' ;;
+    ""|help|-h|--help) sed -n '2,16p' "$self" | sed 's/^# \{0,1\}//' ;;
     *) die "unbekannter Befehl: $1 (rootbridge help)" ;;
 esac
