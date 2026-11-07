@@ -63,8 +63,8 @@ En una shell de **Termux** (no dentro de proot):
 
 ```bash
 pkg install -y git
-git clone https://github.com/hisense-a9/termux-root-bridge
-cd termux-root-bridge
+git clone --depth 1 https://github.com/epaper-dev/termux
+cd termux/rootbridge
 bash install.sh
 ```
 

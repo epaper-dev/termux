@@ -2,7 +2,8 @@
 
 The Termux app and its plugin apps for the E-Paper phone, in one repository. Each project lives in its own directory
 (a git subtree with its full history): `termux-app/`, `termux-api/`, `termux-boot/`, `termux-widget/`,
-`termux-styling/`, `termux-float/`, `termux-tasker/`.
+`termux-styling/`, `termux-float/`, `termux-tasker/`. The installer for the phone (Claude Code with confirmed root actions,
+widgets, logins) is `rootbridge/`, moved here from `hisense-a9/termux-root-bridge`; it is not part of upstream and lives on `main` only.
 
 ## Branches
 
@@ -16,6 +17,7 @@ The Termux app and its plugin apps for the E-Paper phone, in one repository. Eac
 | Workflow | What it does |
 |----------|--------------|
 | `Sync upstream` | Every 6 hours: takes new upstream commits into `master`, merges `master` into `main`, then starts `Release set` (release key, publish). Without new upstream commits nothing happens. A merge conflict opens an issue with the steps to fix it; `master` stays up to date, `main` unchanged. Set the repository variable `RELEASE_AFTER_SYNC` to `false` to skip the release. |
+| `Rootbridge tests` | Runs the tests and ShellCheck of `rootbridge/` when it changes. |
 | `Release set` | Builds the app and the six plugins, signs them all with **one** key and checks that they belong together (same certificate, `sharedUserId` `com.termux`). With `publish` and the release key the APKs appear as single files under **Releases**. `ephemeral-key` (throwaway key) tests the pipeline and publishes nothing. |
 
 Scripts: `.github/scripts/sync_upstream.sh`, `build_release_set.sh`, `make_signing_key.sh`.
