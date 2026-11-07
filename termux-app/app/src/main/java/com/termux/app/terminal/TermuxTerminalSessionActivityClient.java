@@ -509,7 +509,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             File fontFile = TermuxConstants.TERMUX_FONT_FILE;
 
             // colors-light.properties or colors-dark.properties instead of colors.properties if the file for the theme
-            // exists, and the built-in light scheme in the light theme if there is no file at all
+            // exists, and the built-in light or dark scheme if there is no file at all
             final Properties props = TermuxThemeUtils.getTerminalColors(mActivity,
                 ThemeUtils.shouldEnableDarkTheme(mActivity, NightMode.getAppNightMode().getName()));
 
