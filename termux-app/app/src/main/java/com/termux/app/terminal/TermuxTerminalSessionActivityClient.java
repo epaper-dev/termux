@@ -504,6 +504,23 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     }
 
 
+    /** Path of the built-in terminal font in the assets (SIL Open Font License, see fonts/JetBrainsMono-OFL.txt). */
+    private static final String BUILT_IN_FONT_ASSET = "fonts/JetBrainsMonoNL-Bold.ttf";
+    private static Typeface sBuiltInTypeface;
+
+    /** The built-in terminal font, loaded once; {@link Typeface#MONOSPACE} if it cannot be loaded. */
+    private synchronized Typeface getBuiltInTypeface() {
+        if (sBuiltInTypeface == null) {
+            try {
+                sBuiltInTypeface = Typeface.createFromAsset(mActivity.getAssets(), BUILT_IN_FONT_ASSET);
+            } catch (RuntimeException e) {
+                Logger.logStackTraceWithMessage(LOG_TAG, "Failed to load the built-in font " + BUILT_IN_FONT_ASSET, e);
+                return Typeface.MONOSPACE;
+            }
+        }
+        return sBuiltInTypeface;
+    }
+
     public void checkForFontAndColors() {
         try {
             File fontFile = TermuxConstants.TERMUX_FONT_FILE;
@@ -528,7 +545,8 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             resetColorsOfSessionsIfOutdated();
             updateBackgroundColor();
 
-            final Typeface newTypeface = (fontFile.exists() && fontFile.length() > 0) ? Typeface.createFromFile(fontFile) : Typeface.MONOSPACE;
+            // ~/.termux/font.ttf if it exists, otherwise the built-in font (JetBrains Mono NL Bold, readable on E-Ink)
+            final Typeface newTypeface = (fontFile.exists() && fontFile.length() > 0) ? Typeface.createFromFile(fontFile) : getBuiltInTypeface();
             mActivity.getTerminalView().setTypeface(newTypeface);
         } catch (Exception e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Error in checkForFontAndColors()", e);
