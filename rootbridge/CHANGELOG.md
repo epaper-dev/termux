@@ -19,6 +19,11 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   The Claude Code theme is now `auto` (it asks the terminal for its background colour) instead of `light-ansi`;
   `install-guest.sh --theme` accepts `auto`. Other Termux builds have no built-in light scheme.
   `tests/test_colors_theme.sh` now has 109 checks.
+* **Auto epaper** now uses the ANSI base (`light-ansi` / `dark-ansi`), i.e. the 16 colours of the Termux scheme: the
+  E-Paper Termux build keeps them clear of the threshold of Android's "High contrast text" (on by default on many
+  E-Ink phones), which drew the grey of the RGB themes as hollow letters. A theme file exactly as the previous version
+  created it (`light-daltonized` / `dark-daltonized`) moves to the ANSI base, light or dark stays; a changed file stays.
+  `tests/test_colors_theme.sh` has 118 checks.
 * Claude Code theme **Auto epaper** (`custom:epaper`, new default instead of `auto`): `install-guest.sh --theme
   custom:epaper` creates `~/.claude/themes/epaper.json` with base `light-daltonized` (colour-blind friendly, easier to read
   on E-Ink) if it is missing. Claude Code's `auto` only picks `light`/`dark`, so the tmux hooks `client-light-theme` /

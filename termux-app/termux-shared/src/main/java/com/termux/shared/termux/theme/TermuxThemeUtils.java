@@ -52,9 +52,8 @@ public class TermuxThemeUtils {
     /**
      * Load the terminal colors for the theme in use, from the file returned by {@link #getTerminalColorsFile(boolean)}.
      *
-     * If that file does not exist, the light theme uses the built-in light scheme
-     * ({@code res/raw/colors_light_default.properties}) and the dark theme the default colors of the terminal, which are
-     * dark, so the returned properties are empty then.
+     * If that file does not exist, the built-in scheme of the theme is used: {@code res/raw/colors_light_default.properties}
+     * or {@code res/raw/colors_dark_default.properties} (light colors only, readable on E-Ink).
      *
      * @param context The {@link Context} to read the built-in scheme with.
      * @param darkTheme If the dark theme is in use.
@@ -69,8 +68,9 @@ public class TermuxThemeUtils {
             try (InputStream in = new FileInputStream(colorsFile)) {
                 props.load(in);
             }
-        } else if (!darkTheme) {
-            try (InputStream in = context.getResources().openRawResource(R.raw.colors_light_default)) {
+        } else {
+            try (InputStream in = context.getResources().openRawResource(
+                darkTheme ? R.raw.colors_dark_default : R.raw.colors_light_default)) {
                 props.load(in);
             }
         }

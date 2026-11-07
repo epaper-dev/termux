@@ -171,10 +171,11 @@ public class TermuxFloatSessionClient extends TermuxTerminalSessionClientBase {
                 try (InputStream in = new FileInputStream(colorsFile)) {
                     props.load(in);
                 }
-            } else if (!darkTheme) {
-                // Without a colors file the light theme uses the built-in light scheme, a copy of the one in
-                // termux-shared (res/raw/colors_light_default.properties, newer versions: TermuxThemeUtils.getTerminalColors()).
-                try (InputStream in = mService.getResources().openRawResource(R.raw.colors_light_default)) {
+            } else {
+                // Without a colors file the built-in light or dark scheme is used, copies of the ones in termux-shared
+                // (res/raw/colors_{light,dark}_default.properties, newer versions: TermuxThemeUtils.getTerminalColors()).
+                try (InputStream in = mService.getResources().openRawResource(
+                    darkTheme ? R.raw.colors_dark_default : R.raw.colors_light_default)) {
                     props.load(in);
                 }
             }
