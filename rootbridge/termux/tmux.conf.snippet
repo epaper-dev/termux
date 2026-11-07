@@ -3,3 +3,7 @@
 set -g mouse on
 set -g set-clipboard on
 set -gq allow-passthrough on
+# termux-root-bridge: the Claude Code theme "Auto epaper" follows the light or dark
+# mode of the phone (Termux reports it with DECSET 2031, tmux 3.6 or newer).
+set-hook -g client-light-theme 'run-shell -b "rootbridge theme light"'
+set-hook -g client-dark-theme 'run-shell -b "rootbridge theme dark"'

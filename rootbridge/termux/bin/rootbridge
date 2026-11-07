@@ -8,6 +8,7 @@
 #   rootbridge status                daemon, session, guest install, audit log
 #   rootbridge login <server>        `claude mcp login <server>` with browser hand-off
 #   rootbridge guard-off | guard-on  emergency switch for the Claude Code hooks
+#   rootbridge theme light|dark      Claude Code theme "Auto epaper" follows (tmux hook)
 #   rootbridge daemon-start | daemon-stop
 #   rootbridge version
 
@@ -169,6 +170,37 @@ cmd_guard() {   # guard-off | guard-on
     rb_audit "GUARD-$1" 0 "$f"
 }
 
+# Claude Code theme "Auto epaper" (custom:epaper, ~/.claude/themes/epaper.json in the guest).
+# Claude Code's own "auto" only picks "light" or "dark", so the tmux hooks client-light-theme /
+# client-dark-theme call this when Termux reports a change between light and dark (DECSET 2031).
+# Only the light/dark part of "base" changes, the variant stays: light-daltonized <-> dark-daltonized,
+# light-ansi <-> dark-ansi, light <-> dark. Claude Code reads the theme at its start, so a running
+# session shows it after a restart; THEME_RESTART=on restarts it right away (claude --continue).
+# THEME_FOLLOW=off switches this off. Prints nothing and changes nothing without the file.
+cmd_theme() {
+    local want="${1:-}" root f cur variant new tmp
+    case "$want" in light|dark) ;; *) die "rootbridge theme light|dark" ;; esac
+    [ "$THEME_FOLLOW" = on ] || return 0
+    root="$(guest_root)" || return 0
+    f="$root/root/.claude/themes/epaper.json"
+    [ -f "$f" ] || return 0
+    cur="$(grep -o '"base"[[:space:]]*:[[:space:]]*"[a-z-]*"' "$f" | head -n 1 | sed 's/.*"\([a-z-]*\)"$/\1/')"
+    case "$cur" in
+        light|dark|light-daltonized|dark-daltonized|light-ansi|dark-ansi) ;;
+        *) return 0 ;;
+    esac
+    variant="${cur#light}"; variant="${variant#dark}"   # "", -daltonized or -ansi
+    new="$want$variant"
+    [ "$new" != "$cur" ] || return 0
+    tmp="$f.tmp.$$"
+    sed 's/\("base"[[:space:]]*:[[:space:]]*"\)'"$cur"'"/\1'"$new"'"/' "$f" > "$tmp" && mv -f "$tmp" "$f" \
+        || { rm -f "$tmp"; return 1; }
+    if [ "$THEME_RESTART" = on ] && session_exists; then
+        tmux respawn-pane -k -t "$SESSION:claude" \
+            "proot-distro login $DISTRO -- $GUEST_BIN/rootbridge-claude --continue" 2>/dev/null || true
+    fi
+}
+
 case "${1:-}" in
     start)        shift; cmd_start "$@" ;;
     attach)       cmd_attach ;;
@@ -178,9 +210,10 @@ case "${1:-}" in
     login)        shift; cmd_login "$@" ;;
     guard-off)    cmd_guard off ;;
     guard-on)     cmd_guard on ;;
+    theme)        shift; cmd_theme "$@" ;;
     daemon-start) daemon_start; echo "Daemon läuft." ;;
     daemon-stop)  daemon_stop; echo "Daemon gestoppt." ;;
     version|--version) echo "rootbridge $VERSION" ;;
-    ""|help|-h|--help) sed -n '2,13p' "$self" | sed 's/^# \{0,1\}//' ;;
+    ""|help|-h|--help) sed -n '2,14p' "$self" | sed 's/^# \{0,1\}//' ;;
     *) die "unbekannter Befehl: $1 (rootbridge help)" ;;
 esac

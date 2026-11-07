@@ -152,9 +152,15 @@ claro en modo claro y oscuro en modo oscuro sin ningún archivo; `~/.termux/colo
 y `colors.properties` solo lo sobrescriben. Los archivos de colores que instalaron versiones anteriores (`colors.properties`
 con la paleta clara, `colors-light.properties`) se eliminan si siguen exactamente como se instalaron, porque taparían el
 esquema integrado; un archivo que hayas cambiado se conserva. `--no-colors` no toca los archivos de colores ni el tema de
-Claude Code. El instalador fija `"theme": "auto"` en el `~/.claude/settings.json` del invitado (las demás claves se
-mantienen): Claude Code pregunta al terminal por su color de fondo y elige su tema claro u oscuro, así que también sigue al
-teléfono; cámbialo cuando quieras con `/theme`. Cada nueva shell interactiva de Termux ejecuta `termux-reload-settings`, y
+Claude Code. El instalador configura `"theme": "custom:epaper"` en el archivo `~/.claude/settings.json` del invitado (las
+demás claves se mantienen) y crea el tema **Auto epaper** (`~/.claude/themes/epaper.json`, basado en `light-daltonized`;
+tu propio archivo se mantiene). La opción `auto` de Claude Code solo elige entre `light` o `dark`, así que Termux notifica
+un cambio entre claro y oscuro (DECSET 2031) a tmux, cuyos hooks `client-light-theme` / `client-dark-theme` ejecutan
+`rootbridge theme light|dark`: esto cambia el tema base entre `light-daltonized` y `dark-daltonized` (o
+`light-ansi`/`dark-ansi`, `light`/`dark` si lo has configurado así). Claude Code lee el tema al iniciarse, así que una
+sesión en marcha muestra el cambio tras reiniciar; `THEME_RESTART=on` en `~/.config/termux-root-bridge/config` lo
+reinicia al instante con `--continue` (se interrumpe cualquier respuesta en curso), mientras que `THEME_FOLLOW=off`
+desactiva los hooks. Puedes elegir otro tema en cualquier momento con `/theme`. Cada nueva shell interactiva de Termux ejecuta `termux-reload-settings`, y
 también los accesos directos de Termux:Widget antes de conectarse. Otras compilaciones de Termux no traen un esquema claro;
 allí copia un esquema a `~/.termux/colors.properties`.
 

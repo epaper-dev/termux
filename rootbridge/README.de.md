@@ -154,9 +154,15 @@ Dunkelmodus dunkel, ganz ohne Datei; `~/.termux/colors-light.properties`, `color
 überschreiben das nur. Farbdateien, die frühere Versionen installiert haben (`colors.properties` mit der hellen Palette,
 `colors-light.properties`), werden entfernt, solange sie noch genau so sind wie installiert, weil sie das eingebaute Schema
 überdecken würden; eine Datei, die du geändert hast, bleibt. `--no-colors` lässt Farbdateien und das Claude-Code-Theme in
-Ruhe. Außerdem setzt der Installer `"theme": "auto"` in der `~/.claude/settings.json` des Gasts (andere Schlüssel
-bleiben): Claude Code fragt das Terminal nach seiner Hintergrundfarbe und wählt sein helles oder dunkles Theme, folgt also
-ebenfalls dem Telefon; jederzeit mit `/theme` umstellbar. Jede neue interaktive Termux-Shell führt
+Ruhe. Außerdem setzt der Installer `"theme": "custom:epaper"` in der `~/.claude/settings.json` des Gasts (andere
+Schlüssel bleiben) und legt das Theme **Auto epaper** an (`~/.claude/themes/epaper.json`, Basis `light-daltonized`; eine
+eigene Datei bleibt). Claude Codes eigenes `auto` wählt nur `light` oder `dark`, deshalb meldet Termux einen Wechsel
+zwischen hell und dunkel (DECSET 2031) an tmux, dessen Hooks `client-light-theme` / `client-dark-theme` dann
+`rootbridge theme light|dark` aufrufen: Es stellt die Basis zwischen `light-daltonized` und `dark-daltonized` um (bzw.
+`light-ansi`/`dark-ansi`, `light`/`dark`, wenn du das einträgst). Claude Code liest das Theme beim Start, eine laufende
+Sitzung zeigt den Wechsel also nach einem Neustart; `THEME_RESTART=on` in `~/.config/termux-root-bridge/config` startet
+sie sofort mit `--continue` neu (eine laufende Antwort bricht ab), `THEME_FOLLOW=off` schaltet die Hooks ab. Ein anderes
+Theme jederzeit mit `/theme`. Jede neue interaktive Termux-Shell führt
 `termux-reload-settings` aus, ebenso die Termux:Widget-Verknüpfungen vor dem Anhängen. Andere Termux-Builds haben kein
 eingebautes helles Schema; dort ein Schema nach `~/.termux/colors.properties` kopieren.
 
