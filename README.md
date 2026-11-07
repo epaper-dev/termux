@@ -51,7 +51,7 @@ actions confirmed inside Claude Code, logins that work, widgets) and gives it a 
 | | Change |
 |---|---|
 | 🌗 **Follows the phone** | The terminal itself (not only the menus) follows the light/dark mode of the phone, without any file: built-in white scheme in the light theme, built-in black one in the dark theme, white window background in the light theme. All sessions switch at once. |
-| 🔲 **Readable with *High contrast text*** | Android draws text black or white by R+G+B < 384 and gives it an outline in the other colour, so colours near the middle become hollow letters. The built-in schemes keep every text colour clearly on one side (checked by `BuiltInColorSchemesTest`). |
+| 🔲 **Readable with *High contrast text*** | Android draws text black or white by R+G+B < 384 and gives it an outline in the other colour, so colours near the middle become hollow letters. The built-in schemes keep every text colour clearly on one side (checked by `BuiltInColorSchemesTest`), and while *High contrast text* is on, the renderer does the same for the colours programs choose themselves (truecolor, 256 colours): on the default background they are pulled to the right side (`TextContrast`). With the setting off they are drawn as chosen. |
 | 🔤 **Built-in font** | [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) NL Bold instead of the thin system monospace font. |
 | 📣 **DECSET 2031** | Programs learn about light/dark changes (`CSI ? 997 ; 1\|2 n`, query `CSI ? 996 n`). tmux 3.6+ and Claude Code follow live. |
 | 🪟 **Termux:Float** | Same colour schemes, font and light/dark switching. |
@@ -152,6 +152,15 @@ In the light theme the terminal uses `termux-shared/src/main/res/raw/colors_ligh
 in the dark theme `colors_dark_default.properties` (white on black). Every text colour stays clearly dark (light scheme:
 R+G+B below 384) or clearly light (dark scheme: 576 or more, so dimmed text also stays above 384). The one exception
 is the grey that Claude Code's ANSI themes use behind your messages (light: `color7` #E4E4E4, dark: `color8` #404040).
+
+Programs also pick colours of their own, which no scheme can cover: Claude Code draws its "thinking" status in a
+hard-coded truecolor grey of 153 to 185, which is hollow letters on white. So, while Android's *High contrast text* is on (the view reads `high_text_contrast_enabled`
+at start and whenever the window gets the focus back), the renderer (`TerminalRenderer`, `TextContrast` in
+`terminal-emulator`) pulls the text colour of truecolor and of the 256 colour palette (indices 16 to 255) to the right
+side of the threshold, but only for text on the default background: in the
+light theme R+G+B is scaled down to at most 380, in the dark theme mixed towards white to at least 388, hue kept as far
+as possible. The 16 scheme colours stay as the scheme (or your `colors.properties`) defines them, and text on a
+background of its own (selection, Claude Code's message backgrounds) is not touched.
 Phones without a system dark mode stay light. `night-mode` in `termux.properties` (`system` by default, or
 `true`/`false`) decides the mode; menus, settings and dialogs follow it as well.
 
