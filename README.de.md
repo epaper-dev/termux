@@ -155,7 +155,9 @@ Im hellen Modus nutzt das Terminal `termux-shared/src/main/res/raw/colors_light_
 im dunklen `colors_dark_default.properties` (weiß auf schwarz). Jede Textfarbe bleibt klar dunkel (helles Schema:
 R+G+B unter 384) oder klar hell (dunkles Schema: 576 oder mehr, damit auch abgedunkelter Text über 384 bleibt). Die
 einzige Ausnahme ist das Grau, das Claude Codes ANSI-Themes hinter deine Nachrichten legen (hell: `color7` #E4E4E4,
-dunkel: `color8` #404040). Telefone ohne System-Dunkelmodus bleiben hell. `night-mode` in `termux.properties`
+dunkel: `color8` #404040). Im hellen Modus nutzt Claude Code dasselbe `ansi:white` auch für den Schimmer von
+„thinking ...“, wo es hohl wäre; deshalb überschreibt das Rootbridge-Theme **Auto epaper** genau diese eine Farbe mit
+`ansi:black` (`rootbridge/README.de.md`). Telefone ohne System-Dunkelmodus bleiben hell. `night-mode` in `termux.properties`
 (standardmäßig `system`, sonst `true`/`false`) bestimmt den Modus; Menüs, Einstellungen und Dialoge folgen ebenfalls.
 
 Dateien in `~/.termux/` gehen vor: `colors-light.properties` und/oder `colors-dark.properties` gelten in ihrem Modus,

@@ -177,8 +177,25 @@ cmd_guard() {   # guard-off | guard-on
 # light-ansi <-> dark-ansi, light <-> dark. A running Claude Code session picks up the changed file
 # and switches live; THEME_RESTART=on (fallback) restarts it with claude --continue.
 # THEME_FOLLOW=off switches this off. Prints nothing and changes nothing without the file.
+#
+# light-ansi also carries the override inactiveShimmer = ansi:black: in the light theme Claude Code draws the
+# shimmer of "thinking ..." in ansi:white (color7, #E4E4E4), the grey it also needs as the background of your
+# messages, and Android's "High contrast text" turns light grey text on white into hollow letters.
+# A file exactly as this script / the guest installer writes it (epaper_theme, also the former form with
+# "overrides": {}) is rewritten whole, so the override follows the mode; any other file (your name, your overrides)
+# only gets its "base" changed.
+epaper_theme() {   # epaper_theme <base> [plain]: the file as the guest installer writes it (plain: without overrides)
+    printf '%s\n' '{' '  "name": "Auto epaper",' "  \"base\": \"$1\","
+    if [ "$1" = light-ansi ] && [ "${2:-}" != plain ]; then
+        printf '%s\n' '  "overrides": {' '    "inactiveShimmer": "ansi:black"' '  }'
+    else
+        printf '%s\n' '  "overrides": {}'
+    fi
+    printf '%s\n' '}'
+}
+
 cmd_theme() {
-    local want="${1:-}" root f cur variant new tmp
+    local want="${1:-}" root f cur variant new tmp content
     case "$want" in light|dark) ;; *) die "rootbridge theme light|dark" ;; esac
     [ "$THEME_FOLLOW" = on ] || return 0
     root="$(guest_root)" || return 0
@@ -193,7 +210,12 @@ cmd_theme() {
     new="$want$variant"
     [ "$new" != "$cur" ] || return 0
     tmp="$f.tmp.$$"
-    sed 's/\("base"[[:space:]]*:[[:space:]]*"\)'"$cur"'"/\1'"$new"'"/' "$f" > "$tmp" && mv -f "$tmp" "$f" \
+    content="$(cat "$f")"
+    if [ "$content" = "$(epaper_theme "$cur")" ] || [ "$content" = "$(epaper_theme "$cur" plain)" ]; then
+        epaper_theme "$new" > "$tmp"
+    else
+        sed 's/\("base"[[:space:]]*:[[:space:]]*"\)'"$cur"'"/\1'"$new"'"/' "$f" > "$tmp"
+    fi && mv -f "$tmp" "$f" \
         || { rm -f "$tmp"; return 1; }
     if [ "$THEME_RESTART" = on ] && session_exists; then
         tmux respawn-pane -k -t "$SESSION:claude" \

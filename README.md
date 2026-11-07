@@ -152,6 +152,8 @@ In the light theme the terminal uses `termux-shared/src/main/res/raw/colors_ligh
 in the dark theme `colors_dark_default.properties` (white on black). Every text colour stays clearly dark (light scheme:
 R+G+B below 384) or clearly light (dark scheme: 576 or more, so dimmed text also stays above 384). The one exception
 is the grey that Claude Code's ANSI themes use behind your messages (light: `color7` #E4E4E4, dark: `color8` #404040).
+In the light theme Claude Code uses that same `ansi:white` for the shimmer of "thinking ...", where it would be hollow, so
+rootbridge's theme **Auto epaper** overrides that one colour with `ansi:black` (`rootbridge/README.md`).
 Phones without a system dark mode stay light. `night-mode` in `termux.properties` (`system` by default, or
 `true`/`false`) decides the mode; menus, settings and dialogs follow it as well.
 

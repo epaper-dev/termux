@@ -100,6 +100,8 @@ done
 # custom:epaper creates ~/.claude/themes/epaper.json once; a file of yours stays
 EP="$T/v-custom:epaper$ROOTBRIDGE_GUEST_HOME/.claude/themes/epaper.json"
 check "custom:epaper: Theme-Datei angelegt"           "Auto epaper light-ansi" "$(jget "$EP" name) $(jget "$EP" base)"
+# light-ansi comes with the override for Claude Code's shimmer (ansi:white = color7, hollow on white)
+check "custom:epaper: Schimmer-Override in light-ansi" ansi:black "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["overrides"].get("inactiveShimmer", "-"))' "$EP")"
 check "Andere Themes legen keine Theme-Datei an"      0 "$(ls "$T/v-dark-ansi$ROOTBRIDGE_GUEST_HOME/.claude/themes" 2>/dev/null | wc -l)"
 printf '%s\n' '{"name":"Mein epaper","base":"dark-ansi","overrides":{"text":"ansi:black"}}' > "$EP"
 before="$(cksum < "$EP")"
@@ -113,6 +115,27 @@ for m in light dark; do
     check "Frühere Datei $m-daltonized -> $m-ansi"     "$m-ansi Auto epaper" "$(jget "$EP" base) $(jget "$EP" name)"
 done
 check "Umstellung: keine Temp-Datei übrig"            0 "$(find "$(dirname "$EP")" -name '*.new.*' | wc -l)"
+# the move of the daltonized files lands in the current form: dark-ansi without, light-ansi with the override
+printf '%s\n' '{' '  "name": "Auto epaper",' '  "base": "dark-daltonized",' '  "overrides": {}' '}' > "$EP"
+ginstall "$T/v-custom:epaper" --theme custom:epaper
+check "Umstellung dark-daltonized: ohne Override"     "dark-ansi 0" "$(jget "$EP" base) $(grep -c inactiveShimmer "$EP")"
+printf '%s\n' '{' '  "name": "Auto epaper",' '  "base": "light-daltonized",' '  "overrides": {}' '}' > "$EP"
+ginstall "$T/v-custom:epaper" --theme custom:epaper
+check "Umstellung light-daltonized: mit Override"     "light-ansi 1" "$(jget "$EP" base) $(grep -c '"inactiveShimmer": "ansi:black"' "$EP")"
+
+# light-ansi exactly as the version before the shimmer override wrote it: the override is added; dark-ansi needs none
+printf '%s\n' '{' '  "name": "Auto epaper",' '  "base": "light-ansi",' '  "overrides": {}' '}' > "$EP"
+ginstall "$T/v-custom:epaper" --theme custom:epaper
+check "Frühere Datei light-ansi: Override ergänzt"    "light-ansi 1" "$(jget "$EP" base) $(grep -c '"inactiveShimmer": "ansi:black"' "$EP")"
+check "Frühere Datei light-ansi: Meldung"             1 "$(grep -c 'Override inactiveShimmer ergänzt' "$T/guest.log")"
+before="$(cksum < "$EP")"
+ginstall "$T/v-custom:epaper" --theme custom:epaper
+check "Kanonische Datei: unverändert (idempotent)"    "$before" "$(cksum < "$EP")"
+check "Kanonische Datei: keine Meldung"               0 "$(grep -c 'Theme Auto epaper' "$T/guest.log")"
+printf '%s\n' '{' '  "name": "Auto epaper",' '  "base": "dark-ansi",' '  "overrides": {}' '}' > "$EP"
+before="$(cksum < "$EP")"
+ginstall "$T/v-custom:epaper" --theme custom:epaper
+check "dark-ansi ohne Override: unverändert"          "$before" "$(cksum < "$EP")"
 # changed in any way (here: an override): stays daltonized
 printf '%s\n' '{' '  "name": "Auto epaper",' '  "base": "dark-daltonized",' '  "overrides": {"text": "ansi:white"}' '}' > "$EP"
 ginstall "$T/v-custom:epaper" --theme custom:epaper

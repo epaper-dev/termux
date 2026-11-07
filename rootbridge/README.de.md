@@ -163,11 +163,13 @@ Dunkelmodus dunkel, ganz ohne Datei; `~/.termux/colors-light.properties`, `color
 überdecken würden; eine Datei, die du geändert hast, bleibt. `--no-colors` lässt Farbdateien und das Claude-Code-Theme in
 Ruhe. Außerdem setzt der Installer `"theme": "custom:epaper"` in der `~/.claude/settings.json` des Gasts (andere
 Schlüssel bleiben) und legt das Theme **Auto epaper** an (`~/.claude/themes/epaper.json`, Basis `light-ansi`: die 16 Farben des Termux-Schemas, die dem Schwellwert von
-„Text mit hohem Kontrast“ ausweichen; eine
-eigene Datei bleibt). Claude Codes eigenes `auto` wählt nur `light` oder `dark`, deshalb meldet Termux einen Wechsel
+„Text mit hohem Kontrast“ ausweichen, dazu der Override `inactiveShimmer: ansi:black`, denn Claude Code würde den
+Schimmer von „thinking ...“ in `ansi:white` zeichnen, dem hellen Grau hinter deinen Nachrichten, das auf Weiß hohl
+wird; eine eigene Datei bleibt). Claude Codes eigenes `auto` wählt nur `light` oder `dark`, deshalb meldet Termux einen Wechsel
 zwischen hell und dunkel (DECSET 2031) an tmux, dessen Hooks `client-light-theme` / `client-dark-theme` dann
 `rootbridge theme light|dark` aufrufen: Es stellt die Basis zwischen `light-ansi` und `dark-ansi` um (bzw.
-`light-daltonized`/`dark-daltonized`, `light`/`dark`, wenn du das einträgst). Eine laufende
+`light-daltonized`/`dark-daltonized`, `light`/`dark`, wenn du das einträgst) und den Schimmer-Override gleich mit
+(nur in einer Datei, wie der Installer sie schreibt; bei eigenen Overrides ändert sich nur die Basis). Eine laufende
 Claude-Code-Sitzung übernimmt die geänderte Theme-Datei und wechselt die Farben live (auf dem Gerät bestätigt, ohne
 Neustart). `THEME_RESTART=on` in `~/.config/termux-rootbridge/config` ist nur eine Notlösung für eine Version, die das
 nicht tut: Es startet Claude Code mit `--continue` neu (eine laufende Antwort bricht ab). `THEME_FOLLOW=off` schaltet die

@@ -476,21 +476,40 @@ fi
 # Claude Code theme (only when asked for: install.sh passes --theme unless --no-colors)
 if [ "$THEME_SET" = 1 ]; then
     settings_queue theme "\"$THEME\""
-    # "Auto epaper": created once with the ANSI base (the 16 colours of the Termux scheme). A file exactly as an
-    # earlier version created it (daltonized base) moves to the ANSI base, light or dark stays; any other file
-    # (your base, your overrides) stays as it is.
+    # "Auto epaper": created once with the ANSI base (the 16 colours of the Termux scheme). light-ansi carries the
+    # override inactiveShimmer = ansi:black (Claude Code draws that shimmer in ansi:white = color7, #E4E4E4, which
+    # turns hollow on white with Android's "High contrast text"); `rootbridge theme` keeps it in step with the mode.
+    # A file exactly as an earlier version created it (daltonized base, or light-ansi without the override) moves to
+    # this form, light or dark stays; any other file (your base, your overrides) stays as it is.
+    # Same bytes as epaper_theme() in termux/bin/rootbridge (tests/test_theme_follow.sh compares them).
     T="$ROOT$HOME_DIR/.claude/themes/epaper.json"
-    epaper_theme() { printf '%s\n' '{' '  "name": "Auto epaper",' "  \"base\": \"$1\"," '  "overrides": {}' '}'; }
+    epaper_theme() {   # epaper_theme <base> [plain]: plain = without overrides
+        printf '%s\n' '{' '  "name": "Auto epaper",' "  \"base\": \"$1\","
+        if [ "$1" = light-ansi ] && [ "${2:-}" != plain ]; then
+            printf '%s\n' '  "overrides": {' '    "inactiveShimmer": "ansi:black"' '  }'
+        else
+            printf '%s\n' '  "overrides": {}'
+        fi
+        printf '%s\n' '}'
+    }
     if [ "$THEME" = custom:epaper ]; then
         if [ ! -e "$T" ]; then
             mkdir -p "$(dirname "$T")"
             epaper_theme light-ansi > "$T"
         else
+            cur="$(cat "$T")"
             for m in light dark; do
-                if [ "$(cat "$T")" = "$(epaper_theme "$m-daltonized")" ]; then
-                    epaper_theme "$m-ansi" > "$T.new.$$" && mv -f "$T.new.$$" "$T"
-                    echo "Theme Auto epaper: Basis $m-daltonized -> $m-ansi"
-                fi
+                for old in "$m-daltonized" "$m-ansi"; do
+                    if [ "$cur" = "$(epaper_theme "$old" plain)" ] && [ "$cur" != "$(epaper_theme "$m-ansi")" ]; then
+                        epaper_theme "$m-ansi" > "$T.new.$$" && mv -f "$T.new.$$" "$T"
+                        if [ "$old" = "$m-ansi" ]; then
+                            echo "Theme Auto epaper: Override inactiveShimmer ergänzt (Basis $m-ansi)"
+                        else
+                            echo "Theme Auto epaper: Basis $old -> $m-ansi"
+                        fi
+                        break 2
+                    fi
+                done
             done
         fi
     fi

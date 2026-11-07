@@ -157,11 +157,13 @@ y `colors.properties` solo lo sobrescriben. Los archivos de colores que instalar
 con la paleta clara, `colors-light.properties`) se eliminan si siguen exactamente como se instalaron, porque taparían el
 esquema integrado; un archivo que hayas cambiado se conserva. `--no-colors` no toca los archivos de colores ni el tema de
 Claude Code. El instalador configura `"theme": "custom:epaper"` en el archivo `~/.claude/settings.json` del invitado (las
-demás claves se mantienen) y crea el tema **Auto epaper** (`~/.claude/themes/epaper.json`, basado en `light-ansi`, los 16 colores del esquema de Termux;
-tu propio archivo se mantiene). La opción `auto` de Claude Code solo elige entre `light` o `dark`, así que Termux notifica
+demás claves se mantienen) y crea el tema **Auto epaper** (`~/.claude/themes/epaper.json`, basado en `light-ansi`, los 16 colores del esquema de Termux,
+más la sobrescritura `inactiveShimmer: ansi:black`, porque Claude Code dibujaría el brillo de «thinking ...» en
+`ansi:white`, el gris claro detrás de tus mensajes, que sobre blanco se ve hueco; tu propio archivo se mantiene). La opción `auto` de Claude Code solo elige entre `light` o `dark`, así que Termux notifica
 un cambio entre claro y oscuro (DECSET 2031) a tmux, cuyos hooks `client-light-theme` / `client-dark-theme` ejecutan
 `rootbridge theme light|dark`: esto cambia el tema base entre `light-ansi` y `dark-ansi` (o
-`light-daltonized`/`dark-daltonized`, `light`/`dark` si lo has configurado así). Una sesión
+`light-daltonized`/`dark-daltonized`, `light`/`dark` si lo has configurado así) y con ella la sobrescritura del brillo
+(solo en un archivo como lo escribe el instalador; con tus propias sobrescrituras solo cambia la base). Una sesión
 de Claude Code en marcha recoge el archivo de tema modificado y cambia los colores en directo (confirmado en el
 dispositivo, sin reiniciar). `THEME_RESTART=on` en `~/.config/termux-rootbridge/config` es solo un recurso para una
 versión que no lo haga: reinicia Claude Code con `--continue` (se interrumpe cualquier respuesta en curso).

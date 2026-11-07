@@ -142,7 +142,9 @@ En el tema claro, el terminal usa `termux-shared/src/main/res/raw/colors_light_d
 blanco); en el oscuro, `colors_dark_default.properties` (blanco sobre negro). Todos los colores de texto quedan
 claramente oscuros (esquema claro: R+G+B por debajo de 384) o claramente claros (esquema oscuro: 576 o más, así el texto
 atenuado también queda por encima de 384). La única excepción es el gris que los temas ANSI de Claude Code ponen detrás
-de tus mensajes (claro: `color7` #E4E4E4, oscuro: `color8` #404040). Los móviles sin modo oscuro del sistema se quedan
+de tus mensajes (claro: `color7` #E4E4E4, oscuro: `color8` #404040). En el modo claro Claude Code usa ese mismo `ansi:white` también para el brillo de
+«thinking ...», donde se vería hueco; por eso el tema **Auto epaper** de Rootbridge sobrescribe justo ese color con
+`ansi:black` (`rootbridge/README.es.md`). Los móviles sin modo oscuro del sistema se quedan
 en claro. `night-mode` en `termux.properties` (`system` por defecto, o `true`/`false`) decide el modo; los menús,
 ajustes y diálogos también lo siguen.
 

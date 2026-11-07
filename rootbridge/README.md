@@ -157,10 +157,14 @@ removed when they are still exactly as installed, because they would override th
 stays. `--no-colors` leaves colour files and the Claude Code theme alone. The installer sets `"theme": "custom:epaper"` in the
 guest's `~/.claude/settings.json` (other keys stay) and creates the theme **Auto epaper**
 (`~/.claude/themes/epaper.json`, base `light-ansi`: the 16 colours of the Termux scheme, which keeps them clear of
-the "High contrast text" threshold; a file of yours stays). Claude Code's own `auto` only picks
+the "High contrast text" threshold, plus the override `inactiveShimmer: ansi:black`, because Claude Code would draw
+the shimmer of "thinking ..." in `ansi:white`, the light grey it needs behind your messages, which is hollow on white;
+a file of yours stays). Claude Code's own `auto` only picks
 `light` or `dark`, so Termux reports a change between light and dark (DECSET 2031) to tmux, whose hooks
 `client-light-theme` / `client-dark-theme` run `rootbridge theme light|dark`: it switches the base between
-`light-ansi` and `dark-ansi` (or `light-daltonized`/`dark-daltonized`, `light`/`dark` if you put that in). A running
+`light-ansi` and `dark-ansi` (or `light-daltonized`/`dark-daltonized`, `light`/`dark` if you put that in) and the
+shimmer override with it (only in a file as the installer wrote it; a file with your own overrides only gets its base
+changed). A running
 Claude Code session picks up the changed theme file and switches its colours live (confirmed on the device, no restart).
 `THEME_RESTART=on` in `~/.config/termux-rootbridge/config` is only a fallback for a version that does not: it restarts
 Claude Code with `--continue` (an answer in progress is cut off). `THEME_FOLLOW=off` switches the hooks off. Pick another theme any time with `/theme`. Every new interactive Termux shell

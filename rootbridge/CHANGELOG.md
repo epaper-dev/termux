@@ -5,6 +5,16 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* **Auto epaper: no hollow shimmer in the light theme.** Claude Code draws the shimmer of "thinking ..." in the light
+  theme in `ansi:white`, i.e. `color7` (#E4E4E4), the grey that has to stay light because your messages sit on it. With
+  Android's "High contrast text" that text on a white background becomes hollow letters, and no palette can fix both.
+  `light-ansi` in `epaper.json` now carries the override `"inactiveShimmer": "ansi:black"`; `dark-ansi` needs none
+  (its shimmer is `ansi:whiteBright`). `rootbridge theme light|dark` rewrites a file that is exactly in the form the
+  installer writes (also the former form with `"overrides": {}`) as a whole, so the override follows the mode; a file
+  with your own name or overrides only gets its `base` changed. `install-guest.sh --theme custom:epaper` adds the
+  override to a `light-ansi` file as the previous version wrote it and moves `-daltonized` files to this form, any other
+  file stays. `tests/test_theme_follow.sh` has 53 checks (including that `rootbridge` and the installer write the same
+  bytes), `tests/test_colors_theme.sh` 126.
 * **Renamed `termux-root-bridge` to `termux-rootbridge`** (the command was already `rootbridge`): `/etc/termux-rootbridge.conf`,
   `/usr/local/lib/termux-rootbridge/`, `/var/lib/termux-rootbridge/`, `/var/log/termux-rootbridge-apt.log` in the guest,
   `~/.config/termux-rootbridge/config` and `$PREFIX/lib/termux-rootbridge/` in Termux, and the markers
