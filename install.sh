@@ -33,9 +33,11 @@
 #   2. config ~/.config/termux-root-bridge/config (the Remote Control name is "android" unless
 #      --remote-name NAME says otherwise; NAME is stored there as REMOTE_NAME and reused by every
 #      later install), tmux clipboard settings
-#   3. light colour scheme ~/.termux/colors-light.properties (the E-Paper Termux build uses it
-#      while the phone is in light mode, dark mode keeps Termux' default scheme; --no-colors
-#      skips it and the Claude Code theme), a ~/.bashrc block (alias `ubuntu`, reloads the Termux settings
+#   3. colours: no colour file is written (the E-Paper Termux build has the light and the dark scheme built in
+#      and follows the phone; ~/.termux/colors-light.properties, colors-dark.properties and colors.properties
+#      are optional overrides of yours). Only colour files that earlier versions installed, still exactly as
+#      installed, are removed. --no-colors leaves those and the Claude Code theme alone. A ~/.bashrc block
+#      (alias `ubuntu`, reloads the Termux settings
 #      in every new shell; ordinary Termux windows stay plain shells, Claude Code starts
 #      via the widgets, `ubuntu` or `rootbridge attach`), the Termux:Widget shortcuts
 #      "Claude" and "Ubuntu" with the widget icon (an icon you chose stays; icons of the
@@ -98,7 +100,7 @@ while [ $# -gt 0 ]; do
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift ;;
-        -h|--help) sed -n '2,56p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,58p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -384,27 +386,29 @@ set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
 
 say "== 3/5 Farben, Shell-Block, Widgets"
 if [ "$DO_COLORS" = 1 ]; then
+    # This installer writes no colour file any more: the E-Paper Termux build brings the light and the dark scheme with it
+    # and follows the phone. The files below are what earlier versions installed (SHA-256 of the content). One that is still
+    # exactly like that goes, because it would override the built-in scheme and keep the terminal light in dark mode (or
+    # stay behind a later change of the built-in scheme). A file you changed stays, with a note. Nothing is overwritten.
     colors_changed=0
-    # Earlier versions installed the light scheme as colors.properties, the file every Termux build reads in both modes,
-    # so the terminal stayed light in dark mode. It is colors-light.properties now: a colors.properties that is still
-    # exactly that earlier file goes (nothing of yours is lost, it is in the repo), a changed one stays and keeps being the
-    # scheme of the dark mode.
-    LEGACY_COLORS_SHA256=3eaffea743c0ad78e60a98f5a2ccf57dfd31b3c8b6b71ae5a3dcef66b91bb54e
-    if [ -f "$HOME/.termux/colors.properties" ] \
-        && [ "$(sha256sum "$HOME/.termux/colors.properties" 2>/dev/null | cut -d' ' -f1)" = "$LEGACY_COLORS_SHA256" ]; then
-        rm -f "$HOME/.termux/colors.properties"
-        say "  entfernt: ~/.termux/colors.properties (die helle Palette früherer Versionen, jetzt colors-light.properties)"
-        colors_changed=1
-    elif [ -s "$HOME/.termux/colors.properties" ]; then
-        say "  ~/.termux/colors.properties bleibt (gilt im dunklen Modus); im hellen Modus gilt colors-light.properties."
-    fi
-    # chmod 600: Termux itself creates the file that way
-    put_data "$REPO/termux/colors-light.properties" "$HOME/.termux/colors-light.properties" 600 && colors_changed=1
+    FORMER_COLOR_FILES="colors.properties:3eaffea743c0ad78e60a98f5a2ccf57dfd31b3c8b6b71ae5a3dcef66b91bb54e
+colors-light.properties:ddf723e84243925a9e09b468fb87bbcbca9b13a2aef1467835b46f6dba7bc53a"
+    for entry in $FORMER_COLOR_FILES; do
+        f="$HOME/.termux/${entry%%:*}"
+        [ -f "$f" ] || continue
+        if [ "$(sha256sum "$f" 2>/dev/null | cut -d' ' -f1)" = "${entry#*:}" ]; then
+            rm -f "$f"
+            say "  entfernt: $f (von einer früheren Version installiert, die App bringt das Schema jetzt selbst mit)"
+            colors_changed=1
+        elif [ -s "$f" ]; then
+            say "  $f bleibt (von dir geändert) und überschreibt das eingebaute Schema."
+        fi
+    done
     if [ "$colors_changed" = 1 ]; then
         command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
     fi
 else
-    say "  Farbschema übersprungen (--no-colors)"
+    say "  Farben und Theme übersprungen (--no-colors)"
 fi
 if [ "$DO_EXTRAKEYS" = 1 ]; then
     # S-TAB (a phone keyboard has no Shift+Tab, Claude Code switches its permission mode with it) and
@@ -430,7 +434,7 @@ TMP_RC="$(mktemp)"
 cat > "$TMP_RC" <<'EOF'
 alias ubuntu='rootbridge attach'
 if [[ $- == *i* ]] && [ -z "${TMUX:-}" ]; then
-    # load ~/.termux/colors.properties in every new Termux shell (Claude Code is NOT started here:
+    # reload the Termux settings in every new Termux shell (Claude Code is NOT started here:
     # use the widget "Claude", `ubuntu` or `rootbridge attach`)
     if command -v termux-reload-settings >/dev/null 2>&1; then termux-reload-settings; fi
 fi
@@ -583,5 +587,5 @@ if [ "$DO_EXTRAKEYS" = 1 ]; then
     say "Zusatztasten: S-TAB (Shift+Tab; Wisch nach oben = Tab) und KEYBOARD stehen in ~/.termux/termux.properties."
 fi
 if [ "$DO_COLORS" = 1 ]; then
-    say "Farben: ~/.termux/colors-light.properties gilt im Hellmodus des E-Paper-Termux (dunkel bleibt der Termux-Standard) und wird in jeder neuen Termux-Shell und von den Widgets geladen; Claude Code nutzt das Theme '$CLAUDE_THEME'."
+    say "Farben: der E-Paper-Termux bringt das helle und das dunkle Schema selbst mit und folgt dem Telefon (eigene Dateien: ~/.termux/colors-light.properties, colors-dark.properties, colors.properties). Claude Code nutzt das Theme '$CLAUDE_THEME'."
 fi

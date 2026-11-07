@@ -148,17 +148,17 @@ Limit (`ulimit -n`), und unter proot ist jedes `close()` ein abgefangener Syscal
 nicht ändern; `/etc/termux-root-bridge.conf` im Gast). Das Limit wird nur gesenkt, nie erhöht, und nur für Claude: die
 Shell drumherum behält ihres. Wirkt nach `install.sh` und einem Neustart der Claude-Code-Sitzung.
 
-**Farben und Theme.** Ohne `--no-colors` schreibt der Installer ein helles Farbschema nach
-`~/.termux/colors-light.properties`. Der E-Paper-Build von Termux (`epaper-dev/termux`) nutzt es, solange das Telefon im
-Hellmodus ist, und wechselt mit dem Hell/Dunkel-Modus des Telefons; im Dunkelmodus gilt Termux' eigener dunkler Standard
-oder deine `colors.properties`, falls du eine hast. Andere Termux-Builds ignorieren die Datei (dort nach
-`colors.properties` kopieren). Eine `colors.properties`, die genau der hellen Palette früherer Versionen entspricht, wird
-entfernt, jede andere bleibt. Außerdem setzt der Installer `"theme": "auto"` in der `~/.claude/settings.json` des Gasts
-(andere Schlüssel bleiben): Claude Code fragt das Terminal nach seiner Hintergrundfarbe und wählt sein helles oder
-dunkles Theme, folgt also ebenfalls dem Telefon; jederzeit mit `/theme` umstellbar. Jede neue interaktive Termux-Shell
-führt `termux-reload-settings` aus, ebenso die Termux:Widget-Verknüpfungen vor dem Anhängen; die Farben sind also
-geladen, bevor `claude update` und Claude Code starten. Zum Ändern `termux/colors-light.properties` bearbeiten und
-`install.sh` erneut ausführen.
+**Farben und Theme.** Der Installer schreibt keine Farbdatei. Der E-Paper-Build von Termux (`epaper-dev/termux`) bringt ein
+helles und ein dunkles Schema mit und folgt dem Hell/Dunkel-Modus des Telefons: Das Terminal ist im Hellmodus hell und im
+Dunkelmodus dunkel, ganz ohne Datei; `~/.termux/colors-light.properties`, `colors-dark.properties` und `colors.properties`
+überschreiben das nur. Farbdateien, die frühere Versionen installiert haben (`colors.properties` mit der hellen Palette,
+`colors-light.properties`), werden entfernt, solange sie noch genau so sind wie installiert, weil sie das eingebaute Schema
+überdecken würden; eine Datei, die du geändert hast, bleibt. `--no-colors` lässt Farbdateien und das Claude-Code-Theme in
+Ruhe. Außerdem setzt der Installer `"theme": "auto"` in der `~/.claude/settings.json` des Gasts (andere Schlüssel
+bleiben): Claude Code fragt das Terminal nach seiner Hintergrundfarbe und wählt sein helles oder dunkles Theme, folgt also
+ebenfalls dem Telefon; jederzeit mit `/theme` umstellbar. Jede neue interaktive Termux-Shell führt
+`termux-reload-settings` aus, ebenso die Termux:Widget-Verknüpfungen vor dem Anhängen. Andere Termux-Builds haben kein
+eingebautes helles Schema; dort ein Schema nach `~/.termux/colors.properties` kopieren.
 
 **Fester Name in der Remote-Control-Ansicht** (claude.ai/code): Standard ist `android`, ein einfaches `bash install.sh`
 setzt ihn also. Anderer Name: `bash install.sh --remote-name NAME`. Dieser Name steht danach in der Termux-Konfig

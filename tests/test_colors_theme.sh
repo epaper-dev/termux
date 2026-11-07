@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Test: light colour scheme (~/.termux/colors-light.properties), the move of the colors.properties of earlier
-# versions, reload at every start and the Claude Code theme (auto).
+# Test: install.sh writes no colour file (the app has the schemes built in), removes colour files that earlier versions
+# installed and that are still unchanged, leaves everything else alone, reload at every start and the Claude Code theme (auto).
 #   1. guest installer: --theme writes "theme" into ~/.claude/settings.json (staging root)
-#   2. install.sh with a fake HOME/PREFIX: colors-light.properties, reload, --no-colors, --theme hand-over
+#   2. install.sh with a fake HOME/PREFIX: no colour file, former files, reload, --no-colors, --theme hand-over
 #   3. the block in ~/.bashrc: reload in every new shell, nothing else (no autostart); an old
 #      autostart block is replaced when install.sh runs again
 #   4. Termux:Widget shortcuts reload first
@@ -14,7 +14,8 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GUEST="$ROOT/guest/install-guest.sh"
 INSTALL="$ROOT/install.sh"
-LIGHT="$ROOT/termux/colors-light.properties"
+FORMER="$ROOT/tests/fixtures/former-colors.properties"            # colors.properties of versions up to PR #4
+FORMER_LIGHT="$ROOT/tests/fixtures/former-colors-light.properties" # colors-light.properties of PR #5
 
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
@@ -160,64 +161,68 @@ cbaks() { find "$1/.termux" -name 'colors*.properties.bak-*' 2>/dev/null | wc -l
 gsettings() { printf '%s' "$GUEST_ROOT$ROOTBRIDGE_GUEST_HOME/.claude/settings.json"; }
 CF="$H/.termux/colors.properties"
 LF="$H/.termux/colors-light.properties"
+DF="$H/.termux/colors-dark.properties"
+nocolors() { find "$1/.termux" -maxdepth 1 -name 'colors*.properties*' 2>/dev/null | wc -l | tr -d ' '; }
 
-check "Repo-Farbdatei: background=#FFFFFF"            "background=#FFFFFF" "$(grep '^background=' "$LIGHT")"
-check "Repo-Farbdatei: foreground=#000000"            "foreground=#000000" "$(grep '^foreground=' "$LIGHT")"
-check "Repo-Farbdatei: 16 Farben"                     16 "$(grep -c '^color[0-9]*=#[0-9A-Fa-f]\{6\}$' "$LIGHT")"
-check "Repo: keine colors.properties (Standardschema bleibt dem Nutzer)" nein "$([ -e "$ROOT/termux/colors.properties" ] && echo ja || echo nein)"
-# install.sh recognises the colors.properties of earlier versions by checksum: it is the palette without the header
-grep -v '^#' "$LIGHT" > "$T/legacy-colors.properties"
-check "Prüfsumme der früheren Palette stimmt"         "$(sed -n 's/^ *LEGACY_COLORS_SHA256=//p' "$INSTALL")" "$(sha256sum < "$T/legacy-colors.properties" | cut -d' ' -f1)"
+check "Repo liefert keine Farbdatei mehr (colors*.properties)" 0 "$(find "$ROOT/termux" -maxdepth 1 -name 'colors*.properties' | wc -l | tr -d ' ')"
+check "Fixture: frühere colors.properties ist die helle Palette"        "background=#FFFFFF" "$(grep '^background=' "$FORMER")"
+check "Fixture: frühere Palette hat 16 Farben"        16 "$(grep -c '^color[0-9]*=#[0-9A-Fa-f]\{6\}$' "$FORMER")"
+# the checksums install.sh knows are those of the files that earlier versions installed
+check "Prüfsumme colors.properties früherer Versionen" "$(sha256sum < "$FORMER" | cut -d' ' -f1)" "$(grep -o 'colors\.properties:[0-9a-f]\{64\}' "$INSTALL" | cut -d: -f2)"
+check "Prüfsumme colors-light.properties aus PR #5"   "$(sha256sum < "$FORMER_LIGHT" | cut -d' ' -f1)" "$(grep -o 'colors-light\.properties:[0-9a-f]\{64\}' "$INSTALL" | cut -d: -f2)"
 
 rinstall "$H"
 check "install.sh: läuft durch"                       0 "$?"
-check "colors-light.properties: Inhalt wie im Repo"   0 "$(cmp -s "$LIGHT" "$LF"; echo $?)"
-check "colors-light.properties: Modus 600"            600 "$(stat -c %a "$LF")"
-check "Keine colors.properties angelegt"              nein "$([ -e "$CF" ] && echo ja || echo nein)"
-check "Neu geschrieben: Reload genau einmal"          1 "$(reloads)"
+check "Frisches Home: keine Farbdatei angelegt"       0 "$(nocolors "$H")"
+check "Frisches Home: kein Reload durch den Installer" 0 "$(reloads)"
 check "Gast bekam --theme auto"                       1 "$(grep -c -- '--theme auto' "$STUB_LOG")"
 check "Gast: theme=auto in settings.json"             auto "$(jget "$(gsettings)" theme)"
-check "Neu geschrieben: keine Sicherung"              0 "$(cbaks "$H")"
+check "Schlussmeldung nennt die eingebauten Schemata" 1 "$(grep -c '^Farben: der E-Paper-Termux bringt' "$T/install.log")"
 
-cksum_before="$(cksum < "$LF")"
 rinstall "$H"
 check "Zweiter Lauf: läuft durch"                     0 "$?"
-check "Zweiter Lauf: Farbdatei unverändert"           "$cksum_before" "$(cksum < "$LF")"
-check "Zweiter Lauf: keine Sicherung"                 0 "$(cbaks "$H")"
-check "Zweiter Lauf: kein weiterer Reload"            1 "$(reloads)"
+check "Zweiter Lauf: weiterhin keine Farbdatei"       0 "$(nocolors "$H")"
 check "Zweiter Lauf: .bashrc-Block genau einmal"      1 "$(grep -c '^# >>> termux-root-bridge >>>$' "$H/.bashrc")"
 
-# a changed light file is replaced, the old one is kept as a backup, reload runs again
-printf '%s\n' 'background=#123456' > "$LF"
-rinstall "$H"
-check "Geänderte Lichtdatei: ersetzt"                 0 "$(cmp -s "$LIGHT" "$LF"; echo $?)"
-check "Geänderte Lichtdatei: eine Sicherung"          1 "$(cbaks "$H")"
-check "Geänderte Lichtdatei: Sicherung hat den alten Inhalt" "background=#123456" "$(cat "$H"/.termux/colors-light.properties.bak-*)"
-check "Geänderte Lichtdatei: Reload erneut"           2 "$(reloads)"
+# files that earlier versions installed and that are unchanged go (no backup needed: the content is in the repo history)
+for pair in "former-colors:colors.properties:$FORMER" "former-light:colors-light.properties:$FORMER_LIGHT"; do
+    n="${pair%%:*}"; rest="${pair#*:}"; fname="${rest%%:*}"; src="${rest#*:}"
+    HF1="$T/home-$n"; mkdir -p "$HF1/.termux"; cp "$src" "$HF1/.termux/$fname"; : > "$RB_LOG"
+    rinstall "$HF1"
+    check "Frühere $fname: läuft durch"               0 "$?"
+    check "Frühere $fname: entfernt"                  nein "$([ -e "$HF1/.termux/$fname" ] && echo ja || echo nein)"
+    check "Frühere $fname: Meldung"                   1 "$(grep -c "entfernt: .*/$fname" "$T/install.log")"
+    check "Frühere $fname: keine Sicherung, nichts Neues" 0 "$(nocolors "$HF1")"
+    check "Frühere $fname: Reload genau einmal"       1 "$(reloads)"
+done
+HB="$T/home-both"; mkdir -p "$HB/.termux"; cp "$FORMER" "$HB/.termux/colors.properties"; cp "$FORMER_LIGHT" "$HB/.termux/colors-light.properties"; : > "$RB_LOG"
+rinstall "$HB"
+check "Beide früheren Dateien: beide entfernt"        0 "$(nocolors "$HB")"
+check "Beide früheren Dateien: Reload genau einmal"   1 "$(reloads)"
 
-# the colors.properties of earlier versions (the light palette) is removed, the light file takes over
-HL="$T/home-legacy"; mkdir -p "$HL/.termux"; cp "$T/legacy-colors.properties" "$HL/.termux/colors.properties"; : > "$RB_LOG"
-rinstall "$HL"
-check "Frühere Palette: läuft durch"                  0 "$?"
-check "Frühere Palette: colors.properties entfernt"   nein "$([ -e "$HL/.termux/colors.properties" ] && echo ja || echo nein)"
-check "Frühere Palette: keine Sicherung nötig"        0 "$(cbaks "$HL")"
-check "Frühere Palette: colors-light.properties da"   0 "$(cmp -s "$LIGHT" "$HL/.termux/colors-light.properties"; echo $?)"
-check "Frühere Palette: Meldung"                      1 "$(grep -c 'entfernt: ~/.termux/colors.properties' "$T/install.log")"
-check "Frühere Palette: Reload genau einmal"          1 "$(reloads)"
-
-# any other colors.properties is the user's: it stays and keeps being the scheme of the dark mode
-HF="$T/home-foreign"; mkdir -p "$HF/.termux"; printf '%s\n' 'background=#123456' > "$HF/.termux/colors.properties"; : > "$RB_LOG"
-rinstall "$HF"
-check "Fremde colors.properties: unberührt"           "background=#123456" "$(cat "$HF/.termux/colors.properties")"
-check "Fremde colors.properties: Hinweis"             1 "$(grep -c 'bleibt (gilt im dunklen Modus)' "$T/install.log")"
-check "Fremde colors.properties: keine Sicherung"     0 "$(cbaks "$HF")"
-check "Fremde colors.properties: Lichtdatei da"       0 "$(cmp -s "$LIGHT" "$HF/.termux/colors-light.properties"; echo $?)"
+# anything the user changed or made stays untouched, with a note for a file that is not empty
+HU="$T/home-user"; mkdir -p "$HU/.termux"; : > "$RB_LOG"
+printf '%s\n' 'background=#123456' > "$HU/.termux/colors.properties"
+printf '%s\n' 'background=#654321' > "$HU/.termux/colors-light.properties"
+printf '%s\n' 'background=#111111' > "$HU/.termux/colors-dark.properties"
+rinstall "$HU"
+check "Eigene Dateien: colors.properties unberührt"   "background=#123456" "$(cat "$HU/.termux/colors.properties")"
+check "Eigene Dateien: colors-light.properties unberührt" "background=#654321" "$(cat "$HU/.termux/colors-light.properties")"
+check "Eigene Dateien: colors-dark.properties unberührt"  "background=#111111" "$(cat "$HU/.termux/colors-dark.properties")"
+check "Eigene Dateien: Hinweis für die zwei bekannten Namen" 2 "$(grep -c 'bleibt (von dir geändert)' "$T/install.log")"
+check "Eigene Dateien: keine Sicherung"               0 "$(cbaks "$HU")"
+check "Eigene Dateien: kein Reload"                   0 "$(reloads)"
+# a changed copy of a former file (one byte more) is the user's file as well
+HC="$T/home-changed"; mkdir -p "$HC/.termux"; { cat "$FORMER"; echo "color99=#000000"; } > "$HC/.termux/colors.properties"; : > "$RB_LOG"
+rinstall "$HC"
+check "Geänderte frühere Palette: bleibt"             1 "$([ -f "$HC/.termux/colors.properties" ] && echo 1 || echo 0)"
+check "Geänderte frühere Palette: kein Reload"        0 "$(reloads)"
 
 # --no-colors: no colours file, no theme, installer still exits 0
 H2="$T/home2"; mkdir -p "$H2"; : > "$STUB_LOG"; : > "$RB_LOG"; rm -rf "$GUEST_ROOT"
 rinstall "$H2" --no-colors
 check "--no-colors: läuft durch (Exit 0)"             0 "$?"
-check "--no-colors: keine colors-light.properties"    nein "$([ -e "$H2/.termux/colors-light.properties" ] && echo ja || echo nein)"
+check "--no-colors: keine Farbdatei"                  0 "$(nocolors "$H2")"
 check "--no-colors: kein Reload durch den Installer"  0 "$(reloads)"
 check "--no-colors: kein --theme an den Gast"         0 "$(grep -c -- '--theme' "$STUB_LOG")"
 check "--no-colors: theme nicht gesetzt"              - "$(jget "$(gsettings)" theme)"
@@ -231,16 +236,16 @@ check "Altes Theme 'light' wird zu auto"              auto "$(jget "$(gsettings)
 check "Altes Theme: model bleibt"                     opusplan "$(jget "$(gsettings)" model)"
 
 # --no-colors leaves existing colours files alone, even the colors.properties of earlier versions
-H3="$T/home3"; mkdir -p "$H3/.termux"; cp "$T/legacy-colors.properties" "$H3/.termux/colors.properties"
+H3="$T/home3"; mkdir -p "$H3/.termux"; cp "$FORMER" "$H3/.termux/colors.properties"
 before="$(cksum < "$H3/.termux/colors.properties")"
 rinstall "$H3" --no-colors
 check "--no-colors: vorhandene Farbdatei unberührt"   "$before" "$(cksum < "$H3/.termux/colors.properties")"
 check "--no-colors: keine Sicherung"                  0 "$(cbaks "$H3")"
 
-# --no-guest still installs the colours (and calls no guest installer)
+# --no-guest: no guest installer call, no colour file either
 H4="$T/home4"; mkdir -p "$H4"; : > "$STUB_LOG"
 rinstall "$H4" --no-guest
-check "--no-guest: Farben trotzdem installiert"       0 "$(cmp -s "$LIGHT" "$H4/.termux/colors-light.properties"; echo $?)"
+check "--no-guest: läuft durch, keine Farbdatei"      0 "$(nocolors "$H4")"
 check "--no-guest: Gast-Installer nicht aufgerufen"   0 "$(wc -l < "$STUB_LOG" | tr -d ' ')"
 
 # --help lists the option and is not cut off

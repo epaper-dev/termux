@@ -11,12 +11,14 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   under the earlier names "Claude >_" / "Ubuntu >_"); an icon you chose stays. `uninstall.sh` removes the new and the old
   default icons only. `tools/make-shortcut-icons.py` is gone (the legacy PNGs are fixed files now).
   `tests/test_widgets.sh` has 68 checks.
-* Colours follow the phone: `install.sh` installs the light scheme as `~/.termux/colors-light.properties` (before:
-  `colors.properties`). The E-Paper Termux build (`epaper-dev/termux`) uses it while the phone is in light mode; dark mode
-  keeps Termux' own default scheme or your `colors.properties`. A `colors.properties` that is exactly the light palette
-  of earlier versions is removed (any other stays), other Termux builds ignore the new file. The Claude Code theme is now
-  `auto` (it asks the terminal for its background colour) instead of `light-ansi`; `install-guest.sh --theme` accepts
-  `auto`. `tests/test_colors_theme.sh` now has 107 checks.
+* Colours follow the phone, built into the app: the E-Paper Termux build (`epaper-dev/termux`, release `set-20261107-6`
+  and later) has a light and a dark scheme built in and follows the phone's light/dark mode, so `install.sh` writes **no
+  colour file** any more and `termux/colors-light.properties` is gone. Colour files that earlier versions installed
+  (`colors.properties` with the light palette, `colors-light.properties`) are removed when they are still exactly as
+  installed (SHA-256), a changed file stays with a note. `--no-colors` leaves colour files and the Claude Code theme alone.
+  The Claude Code theme is now `auto` (it asks the terminal for its background colour) instead of `light-ansi`;
+  `install-guest.sh --theme` accepts `auto`. Other Termux builds have no built-in light scheme.
+  `tests/test_colors_theme.sh` now has 109 checks.
 * The apt upgrade and `claude update` at the session start now run at most once every **6 hours** (before: once per
   24 h). `APT_UPGRADE` and `CLAUDE_UPDATE` take `6h` (new default), any `<N>h` (1-999 hours), `daily` (= 24 h, as before),
   `always` or `off`; `install.sh --apt-upgrade` and `--claude-update` accept the same values. A value already in

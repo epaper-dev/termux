@@ -72,4 +72,4 @@ done
 say "Programme, Widgets und Boot-Skript entfernt."
 say "Bleibt erhalten: ~/.rootbridge (Audit-Log, Sicherungen), ~/.config/termux-root-bridge,"
 # shellcheck disable=SC2088  # the tilde is meant literally (message text)
-say "~/.termux/colors-light.properties (Sicherungen früherer Farbdateien liegen als colors.properties.bak-*) und das Claude-Code-Theme."
+say "Farbdateien in ~/.termux (der Installer schreibt keine mehr; Sicherungen früherer Versionen liegen als colors*.properties.bak-*) und das Claude-Code-Theme."
