@@ -138,6 +138,30 @@ class HookTest(unittest.TestCase):
             self.assertEqual(r.returncode, 2, command)
             self.assertIn("BLOCK: bad", r.stderr, command)
 
+    def test_subshell_context_blocks_instead_of_reviewing_the_wrong_repository(self):
+        plain = os.path.join(self.tmp, "plain")
+        os.makedirs(plain)
+        for command, cwd in (
+            ("(git commit -m x)", self.repo),
+            (f"(cd {plain} && pwd); git commit -m x", self.repo),
+            (f"(cd {self.repo} && git commit -m x)", plain),
+            (f"(cd {plain} && pwd); git \"commit\" -m x", self.repo),
+            (f"bash -c '(cd {plain} && pwd); git commit -m x'", self.repo),
+            ("(pwd); bash -c 'git commit -m x'", self.repo),
+            ('(pwd); echo "$(git commit -m x)"', self.repo),
+        ):
+            with self.subTest(command=command):
+                r = self.run_hook(command=command, cwd=cwd, reply="ALLOW: wrong repository")
+                self.assertEqual(r.returncode, 2)
+                self.assertIn("Shell-Kontext", r.stderr)
+        self.assertEqual(self.node_calls(), 0)
+        self.assertEqual(self.state_files(), [])
+
+    def test_grouping_without_a_commit_does_not_block(self):
+        r = self.run_hook(command='(echo "git commit"); pwd')
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(self.node_calls(), 0)
+
     def test_text_that_only_mentions_a_commit_is_not_reviewed(self):
         for command in (
             'echo "git commit -m x"',
@@ -341,7 +365,7 @@ class DetectionTest(unittest.TestCase):
             "sudo git commit -m x", "sudo -u bob git commit -m x", "time git commit -m x", "command git commit",
             "nohup git commit -m x", "timeout 60 git commit -m x", "xargs -I {} git commit -m {}",
             "git add -A && git commit -m x", "git add -A; git commit -m x", "false || git commit -m x",
-            "echo a | git commit -F -", "echo a & git commit", "(git commit -m x)", "{ git commit -m x; }",
+            "echo a | git commit -F -", "echo a & git commit", "{ git commit -m x; }",
             "if true; then git commit -m x; fi", "for f in a b; do git commit -m $f; done", "! git commit",
             "echo a\ngit commit -m x", "git \\\n  commit -m x", "git commit -m 'a' # note",
             "cat <<'EOF' > f\nhello\nEOF\ngit commit -m x", "python3 - <<'PY'\nprint(1)\nPY\ngit commit",
@@ -377,7 +401,6 @@ class DetectionTest(unittest.TestCase):
             ("git -C a -C b commit", "/work/repo/a/b"),
             ("cd /a && git -C b commit", "/a/b"),
             ("bash -c 'cd /tmp && git commit'", "/tmp"),
-            ("(cd /tmp && git commit)", "/tmp"),
             ("cd -- /tmp && git commit", "/tmp"),
             ("cd ~ && git commit", os.path.expanduser("~")),
         ):

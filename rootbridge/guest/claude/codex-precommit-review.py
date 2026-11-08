@@ -5,7 +5,8 @@ Ablauf:
   1. Nur aktiv, wenn der Bash-Befehl ein `git commit` AUSFÜHRT (find_commit): der Befehl wird wie von einer Shell
      zerlegt. Text in Anführungszeichen und in Heredocs zählt nicht (`echo "git commit"`, ein Python-Skript mit
      dieser Meldung); verfolgt werden `cd`, `git -C`, Präfixe (sudo, env, time, VAR=x ...), `bash -c '...'`, `eval`
-     und $(...) / Backticks. Lässt sich der Befehl nicht zerlegen, gilt die alte Textsuche (lieber ein Review zu
+     und $(...) / Backticks. Enthält ein Commit-Befehl unquotierte Klammern, wird er wegen des unklaren Shell-Kontexts
+     blockiert (Commit separat ausführen). Lässt sich der Befehl nicht zerlegen, gilt die alte Textsuche (lieber ein Review zu
      viel als ein Commit ohne). Nicht erkannt werden Git-Aliase (`git ci`) und Skripte, die committen.
   2. Hash über staged + unstaged Diff (mit Binärinhalt) und, wenn derselbe Befehl vorher `git add` ausführt, über die
      noch nicht verfolgten Dateien, die dabei dazukommen können (sie stehen in keinem Diff; Codex bekommt ihre
@@ -118,6 +119,10 @@ class ParseError(ValueError):
     pass
 
 
+class UncertainContext(ParseError):
+    pass
+
+
 def _find_backtick(text, i):
     n = len(text)
     while i < n:
@@ -197,9 +202,11 @@ def _collect_subs(text, subs):
 
 
 def tokenize(text):
-    """-> (commands, subs). commands: eine Wortliste je einfachem Befehl (Anführungszeichen entfernt); subs: die
-    Texte von $(...) und `...`, die zusätzlich zu untersuchen sind. Kommentare und Heredoc-Inhalte fallen weg."""
+    """-> (commands, subs, grouped). commands: eine Wortliste je einfachem Befehl (Anführungszeichen entfernt);
+    subs: Texte von $(...) und `...`; grouped: unquotierte Klammern, deren Shell-Kontext nicht aufgelöst wird.
+    Kommentare und Heredoc-Inhalte fallen weg."""
     commands, subs = [], []
+    grouped = False
     words, word, in_word = [], [], False
     pending = []                         # Heredocs, deren Inhalt nach der nächsten Zeile kommt
     n, i = len(text), 0
@@ -302,13 +309,15 @@ def tokenize(text):
             i = j
         elif c in ";&|()":
             end_command()
+            if c in "()":
+                grouped = True
             i += 1
         else:
             word.append(c)
             in_word = True
             i += 1
     end_command()
-    return commands, subs
+    return commands, subs, grouped
 
 
 def _step(base, raw):
@@ -400,7 +409,7 @@ def analyze(command, cwd, depth=0, adds=False):
     steht (dann kann der Commit Dateien enthalten, die jetzt noch in keinem Diff stehen)."""
     if depth > 5:
         raise ParseError("zu tief verschachtelt")
-    commands, subs = tokenize(command)
+    commands, subs, grouped = tokenize(command)
     cur = cwd
     for words in commands:
         info = classify(words)
@@ -411,16 +420,22 @@ def analyze(command, cwd, depth=0, adds=False):
         elif info[0] == "add":
             adds = True
         elif info[0] == "git":
+            if grouped:
+                raise UncertainContext("Shell-Kontext mit Klammern nicht eindeutig; git commit separat ausführen.")
             for d in info[1]:
                 cur = _step(cur, d)
             return cur, adds
         else:
             found = analyze(info[1], cur, depth + 1, adds)
             if found is not None:
+                if grouped:
+                    raise UncertainContext("Shell-Kontext mit Klammern nicht eindeutig; git commit separat ausführen.")
                 return found
     for text in subs:
         found = analyze(text, cur, depth + 1, adds)
         if found is not None:
+            if grouped:
+                raise UncertainContext("Shell-Kontext mit Klammern nicht eindeutig; git commit separat ausführen.")
             return found
     return None
 
@@ -494,6 +509,8 @@ def main():
         return 0
     try:
         found = analyze(command, start)
+    except UncertainContext as exc:
+        return fail(str(exc))
     except Exception as exc:
         trace(f"Befehl nicht zerlegbar ({exc}), Textsuche")
         found = (start, True) if COMMIT_RE.search(command) else None   # unklar: auch die neuen Dateien prüfen

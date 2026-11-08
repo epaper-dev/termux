@@ -119,7 +119,13 @@ for pkg in $hold; do
         *) continue ;;
     esac
     if ! printf '%s\n' "$held" | grep -qx "$pkg"; then
-        if apt-mark hold "$pkg" >> "$LOG" 2>&1; then note "apt: $pkg auf hold gesetzt (Upgrade würde unter proot brechen)"; fi
+        if apt-mark hold "$pkg" >> "$LOG" 2>&1; then
+            note "apt: $pkg auf hold gesetzt (Upgrade würde unter proot brechen)"
+        else
+            note "apt: hold für $pkg fehlgeschlagen - Upgrade übersprungen, siehe $LOG."
+            finish hold-fehlgeschlagen
+            exit 0
+        fi
     fi
 done
 

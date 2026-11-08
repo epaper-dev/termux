@@ -214,6 +214,10 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `bash`, mutation probes fail as expected).
 
 ### Fixed
+* The pre-commit review blocks commit commands with unquoted parentheses instead of using a directory changed
+  inside a subshell to review an unrelated repository. Run the commit separately when this happens.
+* If `apt-mark hold` fails for a protected package, the automatic upgrade is skipped and no success stamp is
+  written. The next session retries the hold before upgrading.
 * `tests/test_nofile_limit.sh` aborted in a session that runs with the lowered limit (a hard limit cannot be raised again).
   It now starts from `min(hard limit, 8192)`; lowering to 2048 is only observable above that (CI), everything else is.
 * Every hook and tool call took 4-9 s: Claude Code closes every file descriptor up to `RLIMIT_NOFILE` after each fork,
