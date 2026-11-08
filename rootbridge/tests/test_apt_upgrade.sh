@@ -42,7 +42,9 @@ cat > "$T/stubs/apt-mark" <<'EOF'
 echo "apt-mark $*" >> "$STUB_LOG"
 case "$1" in
     showhold) cat "$STUB_HOLDS" 2>/dev/null ;;
-    hold) echo "$2" >> "$STUB_HOLDS" ;;
+    hold)
+        [ "${STUB_HOLD_RC:-0}" = 0 ] || { echo "hold failed" >&2; exit "$STUB_HOLD_RC"; }
+        echo "$2" >> "$STUB_HOLDS" ;;
 esac
 exit 0
 EOF
@@ -223,6 +225,18 @@ check "dpkg --audit meldet etwas: Ende-Zeile mit Grund" 1 "$(grep -c '^=== .* En
 check "drei Fehlläufe: nie 'Ende: ok'"                0 "$(grep -c 'Ende: ok' "$T/apt.log")"
 
 # --- holds
+reset_state; mkconf "APT_UPGRADE=daily"
+run_apt STUB_HOLD_RC=1
+check "hold schlägt fehl: Exit 0 (Sitzung startet weiter)" 0 "$RC"
+check "hold schlägt fehl: kein upgrade"              0 "$(calls 'apt-get .* upgrade$')"
+check "hold schlägt fehl: kein Stempel"              nein "$(stamp_exists)"
+check "hold schlägt fehl: Warnung"                   1 "$(out_has 'hold für rust-coreutils fehlgeschlagen')"
+check "hold schlägt fehl: Ende-Zeile mit Grund"       1 "$(grep -c '^=== .* Ende: hold-fehlgeschlagen$' "$T/apt.log")"
+run_apt
+check "hold nach Fehler: erneuter Versuch"           1 "$(calls '^apt-mark hold rust-coreutils$')"
+check "hold nach Fehler: upgrade läuft"              1 "$(calls 'apt-get .* upgrade$')"
+check "hold nach Fehler: Stempel geschrieben"        ja "$(stamp_exists)"
+
 reset_state; mkconf "APT_UPGRADE=daily"
 run_apt "STUB_INSTALLED=rust-coreutils coreutils"
 check "nur installierte Pakete werden gehalten"       2 "$(calls '^apt-mark hold ')"
