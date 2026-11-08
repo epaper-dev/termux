@@ -44,6 +44,8 @@ jobs:
   set:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      release_tag: ${{ steps.publish.outputs.tag }}
     env:
       GH_TOKEN: ${{ github.token }}
       SIGNING: ${{ inputs.signing }}
@@ -82,9 +84,18 @@ jobs:
       # The APKs go to the release as single files (not zipped like the workflow artifact above), the report is the
       # release text. Only after a successful build and check, and only with the real key.
       - name: Publish a release
+        id: publish
         if: inputs.publish && inputs.signing == 'release-key'
         run: |
           tag="set-$(date -u +%Y%m%d)-${GITHUB_RUN_NUMBER}"
           gh release create "$tag" --target "$GITHUB_SHA" --latest --title "Termux E-Paper release set $tag" \
             --notes-file "$OUT_DIR/REPORT.md" "$OUT_DIR"/apks/*.apk "$OUT_DIR/sha256sums.txt"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$tag" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  rootbridge:
+    needs: set
+    if: needs.set.outputs.release_tag != ''
+    uses: ./.github/workflows/rootbridge_release.yml
+    with:
+      tag: ${{ needs.set.outputs.release_tag }}

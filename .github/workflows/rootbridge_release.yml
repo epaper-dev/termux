@@ -1,0 +1,54 @@
+name: Rootbridge release archive
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to attach rootbridge.tar.gz to'
+        required: true
+        type: string
+  # Releases created with GITHUB_TOKEN do not trigger release workflows. Release set calls this directly.
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  pull_request:
+    paths: ['rootbridge/**', '.github/workflows/rootbridge_release.yml', '.github/workflows/release_set.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rootbridge-archive-${{ inputs.tag || github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    steps:
+      - name: Check out the release tag (pull requests only test packaging)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ (inputs.tag || github.event.release.tag_name) && format('refs/tags/{0}', inputs.tag || github.event.release.tag_name) || github.sha }}
+
+      - name: Package rootbridge and checksum
+        run: |
+          git archive --format=tar.gz --output="$RUNNER_TEMP/rootbridge.tar.gz" HEAD rootbridge/
+          tar -tzf "$RUNNER_TEMP/rootbridge.tar.gz"
+          cd "$RUNNER_TEMP"
+          sha256sum rootbridge.tar.gz > rootbridge.tar.gz.sha256
+
+      - name: Attach archive to the existing release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload --repo "$GITHUB_REPOSITORY" --clobber -- "$RELEASE_TAG" \
+            "$RUNNER_TEMP/rootbridge.tar.gz" "$RUNNER_TEMP/rootbridge.tar.gz.sha256"
+          echo "Attached rootbridge.tar.gz and checksum to release $RELEASE_TAG." >> "$GITHUB_STEP_SUMMARY"

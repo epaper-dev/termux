@@ -95,6 +95,12 @@ Detalles: [rootbridge/README.es.md](rootbridge/README.es.md) ([English](rootbrid
 
 ### Actualizar
 
+Cada nueva versión también incluye **`rootbridge.tar.gz`** y **`rootbridge.tar.gz.sha256`**, creados a partir de su
+etiqueta. Para instalar sin clonar el repositorio, descarga ambos archivos en la misma carpeta y ejecuta en Termux
+`sha256sum -c rootbridge.tar.gz.sha256`, después `tar -xzf rootbridge.tar.gz` y `cd rootbridge && bash install.sh`.
+El archivo solo contiene `rootbridge/`. Para actualizar, extrae una versión más reciente en otra carpeta;
+`git pull` requiere el clon descrito arriba.
+
 Las nuevas versiones aparecen en **Releases**. Instala los nuevos APK sobre los antiguos; la clave es la misma, y se conservan los datos y la configuración. Para rootbridge, ejecuta `git pull` en la carpeta clonada `termux` y, a continuación, en su carpeta `rootbridge/`, vuelve a ejecutar `bash install.sh` (el instalador es idempotente).
 
 ## Estructura del repositorio
@@ -131,6 +137,7 @@ los workflows de la raíz del repositorio).
 | `Release set` | Compila la app y los seis complementos, los firma todos con **una** sola clave y comprueba que van juntos (mismo certificado, `sharedUserId` `com.termux`). Con `publish` y la clave de release, los APK aparecen como archivos sueltos en **Releases**. `ephemeral-key` (clave desechable) prueba el proceso y no publica nada. |
 | `Termux app unit tests` | Ejecuta `./gradlew test` de `termux-app/` (emulador de terminal, termux-shared, app) cuando cambia. |
 | `Rootbridge tests` | Ejecuta las pruebas y ShellCheck de `rootbridge/` cuando cambia. |
+| `Rootbridge release archive` | Adjunta `rootbridge.tar.gz` y su suma de comprobación desde la etiqueta de la versión. Lo llama `Release set` y también se ejecuta para versiones publicadas manualmente; permite añadir o sustituir el archivo indicando una etiqueta existente. Los pull requests prueban el empaquetado sin subir archivos. |
 
 Scripts: `.github/scripts/sync_upstream.sh`, `build_release_set.sh`, `make_signing_key.sh`.
 
