@@ -103,6 +103,12 @@ Details: [rootbridge/README.md](rootbridge/README.md) ([Deutsch](rootbridge/READ
 
 ### Update
 
+Each release set also includes **`rootbridge.tar.gz`** and **`rootbridge.tar.gz.sha256`**, packed from that release's
+tag. To install without cloning the repository, download both files from the release into the same folder and run
+`sha256sum -c rootbridge.tar.gz.sha256`, then `tar -xzf rootbridge.tar.gz` and `cd rootbridge && bash install.sh`
+in Termux. The archive contains only `rootbridge/`; Git updates require the clone described above, or download
+and extract a newer archive into a separate folder.
+
 New release sets appear under **Releases**. Install the new APKs over the old ones; the key is the same, so data and
 settings stay. For rootbridge run `git pull` in the `termux` folder you cloned, then `bash install.sh` in its
 `rootbridge/` folder again (the installer is idempotent).
@@ -141,6 +147,7 @@ workflows of the repository root).
 | `Release set` | Builds the app and the six plugins, signs them all with **one** key and checks that they belong together (same certificate, `sharedUserId` `com.termux`). With `publish` and the release key the APKs appear as single files under **Releases**. `ephemeral-key` (throwaway key) tests the pipeline and publishes nothing. |
 | `Termux app unit tests` | Runs `./gradlew test` of `termux-app/` (terminal emulator, termux-shared, app) when it changes. |
 | `Rootbridge tests` | Runs the tests and ShellCheck of `rootbridge/` when it changes. |
+| `Rootbridge release archive` | Attaches `rootbridge.tar.gz` and its checksum from the release tag. Called by `Release set`, also runs for manually published releases; start it with an existing tag to add or replace the archive. Pull requests test packaging without uploading. |
 
 Scripts: `.github/scripts/sync_upstream.sh`, `build_release_set.sh`, `make_signing_key.sh`.
 
