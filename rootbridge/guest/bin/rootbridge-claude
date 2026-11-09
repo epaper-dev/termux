@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # rootbridge-claude - guest entry point (started by `rootbridge start`):
 #   1. apt-get update + upgrade (rootbridge-apt, at most once every 6 h by default, never blocks the start)
-#   2. rootbridge-update: claude update, codex update and the Codex plugin (CLAUDE_UPDATE / CODEX_UPDATE, at most
+#   2. rootbridge-update: claude update and codex update (CLAUDE_UPDATE / CODEX_UPDATE, at most
 #      once every 6 h by default, never blocks the start). Starting Claude Code also updates Codex and the other way
 #      round (rootbridge-codex does the same): the two review each other.
 #   3. Claude Code with autonomous mode available
@@ -57,7 +57,7 @@ if command -v rootbridge-apt >/dev/null 2>&1; then
     rootbridge-apt || true
 fi
 
-# claude update, codex update, Codex plugin (CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
+# claude update, codex update (CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
 if command -v rootbridge-update >/dev/null 2>&1; then
     rootbridge-update || true
 fi

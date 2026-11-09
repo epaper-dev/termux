@@ -153,12 +153,11 @@ check "Gast Deinstallation: Hook-Skript weg"               nein "$(has "$S/usr/l
 
 # =========================================================================== 2. rootbridge-update
 UB="$T/ubin"; mkdir -p "$UB"
-for c in bash sed date head tail flock mkdir dirname cat tr sleep env rm tee; do
+for c in bash sed date head tail flock mkdir dirname cat tr sleep env rm; do
     r="$(command -v "$c")" && ln -sf "$r" "$UB/$c"
 done
 cat > "$UB/timeout" <<'EOF'
 #!/bin/bash
-[ -z "${STUB_TIMEOUT_LOG:-}" ] || echo "timeout $*" >> "$STUB_TIMEOUT_LOG"
 shift
 exec "$@"
 EOF
@@ -166,14 +165,9 @@ chmod +x "$UB/timeout"
 cat > "$UB/claude" <<'EOF'
 #!/bin/bash
 echo "claude $*" >> "$STUB_LOG"
-case "$1 $2" in
-    "plugin marketplace") [ -z "${STUB_PLUGIN_FAIL:-}" ] || exit 1
-        exit "${STUB_MARKETPLACE_RC:-0}" ;;
-    "plugin update")
-        [ -z "${STUB_PLUGIN_ENV_LOG:-}" ] || printf 'pwd=%s hard=%s args=%s\n' "$PWD" "$(ulimit -Hn)" "$*" >> "$STUB_PLUGIN_ENV_LOG"
-        [ -z "${STUB_PLUGIN_CURRENT:-}" ] || echo "codex is already at the latest version"
-        exit "${STUB_PLUGIN_RC:-0}" ;;
-    "update ") [ -z "${STUB_CLAUDE_FAIL:-}" ] || exit 1 ;;
+case "$*" in
+    update) [ -z "${STUB_CLAUDE_FAIL:-}" ] || exit 1 ;;
+    *) exit 99 ;;
 esac
 exit 0
 EOF
@@ -186,10 +180,10 @@ exit 0
 EOF
 chmod +x "$UB/claude" "$UB/codex"
 USTATE="$T/ustate"; UCONF="$T/u.conf"; ULOG="$T/u.log"
-mkdir -p "$T/plugin-home"
+mkdir -p "$T/update-home"
 ureset() { rm -rf "$USTATE"; : > "$ULOG"; printf '%s\n' "$@" > "$UCONF"; }
 urun() {   # urun [VAR=value ...]: one run of the real rootbridge-update with the stubs; output in $T/u.out
-    env -i HOME="$T/plugin-home" PATH="$UB" ROOTBRIDGE_UPDATE_KEEP_PATH=1 ROOTBRIDGE_CONF="$UCONF" ROOTBRIDGE_STATE_DIR="$USTATE" \
+    env -i HOME="$T/update-home" PATH="$UB" ROOTBRIDGE_UPDATE_KEEP_PATH=1 ROOTBRIDGE_CONF="$UCONF" ROOTBRIDGE_STATE_DIR="$USTATE" \
         ROOTBRIDGE_CLAUDE_BIN="$UB/claude" ROOTBRIDGE_CODEX_BIN="$UB/codex" STUB_LOG="$ULOG" "$@" \
         "$(command -v bash)" "$UPDATE" > "$T/u.out" 2>&1
     URC=$?
@@ -202,75 +196,62 @@ urun
 check "update: Exit 0"                                     0 "$URC"
 check "update: claude update läuft"                        1 "$(runs 'claude update$')"
 check "update: codex update läuft"                         1 "$(runs 'codex update$')"
-check "update: Plugin-Marketplace wird aktualisiert"       1 "$(runs 'claude plugin marketplace update openai-codex$')"
-check "update: Plugin wird aktualisiert"                   1 "$(runs 'claude plugin update codex@openai-codex --scope user$')"
-check "update: Reihenfolge claude, codex, Marketplace, Plugin" "claude update|codex update|claude plugin marketplace update openai-codex|claude plugin update codex@openai-codex --scope user" "$(paste -sd'|' "$ULOG")"
-check "update: drei Stempel"                               "claude codex-plugin codex " "$(stamps)"
+check "update: keine Plugin-Befehle beim Start"             0 "$(runs 'claude plugin ')"
+check "update: Reihenfolge claude, codex"                   "claude update|codex update" "$(paste -sd'|' "$ULOG")"
+check "update: zwei Stempel"                               "claude codex " "$(stamps)"
+check "update: kein Plugin-Update-Log"                      nein "$(has "$USTATE/codex-plugin-update.log")"
 : > "$ULOG"; urun
 check "update zweiter Lauf: nichts läuft"                  0 "$(wc -l < "$ULOG" | tr -d ' ')"
-check "update zweiter Lauf: drei Hinweise 'übersprungen'" 3 "$(count "$T/u.out" 'übersprungen')"
+check "update zweiter Lauf: zwei Hinweise 'übersprungen'"  2 "$(count "$T/u.out" 'übersprungen')"
 
-# A successful no-op is a successful check too, with its own six-hour window.
-ureset ""; urun STUB_PLUGIN_CURRENT=1
-check "Plugin bereits aktuell: Erfolgsstempel"              "claude codex-plugin codex " "$(stamps)"
-check "Plugin bereits aktuell: echte CLI-Ausgabe im Log"    1 "$(count "$USTATE/codex-plugin-update.log" 'already at the latest version')"
-for age in 21540 21660; do
-    printf '%s\n' "$(( $(date +%s) - age ))" > "$USTATE/codex-plugin-update-last-success"
-    : > "$ULOG"; urun
-    expected=0; [ "$age" -lt 21600 ] || expected=1
-    check "Plugin nach $age Sekunden: Sechs-Stunden-Fenster" "$expected" "$(runs 'claude plugin update codex@openai-codex --scope user$')"
-    check "Plugin nach $age Sekunden: andere Updates bleiben übersprungen" "0 0" "$(runs 'claude update$') $(runs 'codex update$')"
+# Each CLI keeps its own six-hour window.
+for tool in claude codex; do
+    for age in 21540 21660; do
+        ureset ""; urun
+        printf '%s\n' "$(( $(date +%s) - age ))" > "$USTATE/$tool-update-last-success"
+        : > "$ULOG"; urun
+        expected=0; [ "$age" -lt 21600 ] || expected=1
+        check "$tool nach $age Sekunden: Sechs-Stunden-Fenster" "$expected" "$(runs "$tool update$")"
+        check "$tool nach $age Sekunden: nur fälliges Update" "$expected" "$(wc -l < "$ULOG" | tr -d ' ')"
+    done
 done
 
-# Plugin management uses the user's home and inherits the fd limit, independently of NOFILE_LIMIT.
-ureset "NOFILE_LIMIT=64"
-urun "STUB_PLUGIN_ENV_LOG=$T/plugin-env.log"
-check "Plugin: Benutzer-Home, unverändertes fd-Limit und Benutzer-Scope" \
-    "pwd=$T/plugin-home hard=$(ulimit -Hn) args=plugin update codex@openai-codex --scope user" "$(cat "$T/plugin-env.log")"
-: > "$ULOG"; urun
-check "Plugin: Home-Aufruf wird im 6h-Fenster übersprungen" 0 "$(runs 'claude plugin update ')"
+# Existing installations may retain a plugin stamp; it must not trigger plugin management even in always mode.
+for age in 0 21660; do
+    ureset "CLAUDE_UPDATE=always" "CODEX_UPDATE=always"
+    mkdir -p "$USTATE"
+    old_stamp="$(( $(date +%s) - age ))"
+    printf '%s\n' "$old_stamp" > "$USTATE/codex-plugin-update-last-success"
+    urun
+    check "Alter Plugin-Stempel ($age Sekunden): nur CLI-Updates" "claude update|codex update" "$(paste -sd'|' "$ULOG")"
+    check "Alter Plugin-Stempel ($age Sekunden): unverändert" "$old_stamp" "$(cat "$USTATE/codex-plugin-update-last-success")"
+    check "Alter Plugin-Stempel ($age Sekunden): kein Plugin-Log" nein "$(has "$USTATE/codex-plugin-update.log")"
+done
 
 ureset "CODEX_UPDATE=off"; urun
 check "update CODEX_UPDATE=off: nur claude update"         "claude update" "$(paste -sd'|' "$ULOG")"
 ureset "CLAUDE_UPDATE=off" "CODEX_UPDATE=always"; urun
-check "update CLAUDE_UPDATE=off: codex und Plugin, kein claude update" "codex update|claude plugin marketplace update openai-codex|claude plugin update codex@openai-codex --scope user" "$(paste -sd'|' "$ULOG")"
+check "update CLAUDE_UPDATE=off: nur codex update"           "codex update" "$(paste -sd'|' "$ULOG")"
 : > "$ULOG"; urun
-check "update CODEX_UPDATE=always: läuft jedes Mal"        3 "$(wc -l < "$ULOG" | tr -d ' ')"
+check "update CODEX_UPDATE=always: läuft jedes Mal"        1 "$(wc -l < "$ULOG" | tr -d ' ')"
 ureset "TOOL_CODEX=off"; urun
 check "update TOOL_CODEX=off: nur claude update, kein Plugin" "claude update" "$(paste -sd'|' "$ULOG")"
 ureset "TOOL_CLAUDE=off"; urun
 check "update TOOL_CLAUDE=off: nur codex update, kein Plugin" "codex update" "$(paste -sd'|' "$ULOG")"
 ureset "CODEX_UPDATE=3h"; urun
-check "update CODEX_UPDATE=3h: läuft"                      4 "$(count "$ULOG" '^claude\|^codex')"
+check "update CODEX_UPDATE=3h: läuft"                      2 "$(count "$ULOG" '^claude\|^codex')"
 ureset "CODEX_UPDATE=bogus"; urun
 check "update CODEX_UPDATE=bogus: Hinweis, claude läuft"   "claude update" "$(paste -sd'|' "$ULOG")"
-check "update CODEX_UPDATE=bogus: Meldung"                 2 "$(count "$T/u.out" 'unbekannter Wert CODEX_UPDATE=bogus')"
+check "update CODEX_UPDATE=bogus: Meldung"                 1 "$(count "$T/u.out" 'unbekannter Wert CODEX_UPDATE=bogus')"
 check "update CODEX_UPDATE=bogus: Exit 0"                  0 "$URC"
 
 ureset ""; urun STUB_CODEX_FAIL=1
-check "update codex schlägt fehl: Exit 0, Rest läuft"      "0 4" "$URC $(wc -l < "$ULOG" | tr -d ' ')"
-check "update codex schlägt fehl: kein Stempel für codex"  "claude codex-plugin " "$(stamps)"
+check "update codex schlägt fehl: Exit 0, Rest läuft"      "0 2" "$URC $(wc -l < "$ULOG" | tr -d ' ')"
+check "update codex schlägt fehl: kein Stempel für codex"  "claude " "$(stamps)"
 check "update codex schlägt fehl: Meldung"                 1 "$(count "$T/u.out" 'Update fehlgeschlagen')"
-ureset ""; urun STUB_PLUGIN_FAIL=1
-check "update Plugin schlägt fehl: Exit 0"                 0 "$URC"
-check "update Plugin schlägt fehl: kein Stempel dafür"     "claude codex " "$(stamps)"
-check "Marketplace-Fehler: Plugin-Update nicht gestartet"  0 "$(runs 'claude plugin update ')"
-check "Marketplace-Fehler: Schritt und Exit-Code"           1 "$(count "$T/u.out" 'marketplace-Update fehlgeschlagen (Exit 1)')"
-ureset ""; urun STUB_PLUGIN_RC=2
-check "Plugin-Fehler: Exit 0, kein Erfolgsstempel"            "0 claude codex " "$URC $(stamps)"
-check "Plugin-Fehler: Schritt und Exit-Code"                 1 "$(count "$T/u.out" 'plugin-Update fehlgeschlagen (Exit 2)')"
-for stage in MARKETPLACE PLUGIN; do
-    ureset ""; urun "STUB_${stage}_RC=124"
-    check "Timeout $stage: kein Erfolgsstempel"              "claude codex " "$(stamps)"
-    check "Timeout $stage: verständliche Meldung"            1 "$(count "$T/u.out" '120 Sekunden abgebrochen (Timeout, Exit 124)')"
-    : > "$ULOG"; urun
-    check "Timeout $stage: nächster Start versucht erneut"   1 "$(runs 'claude plugin update codex@openai-codex --scope user$')"
-done
-ureset ""; urun "STUB_TIMEOUT_LOG=$T/timeouts.log"
-check "Plugin-Updates: beide mit 120 Sekunden"               2 "$(count "$T/timeouts.log" '^timeout 120 .*claude plugin ')"
 ureset ""; urun STUB_CLAUDE_FAIL=1
 check "update claude schlägt fehl: codex läuft trotzdem"   1 "$(runs 'codex update$')"
-check "update claude schlägt fehl: kein claude-Stempel"    "codex-plugin codex " "$(stamps)"
+check "update claude schlägt fehl: kein claude-Stempel"    "codex " "$(stamps)"
 
 mv "$UB/codex" "$UB/codex.off"
 ureset ""; urun
@@ -294,7 +275,7 @@ check "update gleichzeitig: claude update nur einmal"      1 "$(runs 'claude upd
 check "update gleichzeitig: der zweite wartet"             1 "$(count "$T/u2.out" 'Warte auf ein laufendes Update')"
 
 # the functions stay cut-out-able for tests (the main part does not run when sourced)
-check "update: Funktionen ohne Hauptteil ladbar"           ok "$(bash -c '. "$1"; type update_due update_claude update_codex update_plugin >/dev/null 2>&1 && echo ok' _ "$UPDATE")"
+check "update: Funktionen ohne Hauptteil ladbar"           ok "$(bash -c '. "$1"; type update_due update_claude update_codex >/dev/null 2>&1 && echo ok' _ "$UPDATE")"
 
 # An expired lock wait must not start a second updater without the lock.
 mv "$UB/flock" "$UB/flock.real"

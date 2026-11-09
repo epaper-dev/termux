@@ -223,15 +223,13 @@ wieder an.
 * **Anmeldung.** `rootbridge codex-login` führt `codex login` mit der Browser-Übergabe aus (`--device-auth`, wenn es keinen
   Browser gibt). `rootbridge status` zeigt, ob Codex, seine Anmeldung, das Plugin und der Hook da sind.
 * **Beide bleiben aktuell.** Der Start eines der beiden Fenster ruft `rootbridge-apt` und danach `rootbridge-update` auf:
-  `claude update`, `codex update` und das Plugin-Update, jeweils höchstens alle 6 h nach einem Erfolg (`CLAUDE_UPDATE` /
+  `claude update` und `codex update`, jeweils höchstens alle 6 h nach einem Erfolg (`CLAUDE_UPDATE` /
   `CODEX_UPDATE` = `6h|<N>h|daily|always|off`, Stempel in `/var/lib/termux-rootbridge/`; `--codex-update M`,
   `--no-codex-update`). Starten zwei Sitzungen gleichzeitig, kommen sie nacheinander dran (Sperre), und ein fehlgeschlagener
-  Schritt hält den Start nie auf. `nodejs` und `git` sind `apt`-Pakete, `rootbridge-apt` hält sie also aktuell. Ein
-  Marketplace- und Plugin-Update haben jeweils 120 Sekunden Zeit; Fehler melden den Schritt und Exit-Code,
-  Zeitüberschreitungen werden ausdrücklich genannt. Die vollständige Ausgabe des letzten Versuchs steht im Gast unter
-  `/var/lib/termux-rootbridge/codex-plugin-update.log`. Auch „bereits aktuell“ zählt als erfolgreicher Check für das
-  6-Stunden-Fenster. Kann der Erfolgszeitpunkt nicht gespeichert werden, erscheint eine Warnung.
-  Ein Plugin-Update gilt nach einem Neustart von Claude Code.
+  Schritt hält den Start nie auf. `nodejs` und `git` sind `apt`-Pakete, `rootbridge-apt` hält sie also aktuell.
+* **Plugin manuell aktualisieren.** Beim Start gibt es kein automatisches Marketplace- oder Plugin-Update. Führe bei Bedarf
+  im Ubuntu-Gast zuerst `/root/.local/bin/claude plugin marketplace update openai-codex` und danach
+  `/root/.local/bin/claude plugin update codex@openai-codex` aus. Starte Claude Code anschließend neu.
 * **Pre-Commit-Review.** Mit beiden Programmen lässt ein Hook in den Managed Settings (`codex-precommit-review.py`, Timeout
   900 s, `onFailure: "block"`) Codex jeden `git commit` von Claude Code prüfen. Eine erste Zeile `ALLOW` lässt den Commit
   durch; `BLOCK` oder keine klare Antwort hält ihn an und gibt Codex' Befunde an Claude, das sie behebt und erneut committet.

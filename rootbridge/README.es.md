@@ -201,11 +201,13 @@ se guarda en la configuración de Termux (`TOOL_CLAUDE` / `TOOL_CODEX`) y la reu
 * **Inicio de sesión.** `rootbridge codex-login` ejecuta `codex login` con el traspaso al navegador (`--device-auth` si no
   hay navegador). `rootbridge status` muestra si Codex, su inicio de sesión, el plugin y el hook están en su sitio.
 * **Ambos se mantienen al día.** Al arrancar cualquiera de las dos ventanas se ejecuta `rootbridge-apt` y luego
-  `rootbridge-update`: `claude update`, `codex update` y la actualización del plugin, cada uno como mucho una vez cada 6 h
+  `rootbridge-update`: `claude update` y `codex update`, cada uno como mucho una vez cada 6 h
   tras un éxito (`CLAUDE_UPDATE` / `CODEX_UPDATE` = `6h|<N>h|daily|always|off`, marcas en `/var/lib/termux-rootbridge/`;
   `--codex-update M`, `--no-codex-update`). Si dos sesiones arrancan a la vez, esperan su turno (bloqueo), y un paso fallido
-  nunca detiene el arranque. `nodejs` y `git` son paquetes de `apt`, así que `rootbridge-apt` los mantiene al día. Una
-  actualización del plugin se aplica tras reiniciar Claude Code.
+  nunca detiene el arranque. `nodejs` y `git` son paquetes de `apt`, así que `rootbridge-apt` los mantiene al día.
+* **Actualizar el plugin manualmente.** El arranque no actualiza automáticamente el marketplace ni el plugin. Cuando sea
+  necesario, ejecuta `/root/.local/bin/claude plugin marketplace update openai-codex` y después
+  `/root/.local/bin/claude plugin update codex@openai-codex` en Ubuntu y reinicia Claude Code.
 * **Revisión antes del commit.** Con ambas herramientas, un hook de los Managed Settings (`codex-precommit-review.py`,
   tiempo límite 900 s, `onFailure: "block"`) hace que Codex revise cada `git commit` de Claude Code. Una primera línea `ALLOW`
   deja pasar el commit; `BLOCK`, o ninguna respuesta clara, lo detiene y entrega los hallazgos de Codex a Claude, que los

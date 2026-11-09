@@ -347,7 +347,7 @@ AUTOSTART_DELAY=3
 # REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); default android, change with install.sh --remote-name
 # APT_UPGRADE=6h        # apt-get update + upgrade in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
 # CLAUDE_UPDATE=6h      # claude update in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --claude-update / --no-claude-update
-# CODEX_UPDATE=6h       # codex update (and the Codex plugin) at session start: same values; set with install.sh --codex-update / --no-codex-update
+# CODEX_UPDATE=6h       # codex update at session start: same values; set with install.sh --codex-update / --no-codex-update
 # TOOL_CLAUDE=on        # on | off: Claude Code is part of this installation; set with install.sh --claude / --no-claude
 # TOOL_CODEX=on         # on | off: Codex is part of this installation; set with install.sh --codex / --no-codex
 EOF
@@ -703,7 +703,7 @@ if [ "$DO_GUEST" = 1 ] && [ "$USE_CODEX" = yes ]; then
     say "Codex: einmal anmelden mit   rootbridge codex-login   (der Browser öffnet sich)."
     if [ "$USE_CLAUDE" = yes ]; then
         say "Bis dahin blockiert der Pre-Commit-Review jeden Commit von Claude Code (Notausgang: rootbridge codex-off)."
-        say "Beim Start eines der beiden Fenster werden beide aktualisiert (claude update, codex update, Plugin)."
+        say "Beim Start eines der beiden Fenster werden beide aktualisiert (claude update, codex update)."
     else
         say "Beim Start von Codex wird Codex aktualisiert (codex update)."
     fi
