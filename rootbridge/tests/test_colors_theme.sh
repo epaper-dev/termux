@@ -3,8 +3,8 @@
 # installed and that are still unchanged, leaves everything else alone, reload at every start and the Claude Code theme (custom:epaper, "Auto epaper").
 #   1. guest installer: --theme writes "theme" into ~/.claude/settings.json (staging root)
 #   2. install.sh with a fake HOME/PREFIX: no colour file, former files, reload, --no-colors, --theme hand-over
-#   3. the block in ~/.bashrc: reload in every new shell, nothing else (no autostart); an old
-#      autostart block is replaced when install.sh runs again
+#   3. the block in ~/.bashrc: reload in every new shell, no autostart; ubuntu / claude / codex shortcuts;
+#      an old autostart block and ubuntu alias are replaced when install.sh runs again
 #   4. Termux:Widget shortcuts reload first
 # Nothing real is touched: fake HOME/PREFIX, `proot-distro`, `termux-reload-settings` and
 # `rootbridge` are stubs that only write a log line (no pkill/tmux/clipboard, --no-migrate).
@@ -286,7 +286,16 @@ check "In tmux (TMUX gesetzt): weder Reload noch Start"     "" "$(run_bashrc "$H
 : > "$RB_LOG"
 env -u TMUX HOME="$H" PATH="$T/stubs:$PATH" bash -c 'true' > /dev/null 2>&1
 check "Nicht interaktiv: nichts"                            "" "$(tr '\n' '|' < "$RB_LOG")"
-check "Alias ubuntu bleibt"                                 "alias ubuntu='rootbridge attach'" "$(env -u TMUX HOME="$H" PATH="$T/stubs:$PATH" bash -i -c 'alias ubuntu' 2>/dev/null)"
+run_shortcut() {  # run_shortcut <home> <command>: execute a shortcut from the installed .bashrc
+    local home="$1" cmd="$2"
+    : > "$RB_LOG"
+    env -u TMUX HOME="$home" PATH="$T/stubs:$PATH" bash -i -c "$cmd" > /dev/null 2>&1
+    tr '\n' '|' < "$RB_LOG"
+}
+for entry in "ubuntu:shell" "claude:attach claude" "codex:attach codex" \
+             "claude -n:attach claude -n" "claude --new:attach claude --new"; do
+    check "Kurzbefehl ${entry%%:*}: richtiger Aufruf" "reload|rootbridge ${entry#*:}|" "$(run_shortcut "$H" "${entry%%:*}")"
+done
 
 # an old autostart block (earlier version) is replaced, the user's own lines stay
 H6="$T/home6"; mkdir -p "$H6"
@@ -308,6 +317,12 @@ check "Altes .bashrc: kein 'rootbridge start' mehr"         0 "$(grep -c 'rootbr
 check "Altes .bashrc: Block genau einmal"                   1 "$(grep -c '^# >>> termux-rootbridge >>>$' "$H6/.bashrc")"
 check "Altes .bashrc: eigene Zeilen bleiben"                2 "$(grep -c '^# my own line$\|^export MYVAR=1$' "$H6/.bashrc")"
 check "Altes .bashrc: danach nur Reload"                    "reload|" "$(run_bashrc "$H6")"
+check "Altes .bashrc: ubuntu öffnet jetzt die Shell"        "reload|rootbridge shell|" "$(run_shortcut "$H6" ubuntu)"
+check "Altes .bashrc: claude öffnet Claude Code"            "reload|rootbridge attach claude|" "$(run_shortcut "$H6" claude)"
+check "Altes .bashrc: codex öffnet Codex"                    "reload|rootbridge attach codex|" "$(run_shortcut "$H6" codex)"
+before="$(cksum < "$H6/.bashrc")"
+rinstall "$H6" --no-guest
+check "Neue Kurzbefehle: zweiter Installationslauf unverändert" "$before" "$(cksum < "$H6/.bashrc")"
 
 # ----------------------------------------------------------- 4. widgets
 for w in "claude:rootbridge attach" "ubuntu:rootbridge shell"; do

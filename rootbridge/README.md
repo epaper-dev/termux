@@ -94,8 +94,10 @@ yet. `--model NAME` always writes the given model, `--model none` leaves it alon
 stays). Before, the folder was never created, so a fresh installation started Claude Code in `/root`. An old default
 `WORKDIR=/root/workspace` is moved to `/root/work` if the folder `/root/workspace` does not exist.
 
-Then start Claude Code with the **Claude** widget, or type `ubuntu` (alias for `rootbridge attach`) in a Termux
-shell. The first start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +
+Then start Claude Code with the **Claude** widget, or type `claude` (alias for `rootbridge attach claude`) in a Termux
+shell. `codex` opens the Codex session; `ubuntu` opens a plain Ubuntu shell. After installation, run `source ~/.bashrc`
+or open a new Termux window to load the shortcuts.
+The first Claude start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +
 `upgrade`, at most once every 6 hours, see below), runs `claude update` (likewise) and starts Claude Code; later
 starts just attach to it.
 **Ordinary Termux windows stay plain shells** (with the colours loaded), nothing starts by itself. With Termux:Boot the
@@ -227,9 +229,11 @@ Termux config (`TOOL_CLAUDE` / `TOOL_CODEX`) and reused by every later install; 
 | Command (Termux) | What it does |
 |---|---|
 | `rootbridge start` | daemon + session; `--no-attach` creates it in the background (Termux:Boot runs that after a reboot) |
-| `rootbridge attach` / alias `ubuntu` | attach to the Claude Code session |
-| `rootbridge attach codex` | attach to the Codex window (widget **Codex**; the session is created if it is missing) |
-| `rootbridge shell` | plain Ubuntu shell in this terminal (starts the daemon for `androidsu`, but no Claude Code and no tmux session; widget "Ubuntu") |
+| `claude` / `rootbridge attach claude` | open the Claude Code session or attach to the running session (widget **Claude**) |
+| `claude -n` / `claude --new` | start a new Claude conversation in a separate window |
+| `codex` / `rootbridge attach codex` | attach to the Codex window (widget **Codex**; the session is created if it is missing) |
+| `ubuntu` / `rootbridge shell` | plain Ubuntu shell in this terminal (starts the daemon for `androidsu`, but no Claude Code and no tmux session; widget "Ubuntu") |
+| `rootbridge attach` | open the default tool: Claude Code, or Codex on an installation without Claude Code |
 | `rootbridge status` | daemon, session, guest install, last audit lines |
 | `rootbridge login <server>` | `claude mcp login <server>` with browser hand-off |
 | `rootbridge codex-login` | `codex login` with browser hand-off (`--device-auth` without a browser) |

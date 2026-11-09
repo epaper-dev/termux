@@ -50,9 +50,9 @@
 #      and follows the phone; ~/.termux/colors-light.properties, colors-dark.properties and colors.properties
 #      are optional overrides of yours). Only colour files that earlier versions installed, still exactly as
 #      installed, are removed. --no-colors leaves those and the Claude Code theme alone. A ~/.bashrc block
-#      (alias `ubuntu`, reloads the Termux settings
+#      (aliases `ubuntu` for the guest shell, `claude` / `codex` for the tool sessions; reloads the Termux settings
 #      in every new shell; ordinary Termux windows stay plain shells, Claude Code starts
-#      via the widgets, `ubuntu` or `rootbridge attach`), the Termux:Widget shortcuts
+#      via the widgets, `claude`, `codex` or `rootbridge attach`), the Termux:Widget shortcuts
 #      "Claude" and "Ubuntu" with the widget icon (an icon you chose stays; icons of the
 #      earlier names "Claude Code" / "Ubuntu Shell" / "Claude >_" / "Ubuntu >_" are carried
 #      over; --no-widgets skips all this), optional boot script, an extra keys row in
@@ -516,10 +516,12 @@ else
 fi
 TMP_RC="$(mktemp)"
 cat > "$TMP_RC" <<'EOF'
-alias ubuntu='rootbridge attach'
+alias ubuntu='rootbridge shell'
+alias claude='rootbridge attach claude'
+alias codex='rootbridge attach codex'
 if [[ $- == *i* ]] && [ -z "${TMUX:-}" ]; then
     # reload the Termux settings in every new Termux shell (Claude Code is NOT started here:
-    # use the widget "Claude", `ubuntu` or `rootbridge attach`)
+    # use the widgets, `claude`, `codex` or `rootbridge attach`)
     if command -v termux-reload-settings >/dev/null 2>&1; then termux-reload-settings; fi
 fi
 EOF
@@ -683,13 +685,14 @@ fi
 say
 say "Fertig. Weiter:"
 say "  rootbridge status        # Zustand prüfen"
+say "  source ~/.bashrc         # Kurzbefehle in dieser Termux-Shell laden (oder ein neues Fenster öffnen)"
+say "  ubuntu                   # Ubuntu-Shell öffnen (auch Widget 'Ubuntu')"
 if [ "$USE_CLAUDE" = yes ]; then
-    say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude')"
-else
-    say "  ubuntu                   # an die Codex-Sitzung anhängen (legt sie an; auch Widget 'Codex')"
+    say "  claude                   # Claude-Code-Sitzung öffnen (legt sie an; auch Widget 'Claude')"
+    say "  claude -n                # neue Claude-Unterhaltung in einem eigenen Fenster starten"
 fi
-if [ "$USE_CODEX" = yes ] && [ "$USE_CLAUDE" = yes ]; then
-    say "  rootbridge attach codex  # an das Codex-Fenster anhängen (auch Widget 'Codex')"
+if [ "$USE_CODEX" = yes ]; then
+    say "  codex                    # Codex-Sitzung öffnen (legt sie an; auch Widget 'Codex')"
 fi
 say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
 say "Normale Termux-Fenster bleiben reine Shells; Claude Code und Codex starten nicht mehr automatisch."

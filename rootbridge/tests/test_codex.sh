@@ -511,7 +511,9 @@ check "install.sh: Codex-Widget hat das Standard-Icon"     0 "$(cmp -s "$ROOT/te
 check "install.sh: gibt --claude yes --codex yes an den Gast" 1 "$(guestargs | grep -c -- '--claude yes --codex yes')"
 check "install.sh: Gast hat beide Hooks"                   "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$T/iguest")"
 check "install.sh: Abschlussmeldung nennt rootbridge codex-login" 1 "$(count "$T/install.log" 'rootbridge codex-login')"
-check "install.sh: Abschlussmeldung nennt das Codex-Widget" 1 "$(count "$T/install.log" "attach codex")"
+for entry in "ubuntu:Ubuntu-Shell" "claude:Claude-Code-Sitzung" "codex:Codex-Sitzung"; do
+    check "install.sh: Abschlussmeldung erklärt ${entry%%:*}" 1 "$(count "$T/install.log" "^  ${entry%%:*} .*${entry#*:}")"
+done
 check "install.sh: ohne Option nichts in der Termux-Konfig gespeichert" "" "$(iget TOOL_CODEX)$(iget TOOL_CLAUDE)"
 
 irun --no-codex
