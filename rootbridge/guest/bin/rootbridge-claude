@@ -77,7 +77,31 @@ after_claude() {
     exec bash -l
 }
 
-read -r -a extra <<< "$(conf_get CLAUDE_ARGS || true)"
-[ "${1:-}" = --continue ] && extra+=(--continue)
+prepare_claude_args() {
+    local arg new=0 skip_resume=0
+    extra=()
+    case "${1:-}" in
+        --new|-n) new=1 ;;
+        --continue|-c|"") ;;
+        *) echo "rootbridge-claude: unbekannte Option: $1" >&2; return 2 ;;
+    esac
+    local configured=()
+    read -r -a configured <<< "$(conf_get CLAUDE_ARGS || true)"
+    for arg in "${configured[@]}"; do
+        if [ "$new" = 1 ]; then
+            if [ "$skip_resume" = 1 ]; then
+                skip_resume=0
+                [[ "$arg" = -* ]] || continue
+            fi
+            case "$arg" in
+                --continue|-c|--resume=*|--continue=*) continue ;;
+                --resume|-r) skip_resume=1; continue ;;
+            esac
+        fi
+        extra+=("$arg")
+    done
+    case "${1:-}" in --continue|-c) extra+=(--continue) ;; esac
+}
+prepare_claude_args "${1:-}" || exit $?
 ( limit_nofile; exec "$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}" )
 after_claude "$?"

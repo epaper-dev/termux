@@ -72,7 +72,12 @@ update_due() {
 }
 
 # stamp_success <stamp file>: remember the time of a successful step
-stamp_success() { { mkdir -p "$(dirname "$1")" && date +%s > "$1"; } 2>/dev/null || true; }
+stamp_success() {
+    if ! { mkdir -p "$(dirname "$1")" && date +%s > "$1"; } 2>/dev/null; then
+        echo "WARNUNG: Update-Zeitpunkt konnte nicht gespeichert werden: $1 (nächster Start prüft erneut)." >&2
+        return 1
+    fi
+}
 
 state_dir() { printf '%s' "${ROOTBRIDGE_STATE_DIR:-/var/lib/termux-rootbridge}"; }
 
@@ -105,18 +110,43 @@ update_codex() {
 }
 
 # The Codex plugin of Claude Code (openai/codex-plugin-cc): refresh its marketplace, then update the plugin.
-# Only with both tools. Takes effect after a restart of Claude Code. Never stops the start.
+# Only with both tools. Each step gets 300 seconds (proot can be slow).
+# Takes effect after a restart of Claude Code. Never stops the start.
 update_plugin() {
     local stamp
     stamp="$(state_dir)/codex-plugin-update-last-success"
     update_due "codex plugin" CODEX_UPDATE "$stamp" || return 0
     echo "== Codex-Plugin für Claude Code"
-    if ( limit_nofile
-         timeout 120 "$claude_bin" plugin marketplace update openai-codex &&
-         timeout 120 "$claude_bin" plugin update codex@openai-codex ); then
-        stamp_success "$stamp"
-    else
-        echo "Update des Plugins fehlgeschlagen oder abgebrochen - das vorhandene bleibt."
+    local stage rc log
+    log="$(state_dir)/codex-plugin-update.log"
+    if ! { mkdir -p "$(dirname "$log")" && : > "$log"; } 2>/dev/null; then
+        echo "WARNUNG: Plugin-Update-Log nicht schreibbar: $log" >&2
+        log=/dev/null
+    fi
+    for stage in marketplace plugin; do
+        echo "Plugin-Update: $stage (Limit 300 Sekunden)" | tee -a "$log"
+        (
+            limit_nofile
+            if [ "$stage" = marketplace ]; then
+                exec timeout 300 "$claude_bin" plugin marketplace update openai-codex
+            else
+                exec timeout 300 "$claude_bin" plugin update codex@openai-codex
+            fi
+        ) 2>&1 | tee -a "$log"
+        rc=${PIPESTATUS[0]}
+        echo "Plugin-Update: $stage beendet mit Exit $rc" | tee -a "$log"
+        if [ "$rc" != 0 ]; then
+            if [ "$rc" = 124 ]; then
+                echo "Codex-Plugin: $stage-Update nach 300 Sekunden abgebrochen (Timeout, Exit $rc)."
+            else
+                echo "Codex-Plugin: $stage-Update fehlgeschlagen (Exit $rc); siehe Ausgabe oben."
+            fi
+            echo "Kein erfolgreicher Plugin-Update-Lauf vermerkt; nächster Versuch beim nächsten Start. Log: $log"
+            return 0
+        fi
+    done
+    if stamp_success "$stamp"; then
+        echo "Codex-Plugin erfolgreich geprüft (auch wenn bereits aktuell); Zeitfenster: CODEX_UPDATE=$(conf_get CODEX_UPDATE || echo 6h)."
     fi
     return 0
 }
@@ -140,7 +170,13 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     lock="$(state_dir)/update.lock"
     if command -v flock >/dev/null 2>&1 && mkdir -p "$(state_dir)" 2>/dev/null && ( : >> "$lock" ) 2>/dev/null; then
         exec 9>> "$lock"
-        flock -n 9 || { echo "Warte auf ein laufendes Update ..."; flock -w 900 9 || true; }
+        if ! flock -n 9; then
+            echo "Warte auf ein laufendes Update ..."
+            if ! flock -w 900 9; then
+                echo "Update-Sperre weiterhin belegt - dieser Update-Lauf wird übersprungen."
+                exit 0
+            fi
+        fi
     fi
 
     [ "$use_claude" = 1 ] && update_claude

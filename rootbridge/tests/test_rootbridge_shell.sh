@@ -99,6 +99,19 @@ rb env PATH="$T/bin:$T/stubs:$PATH" bash "$ROOT/termux/shortcuts/ubuntu"
 check "Widget 'ubuntu': nur proot-distro login"     "proot-distro login ubuntu" "$(grep '^proot-distro ' "$STUB_LOG")"
 check "Widget 'ubuntu': tmux nie aufgerufen"        0 "$(calls '^tmux ')"
 
+# --new always creates a fresh Claude process, even with an existing tmux session.
+rb bash "$T/bin/rootbridge" attach claude -n
+check "attach -n: neue Sitzung ohne Continue" 1 "$(calls '^tmux new-session .*rootbridge-claude --new$')"
+rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" attach claude --new
+check "attach --new: zusätzliches Fenster" 1 "$(calls '^tmux new-window -t ubuntu: -n claude-new .*rootbridge-claude --new$')"
+check "attach --new: bestehende Sitzung nicht ersetzt" 0 "$(calls 'kill-\|respawn-\|new-session')"
+rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" attach claude -n
+check "attach -n erneut: wieder ein neues Fenster" 1 "$(calls '^tmux new-window ')"
+rb bash "$T/bin/rootbridge" attach codex --new
+check "Codex --new wird abgewiesen" 1 "$RC"
+check "Codex --new: kein neues Fenster" 0 "$(calls '^tmux new-')"
+
+
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
 [ "$FAIL" -eq 0 ]

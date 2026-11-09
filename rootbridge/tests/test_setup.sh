@@ -395,7 +395,7 @@ check "D1 Codex-Installer: die offizielle URL"                  1 "$(count "$LOG
 check "D1 Codex-Installer läuft nicht-interaktiv mit dem Gast-HOME" "codex-installer: ran with HOME=$E/ghome NON_INTERACTIVE=1" "$(grep '^codex-installer: ' "$LOG")"
 check "D1 Codex-Installer: ~/.local/bin vorn im PATH (kein Profil-Block)" "codex-installer-path: $E/ghome/.local/bin" "$(grep '^codex-installer-path:' "$LOG")"
 check "D1 codex liegt in ~/.local/bin (Link mit Ziel im Gast)"  ja "$(has_link "$E/ghome/.local/bin/codex")"
-check "D1 Plugin: marketplace add, dann install"                "claude plugin marketplace add openai/codex-plugin-cc|claude plugin install codex@openai-codex" "$(grep '^claude plugin' "$LOG" | paste -sd'|')"
+check "D1 Plugin: marketplace add über HTTPS, dann install"                "claude plugin marketplace add https://github.com/openai/codex-plugin-cc.git|claude plugin install codex@openai-codex" "$(grep '^claude plugin' "$LOG" | paste -sd'|')"
 check "D1 Plugin-Dateien liegen da"                             ja "$([ -d "$E/ghome/.claude/plugins/cache/openai-codex/codex/1.0.6" ] && echo ja || echo nein)"
 a="$(lineno "$LOG" '^apt-get install')"; b="$(lineno "$LOG" '^installer: ran')"; c="$(lineno "$LOG" '^codex-installer: ran')"; d="$(lineno "$LOG" '^claude plugin marketplace add')"
 check "D1 Reihenfolge: apt < Claude Code < Codex < Plugin"      ja "$([ "$a" -lt "$b" ] && [ "$b" -lt "$c" ] && [ "$c" -lt "$d" ] && echo ja || echo "nein ($a $b $c $d)")"
@@ -465,7 +465,7 @@ check "D11 Codex-Installer ohne codex: Meldung"                 1 "$(count "$E/o
 newenv d12
 gx env STUB_PLUGIN_FAIL=1 bash "$SETUP_GUEST"
 check "D12 marketplace add schlägt fehl: Abbruch"               1 "$?"
-check "D12 marketplace add: Meldung nennt --no-codex"           1 "$(count "$E/out.log" 'plugin marketplace add openai/codex-plugin-cc ist fehlgeschlagen.*--no-codex')"
+check "D12 marketplace add: Meldung nennt --no-codex"           1 "$(count "$E/out.log" 'plugin marketplace add https://github.com/openai/codex-plugin-cc.git ist fehlgeschlagen.*--no-codex')"
 newenv d13
 gx env STUB_PLUGIN_INSTALL_FAIL=1 bash "$SETUP_GUEST"
 check "D13 plugin install schlägt fehl: Abbruch"                1 "$?"

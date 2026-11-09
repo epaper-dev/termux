@@ -424,13 +424,21 @@ mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"
 for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/work" \
           "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" "TTY_CONFIRM=1" \
-          "APT_UPGRADE=6h" "APT_TIMEOUT=600" "CLAUDE_UPDATE=6h" "CODEX_UPDATE=6h" "NOFILE_LIMIT=2048" \
+          "APT_UPGRADE=6h" "APT_TIMEOUT=1800" "CLAUDE_UPDATE=6h" "CODEX_UPDATE=6h" "NOFILE_LIMIT=2048" \
           "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" \
           "TOOL_CLAUDE=$([ "$CLAUDE_ON" = yes ] && echo on || echo off)" \
           "TOOL_CODEX=$([ "$CODEX_ON" = yes ] && echo on || echo off)"; do
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"
 done
+# Raise the previous 10-minute default for slow first upgrades under proot.
+# Other timeout values remain as configured.
+if grep -qx 'APT_TIMEOUT=600' "$ROOT$CONF"; then
+    tmp="$ROOT$CONF.new.$$"
+    sed 's/^APT_TIMEOUT=600$/APT_TIMEOUT=1800/' "$ROOT$CONF" > "$tmp"
+    commit_file "$tmp" "$ROOT$CONF"
+    say "  APT_TIMEOUT: 600 -> 1800 Sekunden"
+fi
 # APT_UPGRADE from --apt-upgrade: replace the line (an existing value stays without the option)
 if [ "$APT_MODE_SET" = 1 ]; then
     tmp="$ROOT$CONF.new.$$"

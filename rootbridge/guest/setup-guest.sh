@@ -127,8 +127,8 @@ if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
         claude_bin="$HOME_DIR/.local/bin/claude"
         [ -x "$claude_bin" ] || claude_bin="$(command -v claude)"
         export PATH="$HOME_DIR/.local/bin:$PATH"
-        HOME="$HOME_DIR" timeout 180 "$claude_bin" plugin marketplace add openai/codex-plugin-cc \
-            || die "claude plugin marketplace add openai/codex-plugin-cc ist fehlgeschlagen (Netz? git?). Erneut starten: bash install.sh --setup (ohne Codex: --no-codex)"
+        HOME="$HOME_DIR" timeout 180 "$claude_bin" plugin marketplace add https://github.com/openai/codex-plugin-cc.git \
+            || die "claude plugin marketplace add https://github.com/openai/codex-plugin-cc.git ist fehlgeschlagen (Netz? git?). Erneut starten: bash install.sh --setup (ohne Codex: --no-codex)"
         HOME="$HOME_DIR" timeout 180 "$claude_bin" plugin install codex@openai-codex \
             || die "claude plugin install codex@openai-codex ist fehlgeschlagen. Erneut starten: bash install.sh --setup (ohne Codex: --no-codex)"
         plugin_present \

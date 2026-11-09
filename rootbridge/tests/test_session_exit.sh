@@ -25,7 +25,7 @@ bash -n "$SCRIPT" 2>/dev/null
 check "rootbridge-claude: Syntax in Ordnung" 0 "$?"
 
 # ------------------------------------------------ cut out the parts
-FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^after_claude() {/,/^}/p' "$SCRIPT")"
+FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^after_claude() {/,/^}/p;/^prepare_claude_args() {/,/^}/p' "$SCRIPT")"
 export FUNCS
 for fn in conf_get limit_nofile after_claude; do
     case "$FUNCS" in
@@ -88,6 +88,16 @@ for code in 1 2 137; do
     check "Claude endet mit $code: Shell ersetzt das Skript (exec)" 42 "$RC"
     check "Claude endet mit $code: nichts läuft nach der Shell"    0 "$(count "$OUT" NACHHER)"
 done
+
+# Use the actual argument builder: default resumes; --new overrides persisted continuation flags.
+printf '%s\n' 'CLAUDE_ARGS="--remote-control android --continue -c --resume old-id --model sonnet"' > "$T/test.conf"
+args_for() {
+    FUNCS="$FUNCS" "$REAL_BASH" -c 'CONF="$1"; shift; eval "$FUNCS"; prepare_claude_args "$@"; printf "%s\n" "${extra[@]}"' _ "$T/test.conf" "$@"
+}
+check "Standard behält --continue" 1 "$(args_for | grep -cx -- '--continue')"
+check "--new entfernt Fortsetzen, erhält Name und Modell" '--remote-control android --model sonnet' "$(args_for --new | paste -sd' ')"
+check "-n entspricht --new" "$(args_for --new)" "$(args_for -n)"
+
 
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"

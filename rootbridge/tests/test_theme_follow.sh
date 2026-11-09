@@ -111,8 +111,11 @@ check "tmux: Hook dunkel" 1 "$(grep -c "^set-hook -g client-dark-theme 'run-shel
 check "tmux: Statusleiste in Terminalfarben" 1 "$(grep -c '^set -g status-style default$' "$ROOT/termux/tmux.conf.snippet")"
 check "tmux: aktives Fenster fett"          1 "$(grep -c '^set -g window-status-current-style bold$' "$ROOT/termux/tmux.conf.snippet")"
 
-# rootbridge-claude passes --continue on to Claude Code
-check "rootbridge-claude: --continue" 1 "$(grep -c '^\[ "${1:-}" = --continue \] && extra+=(--continue)$' "$ROOT/guest/bin/rootbridge-claude")"
+# Exercise the argument builder used by the theme-restart path.
+FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^prepare_claude_args() {/,/^}/p' "$ROOT/guest/bin/rootbridge-claude")"
+export FUNCS
+continued="$(bash -c 'eval "$FUNCS"; CONF=/dev/null; prepare_claude_args --continue; printf "%s" "${extra[*]}"')"
+check "rootbridge-claude: --continue" --continue "$continued"
 
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
