@@ -575,13 +575,14 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     }
 
     public void updateBackgroundColor() {
-        if (!mActivity.isVisible()) return;
         TerminalSession session = mActivity.getCurrentSession();
-        if (session != null && session.getEmulator() != null) {
-            int[] colors = session.getEmulator().mColors.mCurrentColors;
-            mActivity.getWindow().getDecorView().setBackgroundColor(colors[TextStyle.COLOR_INDEX_BACKGROUND]);
-            mActivity.updateTerminalToolbarTextColor(colors[TextStyle.COLOR_INDEX_FOREGROUND]);
-        }
+        // The toolbar is created before a session is attached on a cold start. Use the loaded
+        // scheme immediately, then follow the current session (including OSC colour changes).
+        int[] colors = session != null && session.getEmulator() != null
+            ? session.getEmulator().mColors.mCurrentColors : TerminalColors.COLOR_SCHEME.mDefaultColors;
+        mActivity.getWindow().getDecorView().setBackgroundColor(colors[TextStyle.COLOR_INDEX_BACKGROUND]);
+        mActivity.updateTerminalToolbarColors(colors[TextStyle.COLOR_INDEX_FOREGROUND],
+            colors[TextStyle.COLOR_INDEX_BACKGROUND]);
     }
 
 }

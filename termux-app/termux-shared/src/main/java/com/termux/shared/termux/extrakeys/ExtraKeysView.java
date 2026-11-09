@@ -406,11 +406,10 @@ public final class ExtraKeysView extends GridLayout {
                     button = createSpecialButton(buttonInfo.getKey(), true);
                     if (button == null) return;
                 } else {
-                    button = new MaterialButton(getContext(), null, androidx.appcompat.R.attr.buttonBarButtonStyle);
+                    button = createExtraKeyButton();
                     button.setTextColor(mButtonTextColor);
                 }
 
-                button.setBackgroundTintList(android.content.res.ColorStateList.valueOf(mButtonBackgroundColor));
                 button.setText(buttonInfo.getDisplay());
                 button.setAllCaps(mButtonTextAllCaps);
                 button.setPadding(0, 0, 0, 0);
@@ -595,7 +594,7 @@ public final class ExtraKeysView extends GridLayout {
             button = createSpecialButton(extraButton.getKey(), false);
             if (button == null) return;
         } else {
-            button = new MaterialButton(getContext(), null, androidx.appcompat.R.attr.buttonBarButtonStyle);
+            button = createExtraKeyButton();
             button.setTextColor(mButtonTextColor);
         }
         button.setText(extraButton.getDisplay());
@@ -655,11 +654,21 @@ public final class ExtraKeysView extends GridLayout {
         return true;
     }
 
+    /** Extra keys draw their own pressed state; do not retain a themed Material shape or tint. */
+    private MaterialButton createExtraKeyButton() {
+        MaterialButton button = new MaterialButton(getContext(), null, androidx.appcompat.R.attr.buttonBarButtonStyle);
+        button.setBackgroundTintList(null);
+        button.setBackground(new android.graphics.drawable.ColorDrawable(mButtonBackgroundColor));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+            button.setForceDarkAllowed(false);
+        return button;
+    }
+
     public MaterialButton createSpecialButton(String buttonKey, boolean needUpdate) {
         SpecialButtonState state = mSpecialButtons.get(SpecialButton.valueOf(buttonKey));
         if (state == null) return null;
         state.setIsCreated(true);
-        MaterialButton button = new MaterialButton(getContext(), null, androidx.appcompat.R.attr.buttonBarButtonStyle);
+        MaterialButton button = createExtraKeyButton();
         button.setTextColor(state.isActive ? mButtonActiveTextColor : mButtonTextColor);
         if (needUpdate) {
             state.buttons.add(button);
