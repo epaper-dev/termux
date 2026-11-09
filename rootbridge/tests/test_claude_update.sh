@@ -31,7 +31,7 @@ bash -n "$CLAUDEBIN" 2>/dev/null
 check "rootbridge-claude: Syntax in Ordnung" 0 "$?"
 
 # ------------------------------------------------ 1. update_claude() with a stub claude
-FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^update_due() {/,/^}/p;/^stamp_success() /p;/^state_dir() /p;/^update_claude() {/,/^}/p' "$SCRIPT")"
+FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^update_due() {/,/^}/p;/^stamp_success() {/,/^}/p;/^state_dir() /p;/^update_claude() {/,/^}/p' "$SCRIPT")"
 export FUNCS
 for fn in conf_get limit_nofile update_due stamp_success state_dir update_claude; do
     case "$FUNCS" in

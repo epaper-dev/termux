@@ -9,7 +9,9 @@
 #                   [--model NAME|none] [--claude | --no-claude] [--codex | --no-codex]
 #                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update]
 #
-# Setup (automatic, nothing to ask for): what is missing gets installed first: the Termux packages
+# Setup: an interactive Termux shell asks for the device name used in Claude Remote Control
+# (Enter accepts the suggested name; --remote-name NAME skips the question).
+# Missing components are installed automatically: the Termux packages
 #   (pkg install), the Ubuntu guest (proot-distro install, a download of a few hundred MB),
 #   python3/curl/certificates in the guest and Claude Code (official installer). A device that has it
 #   all just gets the normal installation. --no-setup only checks and tells you what is missing
@@ -121,7 +123,7 @@ while [ $# -gt 0 ]; do
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift ;;
-        -h|--help) sed -n '2,69p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,/^set -eu/{ /^set -eu/d; p; }' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -363,24 +365,6 @@ if grep -qx 'WORKDIR=/root/workspace' "$CFG"; then
         say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
     fi
 fi
-if [ "$REMOTE_NAME_SET" = 1 ]; then
-    # store the name in the Termux config: it survives a reinstall of the guest
-    tmp="$CFG.new.$$"
-    cp "$CFG" "$tmp"
-    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
-    if grep -q '^REMOTE_NAME=' "$tmp"; then
-        sed -i "s|^REMOTE_NAME=.*|REMOTE_NAME=$REMOTE_NAME|" "$tmp"
-    else
-        printf 'REMOTE_NAME=%s\n' "$REMOTE_NAME" >> "$tmp"
-    fi
-    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  Remote-Control-Name gespeichert: $REMOTE_NAME"; fi
-else
-    # no option given: reuse the name stored by an earlier install
-    v="$(sed -n 's/^REMOTE_NAME=//p' "$CFG" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; say "  Remote-Control-Name aus der Konfig: $REMOTE_NAME"
-    else say "  Remote-Control-Name (Standard): $REMOTE_NAME"; fi
-fi
 if [ "$APT_MODE_SET" = 1 ]; then
     # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
     tmp="$CFG.new.$$"
@@ -442,6 +426,38 @@ if [ "$USE_CLAUDE_SET" = 1 ]; then
 fi
 if [ "$USE_CODEX_SET" = 1 ]; then
     cfg_set TOOL_CODEX "$([ "$USE_CODEX" = yes ] && echo on || echo off)" "Codex: $USE_CODEX"
+fi
+# Resolve the device name after the enabled tools, so Codex-only installs ask no Claude question.
+if [ "$REMOTE_NAME_SET" != 1 ]; then
+    v="$(cfg_get REMOTE_NAME)"
+    if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; fi
+    if [ "$USE_CLAUDE" = yes ] && [ -t 0 ]; then
+        say "Wie soll dieses Gerät in Claude Remote Control heißen?"
+        say "  Erlaubt: Buchstaben, Ziffern, Punkt, _ und -; maximal 64 Zeichen (z. B. boox-max-lumi)."
+        while true; do
+            printf 'Gerätename [%s]: ' "$REMOTE_NAME"
+            IFS= read -r answer || die "Namensabfrage abgebrochen; für einen Aufruf ohne Nachfrage --remote-name NAME verwenden."
+            answer="${answer:-$REMOTE_NAME}"
+            if [[ "$answer" =~ $NAME_RE ]]; then
+                REMOTE_NAME="$answer"; REMOTE_NAME_SET=1; break
+            fi
+            say "Ungültiger Gerätename. Bitte ohne Leerzeichen oder Sonderzeichen eingeben."
+        done
+    else
+        say "  Remote-Control-Name: $REMOTE_NAME (ohne Nachfrage; ändern mit --remote-name NAME)"
+    fi
+fi
+if [ "$REMOTE_NAME_SET" = 1 ]; then
+    # store the name in the Termux config: it survives a reinstall of the guest
+    tmp="$CFG.new.$$"
+    cp "$CFG" "$tmp"
+    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
+    if grep -q '^REMOTE_NAME=' "$tmp"; then
+        sed -i "s|^REMOTE_NAME=.*|REMOTE_NAME=$REMOTE_NAME|" "$tmp"
+    else
+        printf 'REMOTE_NAME=%s\n' "$REMOTE_NAME" >> "$tmp"
+    fi
+    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  Remote-Control-Name gespeichert: $REMOTE_NAME"; fi
 fi
 if [ "$CODEX_UPD_SET" = 1 ]; then
     cfg_set CODEX_UPDATE "$CODEX_UPD_MODE" "codex-update-Modus gespeichert: $CODEX_UPD_MODE"
@@ -529,7 +545,7 @@ if [ "$DO_WIDGETS" = 1 ]; then
         done
     done
     # a tool that is switched off gets no widget (and our widget of an earlier install goes, with a copy in backups)
-    for pair in "claude:Claude:$USE_CLAUDE" "codex:Codex:$USE_CODEX"; do
+    for pair in "claude:Claude:$USE_CLAUDE" "claude-new:Claude Neu:$USE_CLAUDE" "codex:Codex:$USE_CODEX"; do
         if [ "${pair##*:}" = no ]; then
             w="${pair#*:}"; w="${w%%:*}"
             if [ -f "$SC/$w" ] && grep -q 'rootbridge' "$SC/$w" 2>/dev/null; then
@@ -538,10 +554,10 @@ if [ "$DO_WIDGETS" = 1 ]; then
             fi
         fi
     done
-    WIDGET_LIST="ubuntu:Ubuntu"
-    [ "$USE_CODEX" = yes ] && WIDGET_LIST="codex:Codex $WIDGET_LIST"
-    [ "$USE_CLAUDE" = yes ] && WIDGET_LIST="claude:Claude $WIDGET_LIST"
-    for pair in $WIDGET_LIST; do
+    WIDGET_LIST=("ubuntu:Ubuntu")
+    [ "$USE_CODEX" = yes ] && WIDGET_LIST+=("codex:Codex")
+    [ "$USE_CLAUDE" = yes ] && WIDGET_LIST+=("claude:Claude" "claude-new:Claude Neu")
+    for pair in "${WIDGET_LIST[@]}"; do
         src="${pair%%:*}"; name="${pair#*:}"
         inst "$REPO/termux/shortcuts/$src" "$SC/$name"
         # One default icon for both widgets: installed if there is none, and in place of an icon that is exactly a default

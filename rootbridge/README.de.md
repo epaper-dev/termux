@@ -125,6 +125,17 @@ außerhalb unseres Blocks) wird nie ersetzt, der Installer nennt dann nur die Ta
 `termux/extra-keys.snippet`). `--no-extra-keys` überspringt das Ganze, `uninstall.sh` entfernt den Block. Die Farben der
 Leiste legt Termux fest, sie lassen sich von hier aus nicht ändern.
 
+**Gerätename in Claude.** Der Installer fragt in einer interaktiven Termux-Shell nach dem Namen für
+Claude Remote Control, etwa `boox-max-lumi`. Enter übernimmt den gespeicherten Namen (beim ersten Mal `android`).
+Der Name bleibt in der Termux-Konfiguration gespeichert und wird an den Ubuntu-Gast weitergegeben.
+Mit `bash install.sh --remote-name boox-max-lumi` setzt du ihn ohne Nachfrage. Ohne Terminal wird der vorhandene
+Name beziehungsweise `android` verwendet; bei einer Installation nur mit Codex entfällt die Frage.
+
+**Neue Unterhaltung.** `rootbridge attach claude -n` (oder `--new`) und das Widget **Claude Neu** starten Claude
+ohne `--continue`. Bei laufender tmux-Sitzung entsteht ein zusätzliches Fenster; bestehende Unterhaltungen bleiben
+offen. Ohne `-n` bleibt das bisherige Fortsetzen-Verhalten erhalten. Nutze **Claude Neu** auch für den ersten Start,
+wenn noch keine Unterhaltung zum Fortsetzen existiert.
+
 **Ende der Sitzung.** `/exit` (oder Strg+C) in Claude Code beendet alles: Das tmux-Fenster und die tmux-Sitzung schließen sich,
 `rootbridge attach` kehrt zurück, und das über das Widget **Claude** geöffnete Termux-Fenster schließt sich mit. Du landest nicht in der
 Ubuntu-Shell. Nur wenn Claude Code mit einem Fehlercode endet, bleibt die Gast-Shell mit einem Hinweis offen, damit die Meldung lesbar bleibt (ebenso, wenn `claude` nicht installiert ist).
@@ -132,7 +143,9 @@ Ubuntu-Shell. Nur wenn Claude Code mit einem Fehlercode endet, bleibt die Gast-S
 **Paket-Updates im Gast.** Standardmäßig an: Beim Start der Claude-Code-Sitzung führt `rootbridge-apt`
 `apt-get update` und `apt-get -y upgrade` aus, höchstens einmal in 6 h nach einem Erfolg (`APT_UPGRADE=6h`; `12h` usw. ändern den Abstand, `daily` = 24 h), und
 blockiert den Start nie (kein Netz, ein Fehler oder ein Timeout geben nur einen Hinweis aus, Claude Code startet, der
-nächste Start versucht es erneut). Zwei Schutzmaßnahmen sind unter proot-distro mit Ubuntu 26.04 wichtig: dpkg bekommt
+nächste Start versucht es erneut). Für `apt-get upgrade` gelten standardmäßig 1800 Sekunden
+(30 Minuten, `APT_TIMEOUT` in `/etc/termux-rootbridge.conf`). Der Installer erhöht den bisherigen Wert 600
+auf 1800; andere eingestellte Werte bleiben erhalten. Zwei Schutzmaßnahmen sind unter proot-distro mit Ubuntu 26.04 wichtig: dpkg bekommt
 `-o DPkg::Path` mit `/usr/local/bin`, weil die uutils-coreutils dort die GNU-benannten Symlinks brauchen (sonst brechen
 Maintainer-Skripte mit „Security violation“ ab), und die coreutils-Pakete (`APT_HOLD`) werden zurückgehalten, weil ein
 Upgrade des Multicall-Binarys den Gast kaputt macht. Log: `/var/log/termux-rootbridge-apt.log` im Gast – jeder Lauf
@@ -212,7 +225,11 @@ wieder an.
   `CODEX_UPDATE` = `6h|<N>h|daily|always|off`, Stempel in `/var/lib/termux-rootbridge/`; `--codex-update M`,
   `--no-codex-update`). Starten zwei Sitzungen gleichzeitig, kommen sie nacheinander dran (Sperre), und ein fehlgeschlagener
   Schritt hält den Start nie auf. `nodejs` und `git` sind `apt`-Pakete, `rootbridge-apt` hält sie also aktuell. Ein
-  Plugin-Update gilt nach einem Neustart von Claude Code.
+  Marketplace- und Plugin-Update haben jeweils 300 Sekunden Zeit; Fehler melden den Schritt und Exit-Code,
+  Zeitüberschreitungen werden ausdrücklich genannt. Die vollständige Ausgabe des letzten Versuchs steht im Gast unter
+  `/var/lib/termux-rootbridge/codex-plugin-update.log`. Auch „bereits aktuell“ zählt als erfolgreicher Check für das
+  6-Stunden-Fenster. Kann der Erfolgszeitpunkt nicht gespeichert werden, erscheint eine Warnung.
+  Ein Plugin-Update gilt nach einem Neustart von Claude Code.
 * **Pre-Commit-Review.** Mit beiden Programmen lässt ein Hook in den Managed Settings (`codex-precommit-review.py`, Timeout
   900 s, `onFailure: "block"`) Codex jeden `git commit` von Claude Code prüfen. Eine erste Zeile `ALLOW` lässt den Commit
   durch; `BLOCK` oder keine klare Antwort hält ihn an und gibt Codex' Befunde an Claude, das sie behebt und erneut committet.

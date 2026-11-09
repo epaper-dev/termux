@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Termux:Widget: a new conversation, even if another Claude window is open.
+if command -v termux-reload-settings >/dev/null 2>&1; then termux-reload-settings; fi
+exec rootbridge attach claude --new

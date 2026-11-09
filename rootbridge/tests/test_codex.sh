@@ -152,14 +152,25 @@ check "Gast Deinstallation: Hook-Skript weg"               nein "$(has "$S/usr/l
 
 # =========================================================================== 2. rootbridge-update
 UB="$T/ubin"; mkdir -p "$UB"
-for c in bash sed date head tail timeout flock mkdir dirname cat tr sleep env rm; do
+for c in bash sed date head tail flock mkdir dirname cat tr sleep env rm tee; do
     r="$(command -v "$c")" && ln -sf "$r" "$UB/$c"
 done
+cat > "$UB/timeout" <<'EOF'
+#!/bin/bash
+[ -z "${STUB_TIMEOUT_LOG:-}" ] || echo "timeout $*" >> "$STUB_TIMEOUT_LOG"
+shift
+exec "$@"
+EOF
+chmod +x "$UB/timeout"
 cat > "$UB/claude" <<'EOF'
 #!/bin/bash
 echo "claude $*" >> "$STUB_LOG"
 case "$1 $2" in
-    "plugin marketplace"|"plugin update") [ -z "${STUB_PLUGIN_FAIL:-}" ] || exit 1 ;;
+    "plugin marketplace") [ -z "${STUB_PLUGIN_FAIL:-}" ] || exit 1
+        exit "${STUB_MARKETPLACE_RC:-0}" ;;
+    "plugin update")
+        [ -z "${STUB_PLUGIN_CURRENT:-}" ] || echo "codex is already at the latest version"
+        exit "${STUB_PLUGIN_RC:-0}" ;;
     "update ") [ -z "${STUB_CLAUDE_FAIL:-}" ] || exit 1 ;;
 esac
 exit 0
@@ -196,6 +207,18 @@ check "update: drei Stempel"                               "claude codex-plugin 
 check "update zweiter Lauf: nichts läuft"                  0 "$(wc -l < "$ULOG" | tr -d ' ')"
 check "update zweiter Lauf: drei Hinweise 'übersprungen'" 3 "$(count "$T/u.out" 'übersprungen')"
 
+# A successful no-op is a successful check too, with its own six-hour window.
+ureset ""; urun STUB_PLUGIN_CURRENT=1
+check "Plugin bereits aktuell: Erfolgsstempel"              "claude codex-plugin codex " "$(stamps)"
+check "Plugin bereits aktuell: echte CLI-Ausgabe im Log"    1 "$(count "$USTATE/codex-plugin-update.log" 'already at the latest version')"
+for age in 21540 21660; do
+    printf '%s\n' "$(( $(date +%s) - age ))" > "$USTATE/codex-plugin-update-last-success"
+    : > "$ULOG"; urun
+    expected=0; [ "$age" -lt 21600 ] || expected=1
+    check "Plugin nach $age Sekunden: Sechs-Stunden-Fenster" "$expected" "$(runs 'claude plugin update codex@openai-codex$')"
+    check "Plugin nach $age Sekunden: andere Updates bleiben übersprungen" "0 0" "$(runs 'claude update$') $(runs 'codex update$')"
+done
+
 ureset "CODEX_UPDATE=off"; urun
 check "update CODEX_UPDATE=off: nur claude update"         "claude update" "$(paste -sd'|' "$ULOG")"
 ureset "CLAUDE_UPDATE=off" "CODEX_UPDATE=always"; urun
@@ -220,6 +243,20 @@ check "update codex schlägt fehl: Meldung"                 1 "$(count "$T/u.out
 ureset ""; urun STUB_PLUGIN_FAIL=1
 check "update Plugin schlägt fehl: Exit 0"                 0 "$URC"
 check "update Plugin schlägt fehl: kein Stempel dafür"     "claude codex " "$(stamps)"
+check "Marketplace-Fehler: Plugin-Update nicht gestartet"  0 "$(runs 'claude plugin update ')"
+check "Marketplace-Fehler: Schritt und Exit-Code"           1 "$(count "$T/u.out" 'marketplace-Update fehlgeschlagen (Exit 1)')"
+ureset ""; urun STUB_PLUGIN_RC=2
+check "Plugin-Fehler: Exit 0, kein Erfolgsstempel"            "0 claude codex " "$URC $(stamps)"
+check "Plugin-Fehler: Schritt und Exit-Code"                 1 "$(count "$T/u.out" 'plugin-Update fehlgeschlagen (Exit 2)')"
+for stage in MARKETPLACE PLUGIN; do
+    ureset ""; urun "STUB_${stage}_RC=124"
+    check "Timeout $stage: kein Erfolgsstempel"              "claude codex " "$(stamps)"
+    check "Timeout $stage: verständliche Meldung"            1 "$(count "$T/u.out" '300 Sekunden abgebrochen (Timeout, Exit 124)')"
+    : > "$ULOG"; urun
+    check "Timeout $stage: nächster Start versucht erneut"   1 "$(runs 'claude plugin update codex@openai-codex$')"
+done
+ureset ""; urun "STUB_TIMEOUT_LOG=$T/timeouts.log"
+check "Plugin-Updates: beide mit 300 Sekunden"               2 "$(count "$T/timeouts.log" '^timeout 300 .*claude plugin ')"
 ureset ""; urun STUB_CLAUDE_FAIL=1
 check "update claude schlägt fehl: codex läuft trotzdem"   1 "$(runs 'codex update$')"
 check "update claude schlägt fehl: kein claude-Stempel"    "codex-plugin codex " "$(stamps)"
@@ -247,6 +284,15 @@ check "update gleichzeitig: der zweite wartet"             1 "$(count "$T/u2.out
 
 # the functions stay cut-out-able for tests (the main part does not run when sourced)
 check "update: Funktionen ohne Hauptteil ladbar"           ok "$(bash -c '. "$1"; type update_due update_claude update_codex update_plugin >/dev/null 2>&1 && echo ok' _ "$UPDATE")"
+
+# An expired lock wait must not start a second updater without the lock.
+mv "$UB/flock" "$UB/flock.real"
+printf '#!/bin/bash\nexit 1\n' > "$UB/flock"; chmod +x "$UB/flock"
+ureset ""; urun
+check "update Sperre bleibt belegt: Exit 0" 0 "$URC"
+check "update Sperre bleibt belegt: keine Tool-Updates" 0 "$(wc -l < "$ULOG" | tr -d ' ')"
+check "update Sperre bleibt belegt: Hinweis" 1 "$(count "$T/u.out" 'Update-Sperre weiterhin belegt')"
+mv -f "$UB/flock.real" "$UB/flock"
 
 # =========================================================================== 3. rootbridge-codex
 CB="$T/cbin"; mkdir -p "$CB" "$T/cwork"
@@ -551,6 +597,13 @@ rm -f "$H/.config/termux-rootbridge/config"
 ROOTBRIDGE_GUEST_HOME=/root irun --setup
 check "Gast komplett: setup-guest.sh läuft nicht"          0 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
 rm -rf "${GROOT:?}/usr/bin" "${GROOT:?}/root"
+
+# The new-conversation widget is installed and removed together with Claude.
+irun --claude --codex
+check "Claude Neu: Widget vorhanden" ja "$(has "$H/.shortcuts/Claude Neu")"
+check "Claude Neu: startet explizit neu" 1 "$(grep -c 'rootbridge attach claude --new' "$H/.shortcuts/Claude Neu")"
+irun --no-claude
+check "Claude Neu: bei --no-claude entfernt" nein "$(has "$H/.shortcuts/Claude Neu")"
 
 # uninstall: the Codex widget and its default icon go (a stub rootbridge: uninstall.sh calls `rootbridge stop`)
 irun --claude --codex
