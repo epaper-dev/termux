@@ -169,6 +169,7 @@ case "$1 $2" in
     "plugin marketplace") [ -z "${STUB_PLUGIN_FAIL:-}" ] || exit 1
         exit "${STUB_MARKETPLACE_RC:-0}" ;;
     "plugin update")
+        [ -z "${STUB_PLUGIN_ENV_LOG:-}" ] || printf 'pwd=%s hard=%s args=%s\n' "$PWD" "$(ulimit -Hn)" "$*" >> "$STUB_PLUGIN_ENV_LOG"
         [ -z "${STUB_PLUGIN_CURRENT:-}" ] || echo "codex is already at the latest version"
         exit "${STUB_PLUGIN_RC:-0}" ;;
     "update ") [ -z "${STUB_CLAUDE_FAIL:-}" ] || exit 1 ;;
@@ -184,9 +185,10 @@ exit 0
 EOF
 chmod +x "$UB/claude" "$UB/codex"
 USTATE="$T/ustate"; UCONF="$T/u.conf"; ULOG="$T/u.log"
+mkdir -p "$T/plugin-home"
 ureset() { rm -rf "$USTATE"; : > "$ULOG"; printf '%s\n' "$@" > "$UCONF"; }
 urun() {   # urun [VAR=value ...]: one run of the real rootbridge-update with the stubs; output in $T/u.out
-    env -i PATH="$UB" ROOTBRIDGE_UPDATE_KEEP_PATH=1 ROOTBRIDGE_CONF="$UCONF" ROOTBRIDGE_STATE_DIR="$USTATE" \
+    env -i HOME="$T/plugin-home" PATH="$UB" ROOTBRIDGE_UPDATE_KEEP_PATH=1 ROOTBRIDGE_CONF="$UCONF" ROOTBRIDGE_STATE_DIR="$USTATE" \
         ROOTBRIDGE_CLAUDE_BIN="$UB/claude" ROOTBRIDGE_CODEX_BIN="$UB/codex" STUB_LOG="$ULOG" "$@" \
         "$(command -v bash)" "$UPDATE" > "$T/u.out" 2>&1
     URC=$?
@@ -200,8 +202,8 @@ check "update: Exit 0"                                     0 "$URC"
 check "update: claude update läuft"                        1 "$(runs 'claude update$')"
 check "update: codex update läuft"                         1 "$(runs 'codex update$')"
 check "update: Plugin-Marketplace wird aktualisiert"       1 "$(runs 'claude plugin marketplace update openai-codex$')"
-check "update: Plugin wird aktualisiert"                   1 "$(runs 'claude plugin update codex@openai-codex$')"
-check "update: Reihenfolge claude, codex, Marketplace, Plugin" "claude update|codex update|claude plugin marketplace update openai-codex|claude plugin update codex@openai-codex" "$(paste -sd'|' "$ULOG")"
+check "update: Plugin wird aktualisiert"                   1 "$(runs 'claude plugin update codex@openai-codex --scope user$')"
+check "update: Reihenfolge claude, codex, Marketplace, Plugin" "claude update|codex update|claude plugin marketplace update openai-codex|claude plugin update codex@openai-codex --scope user" "$(paste -sd'|' "$ULOG")"
 check "update: drei Stempel"                               "claude codex-plugin codex " "$(stamps)"
 : > "$ULOG"; urun
 check "update zweiter Lauf: nichts läuft"                  0 "$(wc -l < "$ULOG" | tr -d ' ')"
@@ -215,14 +217,22 @@ for age in 21540 21660; do
     printf '%s\n' "$(( $(date +%s) - age ))" > "$USTATE/codex-plugin-update-last-success"
     : > "$ULOG"; urun
     expected=0; [ "$age" -lt 21600 ] || expected=1
-    check "Plugin nach $age Sekunden: Sechs-Stunden-Fenster" "$expected" "$(runs 'claude plugin update codex@openai-codex$')"
+    check "Plugin nach $age Sekunden: Sechs-Stunden-Fenster" "$expected" "$(runs 'claude plugin update codex@openai-codex --scope user$')"
     check "Plugin nach $age Sekunden: andere Updates bleiben übersprungen" "0 0" "$(runs 'claude update$') $(runs 'codex update$')"
 done
+
+# Plugin management uses the user's home and inherits the fd limit, independently of NOFILE_LIMIT.
+ureset "NOFILE_LIMIT=64"
+urun "STUB_PLUGIN_ENV_LOG=$T/plugin-env.log"
+check "Plugin: Benutzer-Home, unverändertes fd-Limit und Benutzer-Scope" \
+    "pwd=$T/plugin-home hard=$(ulimit -Hn) args=plugin update codex@openai-codex --scope user" "$(cat "$T/plugin-env.log")"
+: > "$ULOG"; urun
+check "Plugin: Home-Aufruf wird im 6h-Fenster übersprungen" 0 "$(runs 'claude plugin update ')"
 
 ureset "CODEX_UPDATE=off"; urun
 check "update CODEX_UPDATE=off: nur claude update"         "claude update" "$(paste -sd'|' "$ULOG")"
 ureset "CLAUDE_UPDATE=off" "CODEX_UPDATE=always"; urun
-check "update CLAUDE_UPDATE=off: codex und Plugin, kein claude update" "codex update|claude plugin marketplace update openai-codex|claude plugin update codex@openai-codex" "$(paste -sd'|' "$ULOG")"
+check "update CLAUDE_UPDATE=off: codex und Plugin, kein claude update" "codex update|claude plugin marketplace update openai-codex|claude plugin update codex@openai-codex --scope user" "$(paste -sd'|' "$ULOG")"
 : > "$ULOG"; urun
 check "update CODEX_UPDATE=always: läuft jedes Mal"        3 "$(wc -l < "$ULOG" | tr -d ' ')"
 ureset "TOOL_CODEX=off"; urun
@@ -251,12 +261,12 @@ check "Plugin-Fehler: Schritt und Exit-Code"                 1 "$(count "$T/u.ou
 for stage in MARKETPLACE PLUGIN; do
     ureset ""; urun "STUB_${stage}_RC=124"
     check "Timeout $stage: kein Erfolgsstempel"              "claude codex " "$(stamps)"
-    check "Timeout $stage: verständliche Meldung"            1 "$(count "$T/u.out" '300 Sekunden abgebrochen (Timeout, Exit 124)')"
+    check "Timeout $stage: verständliche Meldung"            1 "$(count "$T/u.out" '120 Sekunden abgebrochen (Timeout, Exit 124)')"
     : > "$ULOG"; urun
-    check "Timeout $stage: nächster Start versucht erneut"   1 "$(runs 'claude plugin update codex@openai-codex$')"
+    check "Timeout $stage: nächster Start versucht erneut"   1 "$(runs 'claude plugin update codex@openai-codex --scope user$')"
 done
 ureset ""; urun "STUB_TIMEOUT_LOG=$T/timeouts.log"
-check "Plugin-Updates: beide mit 300 Sekunden"               2 "$(count "$T/timeouts.log" '^timeout 300 .*claude plugin ')"
+check "Plugin-Updates: beide mit 120 Sekunden"               2 "$(count "$T/timeouts.log" '^timeout 120 .*claude plugin ')"
 ureset ""; urun STUB_CLAUDE_FAIL=1
 check "update claude schlägt fehl: codex läuft trotzdem"   1 "$(runs 'codex update$')"
 check "update claude schlägt fehl: kein claude-Stempel"    "codex-plugin codex " "$(stamps)"

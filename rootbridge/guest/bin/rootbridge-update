@@ -110,7 +110,7 @@ update_codex() {
 }
 
 # The Codex plugin of Claude Code (openai/codex-plugin-cc): refresh its marketplace, then update the plugin.
-# Only with both tools. Each step gets 300 seconds (proot can be slow).
+# Only with both tools. Each step gets 120 seconds (proot can be slow).
 # Takes effect after a restart of Claude Code. Never stops the start.
 update_plugin() {
     local stamp
@@ -124,20 +124,23 @@ update_plugin() {
         log=/dev/null
     fi
     for stage in marketplace plugin; do
-        echo "Plugin-Update: $stage (Limit 300 Sekunden)" | tee -a "$log"
+        echo "Plugin-Update: $stage (Limit 120 Sekunden)" | tee -a "$log"
         (
-            limit_nofile
+            # Match manual user-level plugin management: no project context or session fd limit.
+            # NOFILE_LIMIT remains in effect for interactive Claude and its self-update only.
+            cd "${HOME:-/root}" || exit 1
+            export GIT_TERMINAL_PROMPT=0
             if [ "$stage" = marketplace ]; then
-                exec timeout 300 "$claude_bin" plugin marketplace update openai-codex
+                exec timeout 120 "$claude_bin" plugin marketplace update openai-codex
             else
-                exec timeout 300 "$claude_bin" plugin update codex@openai-codex
+                exec timeout 120 "$claude_bin" plugin update codex@openai-codex --scope user
             fi
         ) 2>&1 | tee -a "$log"
         rc=${PIPESTATUS[0]}
         echo "Plugin-Update: $stage beendet mit Exit $rc" | tee -a "$log"
         if [ "$rc" != 0 ]; then
             if [ "$rc" = 124 ]; then
-                echo "Codex-Plugin: $stage-Update nach 300 Sekunden abgebrochen (Timeout, Exit $rc)."
+                echo "Codex-Plugin: $stage-Update nach 120 Sekunden abgebrochen (Timeout, Exit $rc)."
             else
                 echo "Codex-Plugin: $stage-Update fehlgeschlagen (Exit $rc); siehe Ausgabe oben."
             fi
