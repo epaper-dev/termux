@@ -83,6 +83,7 @@ for f in usr/local/bin/rootbridge-codex usr/local/bin/rootbridge-update usr/loca
          usr/local/lib/termux-rootbridge/codex-precommit-review.py usr/local/lib/termux-rootbridge/android-root-guard.py; do
     check "Gast: $f installiert"                           ja "$(has "$S/$f")"
 done
+check "Gast: Unterhaltungsprüfung installiert" ja "$(has "$S/usr/local/lib/termux-rootbridge/claude-conversation.py")"
 check "Gast: rootbridge-codex hat den Gast-Shebang"        "#!/bin/bash" "$(head -n 1 "$S/usr/local/bin/rootbridge-codex")"
 # put() rewrites only the shebang line for the guest: the rest is the script of the repo, byte for byte
 check "Gast: Hook-Skript ist das aus dem Repo (ab Zeile 2)" 0 "$(cmp -s <(tail -n +2 "$ROOT/guest/claude/codex-precommit-review.py") <(tail -n +2 "$S/usr/local/lib/termux-rootbridge/codex-precommit-review.py"); echo $?)"

@@ -25,7 +25,7 @@ bash -n "$SCRIPT" 2>/dev/null
 check "rootbridge-claude: Syntax in Ordnung" 0 "$?"
 
 # ------------------------------------------------ cut out the parts
-FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^after_claude() {/,/^}/p;/^prepare_claude_args() {/,/^}/p' "$SCRIPT")"
+FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^after_claude() {/,/^}/p;/^prepare_claude_args() {/,/^}/p;/^has_claude_conversation() {/,/^}/p' "$SCRIPT")"
 export FUNCS
 for fn in conf_get limit_nofile after_claude; do
     case "$FUNCS" in
@@ -89,15 +89,29 @@ for code in 1 2 137; do
     check "Claude endet mit $code: nichts läuft nach der Shell"    0 "$(count "$OUT" NACHHER)"
 done
 
-# Use the actual argument builder: default resumes; --new overrides persisted continuation flags.
-printf '%s\n' 'CLAUDE_ARGS="--remote-control android --continue -c --resume old-id --model sonnet"' > "$T/test.conf"
+# The argument builder calls the real transcript check in an isolated Claude config directory.
+export ROOTBRIDGE_CONVERSATION_CHECK="$ROOT/guest/claude/claude-conversation.py"
+export CLAUDE_CONFIG_DIR="$T/claude-config"
+printf '%s\n' 'CLAUDE_ARGS="--remote-control android --continue -c --model sonnet"' > "$T/test.conf"
 args_for() {
     FUNCS="$FUNCS" "$REAL_BASH" -c 'CONF="$1"; shift; eval "$FUNCS"; prepare_claude_args "$@"; printf "%s\n" "${extra[@]}"' _ "$T/test.conf" "$@"
 }
-check "Standard behält --continue" 1 "$(args_for | grep -cx -- '--continue')"
+check "Erster Start: ohne --continue" '--remote-control android --model sonnet' "$(args_for | paste -sd' ')"
+check "Explizit --continue ohne Unterhaltung: neuer Start" '--remote-control android --model sonnet' "$(args_for --continue | paste -sd' ')"
+python3 -I - "$CLAUDE_CONFIG_DIR" "$PWD" <<'PYTEST'
+from pathlib import Path
+import json, sys
+sid = "12345678-1234-1234-1234-123456789abc"
+project = Path(sys.argv[1]) / "projects/test"
+project.mkdir(parents=True)
+(project / (sid + ".jsonl")).write_text(json.dumps({"type":"user", "sessionId":sid, "cwd":sys.argv[2], "message":{"role":"user", "content":"hello"}})+"\n")
+PYTEST
+check "Gespeicherte Unterhaltung: Standard behält --continue" 1 "$(args_for | grep -cx -- '--continue')"
 check "--new entfernt Fortsetzen, erhält Name und Modell" '--remote-control android --model sonnet' "$(args_for --new | paste -sd' ')"
 check "-n entspricht --new" "$(args_for --new)" "$(args_for -n)"
-
+printf '%s\n' 'CLAUDE_ARGS="--resume explicit-id --model sonnet"' > "$T/test.conf"
+check "Explizites Resume bleibt unangetastet" '--resume explicit-id --model sonnet' "$(args_for | paste -sd' ')"
+check "--new übersteuert auch explizites Resume" '--model sonnet' "$(args_for --new | paste -sd' ')"
 
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"

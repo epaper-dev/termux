@@ -396,8 +396,9 @@ if [ "$CLAUDE_ON" = yes ]; then
     put "$SRC/bin/rootbridge-claude" "$BINDIR/rootbridge-claude"
     put "$SRC/claude/android-root-guard.py" "$LIBDIR/android-root-guard.py"
     put "$SRC/claude/auth-url-hook.py"      "$LIBDIR/auth-url-hook.py"
+    put "$SRC/claude/claude-conversation.py" "$LIBDIR/claude-conversation.py"
 else
-    rm -f "$ROOT$BINDIR/rootbridge-claude" "$ROOT$LIBDIR/android-root-guard.py" "$ROOT$LIBDIR/auth-url-hook.py"
+    rm -f "$ROOT$BINDIR/rootbridge-claude" "$ROOT$LIBDIR/android-root-guard.py" "$ROOT$LIBDIR/auth-url-hook.py" "$ROOT$LIBDIR/claude-conversation.py"
 fi
 if [ "$CODEX_ON" = yes ]; then
     put "$SRC/bin/rootbridge-codex" "$BINDIR/rootbridge-codex"

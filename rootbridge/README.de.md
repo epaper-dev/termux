@@ -133,8 +133,10 @@ Name beziehungsweise `android` verwendet; bei einer Installation nur mit Codex e
 
 **Neue Unterhaltung.** `rootbridge attach claude -n` (oder `--new`) und das Widget **Claude Neu** starten Claude
 ohne `--continue`. Bei laufender tmux-Sitzung entsteht ein zusätzliches Fenster; bestehende Unterhaltungen bleiben
-offen. Ohne `-n` bleibt das bisherige Fortsetzen-Verhalten erhalten. Nutze **Claude Neu** auch für den ersten Start,
-wenn noch keine Unterhaltung zum Fortsetzen existiert.
+offen. Beim normalen Start mit `--continue` prüft der Starter zuerst die lokal gespeicherten Unterhaltungen für
+den aktuellen Arbeitsordner. Fehlt eine passende Unterhaltung mit Nachrichten, startet Claude automatisch neu;
+nach der ersten gespeicherten Unterhaltung wird wieder fortgesetzt. Die Prüfung berücksichtigt `CLAUDE_CONFIG_DIR`
+und benötigt weder eine Anmeldung noch einen API-Aufruf.
 
 **Ende der Sitzung.** `/exit` (oder Strg+C) in Claude Code beendet alles: Das tmux-Fenster und die tmux-Sitzung schließen sich,
 `rootbridge attach` kehrt zurück, und das über das Widget **Claude** geöffnete Termux-Fenster schließt sich mit. Du landest nicht in der

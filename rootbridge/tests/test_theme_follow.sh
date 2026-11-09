@@ -114,7 +114,7 @@ check "tmux: aktives Fenster fett"          1 "$(grep -c '^set -g window-status-
 # Exercise the argument builder used by the theme-restart path.
 FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^prepare_claude_args() {/,/^}/p' "$ROOT/guest/bin/rootbridge-claude")"
 export FUNCS
-continued="$(bash -c 'eval "$FUNCS"; CONF=/dev/null; prepare_claude_args --continue; printf "%s" "${extra[*]}"')"
+continued="$(bash -c 'eval "$FUNCS"; has_claude_conversation() { return 0; }; CONF=/dev/null; prepare_claude_args --continue; printf "%s" "${extra[*]}"')"
 check "rootbridge-claude: --continue" --continue "$continued"
 
 echo
