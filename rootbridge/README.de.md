@@ -225,7 +225,7 @@ wieder an.
   `CODEX_UPDATE` = `6h|<N>h|daily|always|off`, Stempel in `/var/lib/termux-rootbridge/`; `--codex-update M`,
   `--no-codex-update`). Starten zwei Sitzungen gleichzeitig, kommen sie nacheinander dran (Sperre), und ein fehlgeschlagener
   Schritt hält den Start nie auf. `nodejs` und `git` sind `apt`-Pakete, `rootbridge-apt` hält sie also aktuell. Ein
-  Marketplace- und Plugin-Update haben jeweils 300 Sekunden Zeit; Fehler melden den Schritt und Exit-Code,
+  Marketplace- und Plugin-Update haben jeweils 120 Sekunden Zeit; Fehler melden den Schritt und Exit-Code,
   Zeitüberschreitungen werden ausdrücklich genannt. Die vollständige Ausgabe des letzten Versuchs steht im Gast unter
   `/var/lib/termux-rootbridge/codex-plugin-update.log`. Auch „bereits aktuell“ zählt als erfolgreicher Check für das
   6-Stunden-Fenster. Kann der Erfolgszeitpunkt nicht gespeichert werden, erscheint eine Warnung.
