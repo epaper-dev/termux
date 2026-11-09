@@ -88,8 +88,10 @@ Shift+Tab. No cambia nada más. Claude sigue arrancando en el modo de tu configu
 invitado proot y cada comando de root de Android sigue pidiendo confirmación (también en modo bypass). `--autonomous no` deja el
 ajuste como está (un valor anterior se mantiene), `--autonomous ask` pregunta en un terminal.
 
-Después inicia Claude Code con el widget **Claude**, o escribe `ubuntu` (alias de `rootbridge attach`) en una shell de
-Termux. El primer arranque crea la sesión: inicia el daemon, actualiza los paquetes del invitado (`apt-get update` +
+Después inicia Claude Code con el widget **Claude**, o escribe `claude` (alias de `rootbridge attach claude`) en una shell de
+Termux. `codex` abre la sesión de Codex y `ubuntu` abre una shell Ubuntu simple. Tras la instalación, ejecuta
+`source ~/.bashrc` o abre una nueva ventana de Termux para cargar los atajos.
+El primer arranque de Claude crea la sesión: inicia el daemon, actualiza los paquetes del invitado (`apt-get update` +
 `upgrade`, como máximo una vez cada 6 h, ver abajo), ejecuta `claude update` (también como máximo una vez cada 6 h) e
 inicia Claude Code; los arranques posteriores solo se conectan a ella.
 **Las ventanas normales de Termux siguen siendo shells simples** (con los colores cargados): nada se inicia solo. Con
@@ -232,9 +234,11 @@ se guarda en la configuración de Termux (`TOOL_CLAUDE` / `TOOL_CODEX`) y la reu
 | Comando (Termux) | Qué hace |
 |---|---|
 | `rootbridge start` | daemon + sesión; `--no-attach` la crea en segundo plano (Termux:Boot lo ejecuta tras un reinicio) |
-| `rootbridge attach` / alias `ubuntu` | conectarse a la sesión de Claude Code |
-| `rootbridge attach codex` | conectarse a la ventana de Codex (widget **Codex**; la sesión se crea si falta) |
-| `rootbridge shell` | shell Ubuntu simple en este terminal (inicia el daemon para `androidsu`, pero no Claude Code ni una sesión de tmux; widget «Ubuntu») |
+| `claude` / `rootbridge attach claude` | abrir la sesión de Claude Code o conectarse a la sesión activa (widget **Claude**) |
+| `claude -n` / `claude --new` | iniciar una conversación nueva de Claude en una ventana separada |
+| `codex` / `rootbridge attach codex` | conectarse a la ventana de Codex (widget **Codex**; la sesión se crea si falta) |
+| `ubuntu` / `rootbridge shell` | shell Ubuntu simple en este terminal (inicia el daemon para `androidsu`, pero no Claude Code ni una sesión de tmux; widget «Ubuntu») |
+| `rootbridge attach` | abrir la herramienta predeterminada: Claude Code, o Codex si Claude Code no está instalado |
 | `rootbridge status` | daemon, sesión, instalación en el invitado, últimas líneas de auditoría |
 | `rootbridge login <server>` | `claude mcp login <server>` con traspaso al navegador |
 | `rootbridge codex-login` | `codex login` con traspaso al navegador (`--device-auth` sin navegador) |

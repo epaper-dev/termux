@@ -5,6 +5,10 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* Termux shell shortcuts now match their names: `ubuntu` opens a plain Ubuntu shell (`rootbridge shell`),
+  `claude` opens the Claude Code session (`rootbridge attach claude`), and `codex` opens the Codex session
+  (`rootbridge attach codex`). `claude -n` / `claude --new` starts a separate Claude conversation. Running the
+  installer again replaces the old `ubuntu` alias; reload `~/.bashrc` or open a new Termux window afterwards.
 * **Renamed `termux-root-bridge` to `termux-rootbridge`** (the command was already `rootbridge`): `/etc/termux-rootbridge.conf`,
   `/usr/local/lib/termux-rootbridge/`, `/var/lib/termux-rootbridge/`, `/var/log/termux-rootbridge-apt.log` in the guest,
   `~/.config/termux-rootbridge/config` and `$PREFIX/lib/termux-rootbridge/` in Termux, and the markers
