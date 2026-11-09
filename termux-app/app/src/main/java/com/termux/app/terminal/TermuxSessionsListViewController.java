@@ -21,7 +21,6 @@ import androidx.core.content.ContextCompat;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
-import com.termux.shared.theme.NightMode;
 import com.termux.shared.theme.ThemeUtils;
 import com.termux.terminal.TerminalSession;
 
@@ -57,13 +56,11 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
             return sessionRowView;
         }
 
-        boolean shouldEnableDarkTheme = ThemeUtils.shouldEnableDarkTheme(mActivity, NightMode.getAppNightMode().getName());
-
-        if (shouldEnableDarkTheme) {
-            sessionTitleView.setBackground(
-                ContextCompat.getDrawable(mActivity, R.drawable.session_background_black_selected)
-            );
-        }
+        int defaultColor = ThemeUtils.getSystemAttrColor(mActivity, R.attr.termuxActivityDrawerImageTint);
+        boolean darkDrawer = defaultColor == Color.WHITE;
+        // Always reset recycled rows, and use the same resolved theme as the drawer itself.
+        sessionTitleView.setBackground(ContextCompat.getDrawable(mActivity, darkDrawer
+            ? R.drawable.session_background_black_selected : R.drawable.session_background_selected));
 
         String name = sessionAtRow.mSessionName;
         String sessionTitle = sessionAtRow.getTitle();
@@ -86,7 +83,6 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
         } else {
             sessionTitleView.setPaintFlags(sessionTitleView.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
         }
-        int defaultColor = shouldEnableDarkTheme ? Color.WHITE : Color.BLACK;
         int color = sessionRunning || sessionAtRow.getExitStatus() == 0 ? defaultColor : Color.RED;
         sessionTitleView.setTextColor(color);
         return sessionRowView;

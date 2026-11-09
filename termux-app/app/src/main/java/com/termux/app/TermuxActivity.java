@@ -177,7 +177,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     /**
      * The terminal foreground color used for the terminal toolbar text, or 0 if not set yet by
-     * {@link #updateTerminalToolbarTextColor(int)}.
+     * {@link #updateTerminalToolbarColors(int, int)}.
      */
     private int mTerminalToolbarTextColor;
 
@@ -220,6 +220,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_termux);
+        configureDrawerAppearance();
 
         // Load termux shared preferences
         // This will also fail if TermuxConstants.TERMUX_PACKAGE_NAME does not equal applicationId
@@ -465,6 +466,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // trigger recreation of activity when uiMode/dark mode configuration is changed so that
         // day or night theme takes affect.
         AppCompatActivityUtils.setNightMode(this, NightMode.getAppNightMode().getName(), true);
+    }
+
+    private void configureDrawerAppearance() {
+        // Use one resolved activity theme for the drawer background, labels and session titles.
+        int textColor = com.termux.shared.theme.ThemeUtils.getSystemAttrColor(
+            this, R.attr.termuxActivityDrawerImageTint);
+        for (int id : new int[]{R.id.toggle_keyboard_button, R.id.new_session_button}) {
+            com.google.android.material.button.MaterialButton button = findViewById(id);
+            button.setBackgroundTintList(null);
+            button.setBackground(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            button.setTextColor(textColor);
+        }
+        // This activity supplies matching light/dark colours itself, including custom terminal colours.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+            findViewById(R.id.activity_termux_root_view).setForceDarkAllowed(false);
     }
 
     private void setMargins() {
@@ -858,10 +874,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     /**
      * Use the terminal foreground color for the extra keys and text input of the terminal toolbar,
-     * so that they stay readable with light terminal color schemes. The toolbar background is
-     * transparent and shows the terminal background color set on the window decor view.
+     * paired with an explicit terminal background on the toolbar. The keys themselves remain
+     * transparent, independently of the window theme and the order of session initialization.
      */
-    public void updateTerminalToolbarTextColor(int textColor) {
+    public void updateTerminalToolbarColors(int textColor, int backgroundColor) {
+        ViewPager toolbar = getTerminalToolbarViewPager();
+        toolbar.setBackgroundColor(backgroundColor);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+            toolbar.setForceDarkAllowed(false);
         if (mTerminalToolbarTextColor == textColor) return;
         mTerminalToolbarTextColor = textColor;
 
