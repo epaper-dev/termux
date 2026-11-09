@@ -12,7 +12,7 @@
 #   --codex yes|no    Codex is part of the installation (default yes): rootbridge-codex (the Codex window), the
 #                     update step and, together with Claude Code, the Codex pre-commit review hook in the managed
 #                     settings (an existing value in the config stays without the option)
-#   --codex-update M  CODEX_UPDATE in /etc/termux-rootbridge.conf: `codex update` and the Codex plugin update at the
+#   --codex-update M  CODEX_UPDATE in /etc/termux-rootbridge.conf: `codex update` at the
 #                     start of a session (rootbridge-update). Same values and rules as --claude-update.
 #   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
