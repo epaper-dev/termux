@@ -77,8 +77,13 @@ after_claude() {
     exec bash -l
 }
 
+has_claude_conversation() {
+    python3 -I "${ROOTBRIDGE_CONVERSATION_CHECK:-/usr/local/lib/termux-rootbridge/claude-conversation.py}" \
+        "${CLAUDE_CONFIG_DIR:-${HOME:-/root}/.claude}" "$PWD"
+}
+
 prepare_claude_args() {
-    local arg new=0 skip_resume=0
+    local arg new=0 skip_resume=0 continue_requested=0 auto_new=0
     extra=()
     case "${1:-}" in
         --new|-n) new=1 ;;
@@ -87,7 +92,18 @@ prepare_claude_args() {
     esac
     local configured=()
     read -r -a configured <<< "$(conf_get CLAUDE_ARGS || true)"
+    case "${1:-}" in --continue|-c) continue_requested=1 ;; esac
     for arg in "${configured[@]}"; do
+        case "$arg" in --continue|-c) continue_requested=1 ;; esac
+    done
+    if [ "$new" = 0 ] && [ "$continue_requested" = 1 ] && ! has_claude_conversation; then
+        auto_new=1
+        echo "Keine gespeicherte Unterhaltung für $PWD gefunden - starte Claude neu." >&2
+    fi
+    for arg in "${configured[@]}"; do
+        if [ "$auto_new" = 1 ]; then
+            case "$arg" in --continue|-c) continue ;; esac
+        fi
         if [ "$new" = 1 ]; then
             if [ "$skip_resume" = 1 ]; then
                 skip_resume=0
@@ -100,7 +116,9 @@ prepare_claude_args() {
         fi
         extra+=("$arg")
     done
-    case "${1:-}" in --continue|-c) extra+=(--continue) ;; esac
+    if [ "$new" = 0 ] && [ "$auto_new" = 0 ]; then
+        case "${1:-}" in --continue|-c) extra+=(--continue) ;; esac
+    fi
 }
 prepare_claude_args "${1:-}" || exit $?
 ( limit_nofile; exec "$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}" )
