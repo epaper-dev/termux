@@ -85,6 +85,17 @@ public final class TextContrast {
             blue + ceilDiv((255 - blue) * missing, room));
     }
 
+    /** Keep built-in message greys readable when used as text on the default background.
+     * Other palette values, truecolor and background colours remain unchanged. Call before dimming.
+     */
+    public static int schemeForeground(int index, int color, int background) {
+        if (index == 7 && color == 0xFFE4E4E4 && background == 0xFFFFFFFF)
+            return 0xFF666666;
+        if (index == 8 && color == 0xFF404040 && background == 0xFF000000)
+            return 0xFFC8C8C8;
+        return color;
+    }
+
     private static int ceilDiv(int dividend, int divisor) {
         return (dividend + divisor - 1) / divisor;
     }
