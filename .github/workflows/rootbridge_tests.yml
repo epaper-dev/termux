@@ -48,11 +48,13 @@ jobs:
         run: bash tests/test_theme_follow.sh
       - name: Codex next to Claude Code (rootbridge-update / rootbridge-codex / rootbridge codex-* / install.sh options; stubs)
         run: bash tests/test_codex.sh
+      - name: ptt, push to talk through a tmux key (hold and tap mode, settings; stub tmux)
+        run: bash tests/test_ptt.sh
       - name: ShellCheck
         run: |
           sudo apt-get install -y shellcheck
           shellcheck -x -S warning \
             install.sh uninstall.sh \
-            termux/bin/rootbridge termux/bin/rootbridge-daemon termux/lib/rootbridge-lib.sh \
+            termux/bin/rootbridge termux/bin/rootbridge-daemon termux/bin/ptt termux/lib/rootbridge-lib.sh \
             guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude guest/bin/rootbridge-codex guest/bin/rootbridge-update guest/bin/rootbridge-apt \
-            guest/install-guest.sh guest/setup-guest.sh tests/test_setup.sh tests/test_autonomous.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/test_nofile_limit.sh tests/test_claude_update.sh tests/test_remote_name.sh tests/test_colors_theme.sh tests/test_apt_upgrade.sh tests/test_rootbridge_shell.sh tests/test_daemon_lock.sh tests/test_widgets.sh tests/test_session_exit.sh tests/test_extra_keys.sh tests/test_theme_follow.sh tests/test_codex.sh tests/headless-proof.sh
+            guest/install-guest.sh guest/setup-guest.sh tests/test_setup.sh tests/test_autonomous.sh tests/test_daemon.sh tests/test_claude_wrapper.sh tests/test_nofile_limit.sh tests/test_claude_update.sh tests/test_remote_name.sh tests/test_colors_theme.sh tests/test_apt_upgrade.sh tests/test_rootbridge_shell.sh tests/test_daemon_lock.sh tests/test_widgets.sh tests/test_session_exit.sh tests/test_extra_keys.sh tests/test_theme_follow.sh tests/test_codex.sh tests/test_ptt.sh tests/headless-proof.sh

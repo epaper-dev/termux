@@ -240,10 +240,25 @@ Termux config (`TOOL_CLAUDE` / `TOOL_CODEX`) and reused by every later install; 
 | `rootbridge stop` | stop session and daemon |
 | `rootbridge guard-off` / `guard-on` | emergency switch for the hooks |
 | `rootbridge codex-off` / `codex-on` | emergency switch for the Codex pre-commit review (restart Claude Code) |
+| `ptt start` / `stop` / `toggle` / `status` | push to talk: presses a key in the Claude Code window for `/voice` (see below) |
 
 Inside Claude Code, nothing changes: ask for what you want. When Claude needs root it runs
 `androidsu '<command>'` and you get a prompt showing exactly that command. Every decision lands in
 `~/.rootbridge/audit.log`.
+
+### Push to talk for `/voice`
+
+Claude Code's `/voice` needs a key held down, which an on-screen keyboard cannot do. `ptt` is the key for it, so that
+something else can hold it: a side key, a widget, a script. Set it up once:
+
+1. `~/.claude/keybindings.json`: `{"bindings": [{"context": "Chat", "bindings": {"meta+k": "voice:pushToTalk"}}]}`
+2. `/voice hold` in Claude Code.
+3. `ptt start` starts the recording (it repeats Alt+K every 50 ms, like a held key), `ptt stop` ends it and the text lands in
+   the input. Without a stop the repeats end after `PTT_MAX` seconds (120).
+
+`ptt` only presses a key in a tmux window (`PTT_TARGET`, default `ubuntu:claude`; `PTT_KEY`, default `M-k`), so it fits any
+program that listens for one key. The microphone itself needs `sox` in the guest and a PulseAudio server in Termux
+with the microphone source and Android's microphone permission for Termux; that is device setup, not part of this installer.
 
 ## Logins and MCP links
 
@@ -261,7 +276,7 @@ Termux: `~/.config/termux-rootbridge/config` (parsed as data, never executed): `
 `TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE`, `CLAUDE_UPDATE`, `CODEX_UPDATE`, `TOOL_CLAUDE` and `TOOL_CODEX` (all read by `install.sh`).
 Guest: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
-upgrade, default 1800), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `CODEX_UPDATE` (same values), `CODEX_ARGS` (extra arguments for Codex), `CODEX_PRECOMMIT` (`off` = no pre-commit review, set by `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (see below).
+upgrade, default 1800), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `CODEX_UPDATE` (same values), `CODEX_ARGS` (extra arguments for Codex), `CODEX_PRECOMMIT` (`off` = no pre-commit review, set by `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (see below). Termux config only: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), see `ptt help`.
 
 `NOFILE_LIMIT` (default `2048`, `0` = leave the limit alone) is the file-descriptor limit Claude Code is started with.
 Claude Code closes every descriptor up to that limit after each fork, and under proot every `close()` is a trapped

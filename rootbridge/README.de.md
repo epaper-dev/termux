@@ -267,9 +267,24 @@ wieder an.
 | `rootbridge stop` | Session und Daemon stoppen |
 | `rootbridge guard-off` / `guard-on` | Notschalter für die Hooks |
 | `rootbridge codex-off` / `codex-on` | Notschalter für die Codex-Pre-Commit-Review (Claude Code neu starten) |
+| `ptt start` / `stop` / `toggle` / `status` | Push-to-Talk: drückt im Claude-Code-Fenster eine Taste für `/voice` (siehe unten) |
 
 In Claude Code ändert sich nichts: Du sagst, was du willst. Braucht Claude Root, ruft es `androidsu '<befehl>'`
 auf, und du siehst eine Rückfrage mit genau diesem Befehl. Jede Entscheidung steht in `~/.rootbridge/audit.log`.
+
+### Push-to-Talk für `/voice`
+
+`/voice` von Claude Code braucht eine gehaltene Taste, und das geht mit einer Bildschirmtastatur nicht. `ptt` ist die Taste dafür,
+damit etwas anderes sie halten kann: eine Seitentaste, ein Widget, ein Skript. Einmal einrichten:
+
+1. `~/.claude/keybindings.json`: `{"bindings": [{"context": "Chat", "bindings": {"meta+k": "voice:pushToTalk"}}]}`
+2. In Claude Code `/voice hold`.
+3. `ptt start` startet die Aufnahme (es wiederholt Alt+K alle 50 ms, wie eine gehaltene Taste), `ptt stop` beendet sie, und der Text
+   landet im Eingabefeld. Ohne Stopp enden die Wiederholungen nach `PTT_MAX` Sekunden (120).
+
+`ptt` drückt nur eine Taste in einem tmux-Fenster (`PTT_TARGET`, Standard `ubuntu:claude`; `PTT_KEY`, Standard `M-k`) und passt damit
+zu jedem Programm, das auf eine Taste hört. Das Mikrofon selbst braucht `sox` im Gast, einen PulseAudio-Server in Termux mit
+Mikrofonquelle und die Mikrofon-Berechtigung von Android für Termux; das ist Geräte-Einrichtung, nicht Teil des Installers.
 
 ## Logins und MCP-Links
 

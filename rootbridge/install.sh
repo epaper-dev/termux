@@ -42,7 +42,7 @@
 # Claude Code starts in /root/work in the guest (WORKDIR; the installer creates the folder).
 #
 # What it does (idempotent, with backups):
-#   1. installs rootbridge + rootbridge-daemon into $PREFIX/bin
+#   1. installs rootbridge + rootbridge-daemon + ptt (push to talk) into $PREFIX/bin
 #   2. config ~/.config/termux-rootbridge/config (the Remote Control name is "android" unless
 #      --remote-name NAME says otherwise; NAME is stored there as REMOTE_NAME and reused by every
 #      later install), tmux clipboard settings
@@ -328,6 +328,7 @@ command -v python3 >/dev/null 2>&1 || die "python3 fehlt (pkg install python)"
 say "== 1/5 Programme"
 inst "$REPO/termux/bin/rootbridge"        "$PREFIX/bin/rootbridge"
 inst "$REPO/termux/bin/rootbridge-daemon" "$PREFIX/bin/rootbridge-daemon"
+inst "$REPO/termux/bin/ptt"               "$PREFIX/bin/ptt"
 inst "$REPO/termux/lib/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
 chmod 644 "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
 

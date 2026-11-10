@@ -79,6 +79,12 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `tests/test_autonomous.sh`.
 
 ### Added
+* **`ptt`, push to talk for a program in a tmux window** (Termux, no root): `ptt start` / `stop` / `toggle` / `status`. It was made for
+  Claude Code's `/voice` on a phone with an on-screen keyboard (no key can be held): bind `voice:pushToTalk` to `meta+k` in
+  `~/.claude/keybindings.json`, set `/voice hold`, and something that calls `ptt start` on press and `ptt stop` on release
+  (a side key, a widget) does the rest. In `hold` mode (default) `ptt start` repeats the key (`PTT_INTERVAL`, default 50 ms) until
+  `ptt stop`, like a key held down; `tap` mode presses it once for each. Settings in the config (read as data): `PTT_TARGET`
+  (default `<SESSION>:claude`), `PTT_KEY` (default `M-k`), `PTT_MODE`, `PTT_INTERVAL`, `PTT_MAX`. `tests/test_ptt.sh` has 39 checks.
 * **Codex next to Claude Code**, on by default: `install.sh` installs `git` and `nodejs` (`apt`), Codex (the official standalone
   installer, non-interactive; it brings its own `bwrap`) and the Codex plugin of Claude Code (`codex@openai-codex`), each only
   when it is missing. `--no-codex` leaves it out, `--no-claude` gives a Codex-only installation (no Claude Code, managed
