@@ -91,8 +91,10 @@ noch keins enthält. `--model NAME` schreibt das angegebene Modell immer, `--mod
 gesetzter Wert bleibt). Vorher wurde der Ordner nie angelegt, sodass eine frische Installation Claude Code in `/root` startete.
 Ein alter Standard `WORKDIR=/root/workspace` wird auf `/root/work` umgestellt, wenn der Ordner `/root/workspace` nicht existiert.
 
-Danach Claude Code über das Widget **Claude** starten oder in einer Termux-Shell `ubuntu` eingeben (Alias für
-`rootbridge attach`). Der erste Start legt die Sitzung an: Daemon starten, Pakete des Gasts aktualisieren
+Danach Claude Code über das Widget **Claude** starten oder in einer Termux-Shell `claude` eingeben (Alias für
+`rootbridge attach claude`). `codex` öffnet die Codex-Sitzung, `ubuntu` eine normale Ubuntu-Shell.
+Nach einer Installation die Kurzbefehle mit `source ~/.bashrc` laden oder ein neues Termux-Fenster öffnen.
+Der erste Claude-Start legt die Sitzung an: Daemon starten, Pakete des Gasts aktualisieren
 (`apt-get update` + `upgrade`, höchstens alle 6 Stunden, siehe unten), `claude update` ausführen (ebenfalls höchstens alle 6
 Stunden) und Claude Code starten; spätere Starts hängen sich nur an. **Normale Termux-Fenster bleiben reine Shells** (mit geladenen Farben),
 nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart im Hintergrund angelegt
@@ -125,6 +127,19 @@ außerhalb unseres Blocks) wird nie ersetzt, der Installer nennt dann nur die Ta
 `termux/extra-keys.snippet`). `--no-extra-keys` überspringt das Ganze, `uninstall.sh` entfernt den Block. Die Farben der
 Leiste legt Termux fest, sie lassen sich von hier aus nicht ändern.
 
+**Gerätename in Claude.** Der Installer fragt in einer interaktiven Termux-Shell nach dem Namen für
+Claude Remote Control, etwa `boox-max-lumi`. Enter übernimmt den gespeicherten Namen (beim ersten Mal `android`).
+Der Name bleibt in der Termux-Konfiguration gespeichert und wird an den Ubuntu-Gast weitergegeben.
+Mit `bash install.sh --remote-name boox-max-lumi` setzt du ihn ohne Nachfrage. Ohne Terminal wird der vorhandene
+Name beziehungsweise `android` verwendet; bei einer Installation nur mit Codex entfällt die Frage.
+
+**Neue Unterhaltung.** `rootbridge attach claude -n` (oder `--new`) und das Widget **Claude Neu** starten Claude
+ohne `--continue`. Bei laufender tmux-Sitzung entsteht ein zusätzliches Fenster; bestehende Unterhaltungen bleiben
+offen. Beim normalen Start mit `--continue` prüft der Starter zuerst die lokal gespeicherten Unterhaltungen für
+den aktuellen Arbeitsordner. Fehlt eine passende Unterhaltung mit Nachrichten, startet Claude automatisch neu;
+nach der ersten gespeicherten Unterhaltung wird wieder fortgesetzt. Die Prüfung berücksichtigt `CLAUDE_CONFIG_DIR`
+und benötigt weder eine Anmeldung noch einen API-Aufruf.
+
 **Ende der Sitzung.** `/exit` (oder Strg+C) in Claude Code beendet alles: Das tmux-Fenster und die tmux-Sitzung schließen sich,
 `rootbridge attach` kehrt zurück, und das über das Widget **Claude** geöffnete Termux-Fenster schließt sich mit. Du landest nicht in der
 Ubuntu-Shell. Nur wenn Claude Code mit einem Fehlercode endet, bleibt die Gast-Shell mit einem Hinweis offen, damit die Meldung lesbar bleibt (ebenso, wenn `claude` nicht installiert ist).
@@ -132,7 +147,9 @@ Ubuntu-Shell. Nur wenn Claude Code mit einem Fehlercode endet, bleibt die Gast-S
 **Paket-Updates im Gast.** Standardmäßig an: Beim Start der Claude-Code-Sitzung führt `rootbridge-apt`
 `apt-get update` und `apt-get -y upgrade` aus, höchstens einmal in 6 h nach einem Erfolg (`APT_UPGRADE=6h`; `12h` usw. ändern den Abstand, `daily` = 24 h), und
 blockiert den Start nie (kein Netz, ein Fehler oder ein Timeout geben nur einen Hinweis aus, Claude Code startet, der
-nächste Start versucht es erneut). Zwei Schutzmaßnahmen sind unter proot-distro mit Ubuntu 26.04 wichtig: dpkg bekommt
+nächste Start versucht es erneut). Für `apt-get upgrade` gelten standardmäßig 1800 Sekunden
+(30 Minuten, `APT_TIMEOUT` in `/etc/termux-rootbridge.conf`). Der Installer erhöht den bisherigen Wert 600
+auf 1800; andere eingestellte Werte bleiben erhalten. Zwei Schutzmaßnahmen sind unter proot-distro mit Ubuntu 26.04 wichtig: dpkg bekommt
 `-o DPkg::Path` mit `/usr/local/bin`, weil die uutils-coreutils dort die GNU-benannten Symlinks brauchen (sonst brechen
 Maintainer-Skripte mit „Security violation“ ab), und die coreutils-Pakete (`APT_HOLD`) werden zurückgehalten, weil ein
 Upgrade des Multicall-Binarys den Gast kaputt macht. Log: `/var/log/termux-rootbridge-apt.log` im Gast – jeder Lauf
@@ -208,11 +225,13 @@ wieder an.
 * **Anmeldung.** `rootbridge codex-login` führt `codex login` mit der Browser-Übergabe aus (`--device-auth`, wenn es keinen
   Browser gibt). `rootbridge status` zeigt, ob Codex, seine Anmeldung, das Plugin und der Hook da sind.
 * **Beide bleiben aktuell.** Der Start eines der beiden Fenster ruft `rootbridge-apt` und danach `rootbridge-update` auf:
-  `claude update`, `codex update` und das Plugin-Update, jeweils höchstens alle 6 h nach einem Erfolg (`CLAUDE_UPDATE` /
+  `claude update` und `codex update`, jeweils höchstens alle 6 h nach einem Erfolg (`CLAUDE_UPDATE` /
   `CODEX_UPDATE` = `6h|<N>h|daily|always|off`, Stempel in `/var/lib/termux-rootbridge/`; `--codex-update M`,
   `--no-codex-update`). Starten zwei Sitzungen gleichzeitig, kommen sie nacheinander dran (Sperre), und ein fehlgeschlagener
-  Schritt hält den Start nie auf. `nodejs` und `git` sind `apt`-Pakete, `rootbridge-apt` hält sie also aktuell. Ein
-  Plugin-Update gilt nach einem Neustart von Claude Code.
+  Schritt hält den Start nie auf. `nodejs` und `git` sind `apt`-Pakete, `rootbridge-apt` hält sie also aktuell.
+* **Plugin manuell aktualisieren.** Beim Start gibt es kein automatisches Marketplace- oder Plugin-Update. Führe bei Bedarf
+  im Ubuntu-Gast zuerst `/root/.local/bin/claude plugin marketplace update openai-codex` und danach
+  `/root/.local/bin/claude plugin update codex@openai-codex` aus. Starte Claude Code anschließend neu.
 * **Pre-Commit-Review.** Mit beiden Programmen lässt ein Hook in den Managed Settings (`codex-precommit-review.py`, Timeout
   900 s, `onFailure: "block"`) Codex jeden `git commit` von Claude Code prüfen. Eine erste Zeile `ALLOW` lässt den Commit
   durch; `BLOCK` oder keine klare Antwort hält ihn an und gibt Codex' Befunde an Claude, das sie behebt und erneut committet.
@@ -237,9 +256,11 @@ wieder an.
 | Befehl (Termux) | Wirkung |
 |---|---|
 | `rootbridge start` | Daemon + Session; mit `--no-attach` im Hintergrund (Termux:Boot ruft das nach einem Neustart auf) |
-| `rootbridge attach` / Alias `ubuntu` | an die Claude-Code-Session anhängen |
-| `rootbridge attach codex` | an das Codex-Fenster anhängen (Widget **Codex**; die Session wird angelegt, wenn sie fehlt) |
-| `rootbridge shell` | normale Ubuntu-Shell in diesem Terminal (startet den Daemon für `androidsu`, aber weder Claude Code noch eine tmux-Sitzung; Widget „Ubuntu“) |
+| `claude` / `rootbridge attach claude` | Claude-Code-Sitzung öffnen oder an die laufende Sitzung anhängen (Widget **Claude**) |
+| `claude -n` / `claude --new` | neue Claude-Unterhaltung in einem eigenen Fenster starten |
+| `codex` / `rootbridge attach codex` | an das Codex-Fenster anhängen (Widget **Codex**; die Session wird angelegt, wenn sie fehlt) |
+| `ubuntu` / `rootbridge shell` | normale Ubuntu-Shell in diesem Terminal (startet den Daemon für `androidsu`, aber weder Claude Code noch eine tmux-Sitzung; Widget „Ubuntu“) |
+| `rootbridge attach` | Standardprogramm öffnen: Claude Code, bei einer Installation ohne Claude Code stattdessen Codex |
 | `rootbridge status` | Daemon, Session, Gast-Installation, letzte Audit-Zeilen |
 | `rootbridge login <server>` | `claude mcp login <server>` mit Browser-Übergabe |
 | `rootbridge codex-login` | `codex login` mit Browser-Übergabe (`--device-auth` ohne Browser) |

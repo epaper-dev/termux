@@ -88,8 +88,10 @@ Shift+Tab. No cambia nada más. Claude sigue arrancando en el modo de tu configu
 invitado proot y cada comando de root de Android sigue pidiendo confirmación (también en modo bypass). `--autonomous no` deja el
 ajuste como está (un valor anterior se mantiene), `--autonomous ask` pregunta en un terminal.
 
-Después inicia Claude Code con el widget **Claude**, o escribe `ubuntu` (alias de `rootbridge attach`) en una shell de
-Termux. El primer arranque crea la sesión: inicia el daemon, actualiza los paquetes del invitado (`apt-get update` +
+Después inicia Claude Code con el widget **Claude**, o escribe `claude` (alias de `rootbridge attach claude`) en una shell de
+Termux. `codex` abre la sesión de Codex y `ubuntu` abre una shell Ubuntu simple. Tras la instalación, ejecuta
+`source ~/.bashrc` o abre una nueva ventana de Termux para cargar los atajos.
+El primer arranque de Claude crea la sesión: inicia el daemon, actualiza los paquetes del invitado (`apt-get update` +
 `upgrade`, como máximo una vez cada 6 h, ver abajo), ejecuta `claude update` (también como máximo una vez cada 6 h) e
 inicia Claude Code; los arranques posteriores solo se conectan a ella.
 **Las ventanas normales de Termux siguen siendo shells simples** (con los colores cargados): nada se inicia solo. Con
@@ -201,11 +203,13 @@ se guarda en la configuración de Termux (`TOOL_CLAUDE` / `TOOL_CODEX`) y la reu
 * **Inicio de sesión.** `rootbridge codex-login` ejecuta `codex login` con el traspaso al navegador (`--device-auth` si no
   hay navegador). `rootbridge status` muestra si Codex, su inicio de sesión, el plugin y el hook están en su sitio.
 * **Ambos se mantienen al día.** Al arrancar cualquiera de las dos ventanas se ejecuta `rootbridge-apt` y luego
-  `rootbridge-update`: `claude update`, `codex update` y la actualización del plugin, cada uno como mucho una vez cada 6 h
+  `rootbridge-update`: `claude update` y `codex update`, cada uno como mucho una vez cada 6 h
   tras un éxito (`CLAUDE_UPDATE` / `CODEX_UPDATE` = `6h|<N>h|daily|always|off`, marcas en `/var/lib/termux-rootbridge/`;
   `--codex-update M`, `--no-codex-update`). Si dos sesiones arrancan a la vez, esperan su turno (bloqueo), y un paso fallido
-  nunca detiene el arranque. `nodejs` y `git` son paquetes de `apt`, así que `rootbridge-apt` los mantiene al día. Una
-  actualización del plugin se aplica tras reiniciar Claude Code.
+  nunca detiene el arranque. `nodejs` y `git` son paquetes de `apt`, así que `rootbridge-apt` los mantiene al día.
+* **Actualizar el plugin manualmente.** El arranque no actualiza automáticamente el marketplace ni el plugin. Cuando sea
+  necesario, ejecuta `/root/.local/bin/claude plugin marketplace update openai-codex` y después
+  `/root/.local/bin/claude plugin update codex@openai-codex` en Ubuntu y reinicia Claude Code.
 * **Revisión antes del commit.** Con ambas herramientas, un hook de los Managed Settings (`codex-precommit-review.py`,
   tiempo límite 900 s, `onFailure: "block"`) hace que Codex revise cada `git commit` de Claude Code. Una primera línea `ALLOW`
   deja pasar el commit; `BLOCK`, o ninguna respuesta clara, lo detiene y entrega los hallazgos de Codex a Claude, que los
@@ -230,9 +234,11 @@ se guarda en la configuración de Termux (`TOOL_CLAUDE` / `TOOL_CODEX`) y la reu
 | Comando (Termux) | Qué hace |
 |---|---|
 | `rootbridge start` | daemon + sesión; `--no-attach` la crea en segundo plano (Termux:Boot lo ejecuta tras un reinicio) |
-| `rootbridge attach` / alias `ubuntu` | conectarse a la sesión de Claude Code |
-| `rootbridge attach codex` | conectarse a la ventana de Codex (widget **Codex**; la sesión se crea si falta) |
-| `rootbridge shell` | shell Ubuntu simple en este terminal (inicia el daemon para `androidsu`, pero no Claude Code ni una sesión de tmux; widget «Ubuntu») |
+| `claude` / `rootbridge attach claude` | abrir la sesión de Claude Code o conectarse a la sesión activa (widget **Claude**) |
+| `claude -n` / `claude --new` | iniciar una conversación nueva de Claude en una ventana separada |
+| `codex` / `rootbridge attach codex` | conectarse a la ventana de Codex (widget **Codex**; la sesión se crea si falta) |
+| `ubuntu` / `rootbridge shell` | shell Ubuntu simple en este terminal (inicia el daemon para `androidsu`, pero no Claude Code ni una sesión de tmux; widget «Ubuntu») |
+| `rootbridge attach` | abrir la herramienta predeterminada: Claude Code, o Codex si Claude Code no está instalado |
 | `rootbridge status` | daemon, sesión, instalación en el invitado, últimas líneas de auditoría |
 | `rootbridge login <server>` | `claude mcp login <server>` con traspaso al navegador |
 | `rootbridge codex-login` | `codex login` con traspaso al navegador (`--device-auth` sin navegador) |
@@ -276,7 +282,7 @@ Termux: `~/.config/termux-rootbridge/config` (se interpreta como datos, nunca se
 (todos los lee `install.sh`).
 Invitado: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
-la actualización, por defecto 600), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
+la actualización, por defecto 1800), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
 `daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (ver abajo). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
 
 `NOFILE_LIMIT` (por defecto `2048`, `0` = dejar el límite como está) es el límite de descriptores de archivo con el que

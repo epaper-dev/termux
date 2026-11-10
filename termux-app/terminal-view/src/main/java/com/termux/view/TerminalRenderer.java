@@ -211,9 +211,12 @@ public final class TerminalRenderer {
         boolean foreFromProgram = TextContrast.isProgramColor(foreColor);
         boolean backFromProgram = TextContrast.isProgramColor(backColor);
 
+        int foreIndex = foreColor;
+        int backIndex = backColor;
         if ((foreColor & 0xff000000) != 0xff000000) {
             // Let bold have bright colors if applicable (one of the first 8):
             if (bold && foreColor >= 0 && foreColor < 8) foreColor += 8;
+            foreIndex = foreColor;
             foreColor = palette[foreColor];
         }
 
@@ -227,6 +230,9 @@ public final class TerminalRenderer {
             int tmp = foreColor;
             foreColor = backColor;
             backColor = tmp;
+            int tmpIndex = foreIndex;
+            foreIndex = backIndex;
+            backIndex = tmpIndex;
             boolean tmpFromProgram = foreFromProgram;
             foreFromProgram = backFromProgram;
             backFromProgram = tmpFromProgram;
@@ -260,6 +266,9 @@ public final class TerminalRenderer {
         }
 
         if ((effect & TextStyle.CHARACTER_ATTRIBUTE_INVISIBLE) == 0) {
+            if (backColor == defaultBackground) {
+                foreColor = TextContrast.schemeForeground(foreIndex, foreColor, backColor);
+            }
             if (dim) {
                 int red = (0xFF & (foreColor >> 16));
                 int green = (0xFF & (foreColor >> 8));

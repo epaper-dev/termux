@@ -106,6 +106,12 @@ Details: [rootbridge/README.de.md](rootbridge/README.de.md) ([English](rootbridg
 
 ### Aktualisieren
 
+Jedes neue Release-Set enthält außerdem **`rootbridge.tar.gz`** und **`rootbridge.tar.gz.sha256`**, gepackt aus dem
+zugehörigen Release-Tag. Für die Installation ohne Git-Klon beide Dateien in denselben Ordner herunterladen und
+in Termux `sha256sum -c rootbridge.tar.gz.sha256`, dann `tar -xzf rootbridge.tar.gz` und
+`cd rootbridge && bash install.sh` ausführen. Das Archiv enthält nur `rootbridge/`. Zum Aktualisieren ein neueres
+Archiv in einen eigenen Ordner entpacken; `git pull` funktioniert nur mit dem oben beschriebenen Klon.
+
 Neue Release-Sets erscheinen unter **Releases**. Installiere die neuen APKs über die alten; der Schlüssel ist derselbe,
 Daten und Einstellungen bleiben. Für rootbridge führst du `git pull` im geklonten Ordner `termux` aus und danach in dessen
 Ordner `rootbridge/` noch einmal `bash install.sh` (der Installer ist idempotent).
@@ -144,6 +150,7 @@ GitHub liest nur die Workflows im Wurzelverzeichnis.
 | `Release set` | Baut die App und die sechs Plugins, signiert alle mit **einem** Schlüssel und prüft, dass sie zusammengehören (gleiches Zertifikat, `sharedUserId` `com.termux`). Mit `publish` und dem Release-Schlüssel erscheinen die APKs als einzelne Dateien unter **Releases**. `ephemeral-key` (Wegwerf-Schlüssel) testet die Pipeline und veröffentlicht nichts. |
 | `Termux app unit tests` | Führt `./gradlew test` in `termux-app/` aus (Terminal-Emulator, termux-shared, App), wenn sich dort etwas ändert. |
 | `Rootbridge tests` | Führt die Tests und ShellCheck von `rootbridge/` aus, wenn sich dort etwas ändert. |
+| `Rootbridge release archive` | Hängt `rootbridge.tar.gz` und die Prüfsumme aus dem Release-Tag an. Wird von `Release set` aufgerufen und läuft auch für manuell veröffentlichte Releases; mit einem vorhandenen Tag lassen sich Archive nachträglich ergänzen oder ersetzen. Pull Requests prüfen das Packen ohne Upload. |
 
 Skripte: `.github/scripts/sync_upstream.sh`, `build_release_set.sh`, `make_signing_key.sh`.
 

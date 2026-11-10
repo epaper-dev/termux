@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # rootbridge-update - brings the AI tools of the guest up to date: Claude Code (`claude update`), Codex
-# (`codex update`) and the Codex plugin of Claude Code (`claude plugin update`). Started by rootbridge-claude
+# (`codex update`). Started by rootbridge-claude
 # and rootbridge-codex at the start of a session, after rootbridge-apt, so starting EITHER one updates BOTH
 # (the two review each other: they should be current at the same time). Can also be run by hand.
 # It never blocks the start: every problem is reported and the exit code is always 0.
@@ -9,14 +9,13 @@
 #   TOOL_CLAUDE=on|off, TOOL_CODEX=on|off   which tools are part of the installation (default on; a tool that
 #                                           is off, or whose program is missing, is skipped)
 #   CLAUDE_UPDATE=6h|<N>h|daily|always|off  `claude update`
-#   CODEX_UPDATE=6h|<N>h|daily|always|off   `codex update` and the plugin update
+#   CODEX_UPDATE=6h|<N>h|daily|always|off   `codex update`
 #                                  6h (default): at most once per 6 h after a success; <N>h: the same with N
 #                                  hours (1-999); daily = 24h; always: at every start; off: never
-# Last success of each step: /var/lib/termux-rootbridge/{claude,codex,codex-plugin}-update-last-success
+# Last success of each step: /var/lib/termux-rootbridge/{claude,codex}-update-last-success
 # A failed or aborted step leaves no stamp, so the next start tries again.
 #
 # Nothing here updates nodejs and git: they are apt packages and come with rootbridge-apt (apt-get upgrade).
-# A plugin update applies after a restart of Claude Code.
 
 CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
 
@@ -72,7 +71,12 @@ update_due() {
 }
 
 # stamp_success <stamp file>: remember the time of a successful step
-stamp_success() { { mkdir -p "$(dirname "$1")" && date +%s > "$1"; } 2>/dev/null || true; }
+stamp_success() {
+    if ! { mkdir -p "$(dirname "$1")" && date +%s > "$1"; } 2>/dev/null; then
+        echo "WARNUNG: Update-Zeitpunkt konnte nicht gespeichert werden: $1 (nächster Start prüft erneut)." >&2
+        return 1
+    fi
+}
 
 state_dir() { printf '%s' "${ROOTBRIDGE_STATE_DIR:-/var/lib/termux-rootbridge}"; }
 
@@ -104,23 +108,6 @@ update_codex() {
     return 0
 }
 
-# The Codex plugin of Claude Code (openai/codex-plugin-cc): refresh its marketplace, then update the plugin.
-# Only with both tools. Takes effect after a restart of Claude Code. Never stops the start.
-update_plugin() {
-    local stamp
-    stamp="$(state_dir)/codex-plugin-update-last-success"
-    update_due "codex plugin" CODEX_UPDATE "$stamp" || return 0
-    echo "== Codex-Plugin für Claude Code"
-    if ( limit_nofile
-         timeout 120 "$claude_bin" plugin marketplace update openai-codex &&
-         timeout 120 "$claude_bin" plugin update codex@openai-codex ); then
-        stamp_success "$stamp"
-    else
-        echo "Update des Plugins fehlgeschlagen oder abgebrochen - das vorhandene bleibt."
-    fi
-    return 0
-}
-
 # --- main (not run when the functions are cut out for the tests) ---------------------------------------------
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     # (the tests set ROOTBRIDGE_UPDATE_KEEP_PATH and ROOTBRIDGE_{CLAUDE,CODEX}_BIN to run it with stubs)
@@ -140,11 +127,16 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     lock="$(state_dir)/update.lock"
     if command -v flock >/dev/null 2>&1 && mkdir -p "$(state_dir)" 2>/dev/null && ( : >> "$lock" ) 2>/dev/null; then
         exec 9>> "$lock"
-        flock -n 9 || { echo "Warte auf ein laufendes Update ..."; flock -w 900 9 || true; }
+        if ! flock -n 9; then
+            echo "Warte auf ein laufendes Update ..."
+            if ! flock -w 900 9; then
+                echo "Update-Sperre weiterhin belegt - dieser Update-Lauf wird übersprungen."
+                exit 0
+            fi
+        fi
     fi
 
     [ "$use_claude" = 1 ] && update_claude
     [ "$use_codex" = 1 ] && update_codex
-    [ "$use_claude" = 1 ] && [ "$use_codex" = 1 ] && update_plugin
     exit 0
 fi

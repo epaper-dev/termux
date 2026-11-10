@@ -136,4 +136,15 @@ public class TextContrastTest extends TestCase {
 		assertTrue(TextContrast.isProgramColor(WHITE));
 	}
 
+    public void testMessageGreysUsedAsForeground() {
+        assertEquals(0xFF666666, TextContrast.schemeForeground(7, 0xFFE4E4E4, WHITE));
+        assertEquals(0xFFC8C8C8, TextContrast.schemeForeground(8, 0xFF404040, BLACK));
+        // Custom palettes, truecolor and text on message backgrounds are preserved.
+        assertEquals(0xFFABCDEF, TextContrast.schemeForeground(7, 0xFFABCDEF, WHITE));
+        assertEquals(0xFFE4E4E4, TextContrast.schemeForeground(0xFFE4E4E4, 0xFFE4E4E4, WHITE));
+        assertEquals(WHITE, TextContrast.schemeForeground(15, WHITE, 0xFF404040));
+        assertEquals(BLACK, TextContrast.schemeForeground(0, BLACK, 0xFFE4E4E4));
+        assertEquals(0xFF404040, TextContrast.schemeForeground(8, 0xFF404040, WHITE));
+    }
+
 }

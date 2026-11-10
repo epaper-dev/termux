@@ -42,7 +42,9 @@ cat > "$T/stubs/apt-mark" <<'EOF'
 echo "apt-mark $*" >> "$STUB_LOG"
 case "$1" in
     showhold) cat "$STUB_HOLDS" 2>/dev/null ;;
-    hold) echo "$2" >> "$STUB_HOLDS" ;;
+    hold)
+        [ "${STUB_HOLD_RC:-0}" = 0 ] || { echo "hold failed" >&2; exit "$STUB_HOLD_RC"; }
+        echo "$2" >> "$STUB_HOLDS" ;;
 esac
 exit 0
 EOF
@@ -94,7 +96,7 @@ check "upgrade mit DPkg::Path inkl. /usr/local/bin"   1 "$(calls 'apt-get .*DPkg
 check "upgrade mit --force-confold"                   1 "$(calls 'apt-get .*--force-confold .* upgrade$')"
 check "noninteractive gesetzt"                        2 "$(calls '^env DEBIAN_FRONTEND=noninteractive LISTCHANGES=none')"
 check "Netz-Timeouts beim update"                     1 "$(calls 'apt-get .*Acquire::http::Timeout=15 .* update$')"
-check "Timeouts: 120 s update, 600 s upgrade"         "timeout 120|timeout 600" "$(grep '^timeout ' "$STUB_LOG" | tr '\n' '|' | sed 's/|$//')"
+check "Timeouts: 120 s update, 1800 s upgrade"         "timeout 120|timeout 1800" "$(grep '^timeout ' "$STUB_LOG" | tr '\n' '|' | sed 's/|$//')"
 check "vier coreutils-Pakete auf hold"                4 "$(calls '^apt-mark hold ')"
 check "hold: rust-coreutils"                          1 "$(calls '^apt-mark hold rust-coreutils$')"
 check "Stempel geschrieben"                           ja "$(stamp_exists)"
@@ -224,6 +226,18 @@ check "drei Fehlläufe: nie 'Ende: ok'"                0 "$(grep -c 'Ende: ok' "
 
 # --- holds
 reset_state; mkconf "APT_UPGRADE=daily"
+run_apt STUB_HOLD_RC=1
+check "hold schlägt fehl: Exit 0 (Sitzung startet weiter)" 0 "$RC"
+check "hold schlägt fehl: kein upgrade"              0 "$(calls 'apt-get .* upgrade$')"
+check "hold schlägt fehl: kein Stempel"              nein "$(stamp_exists)"
+check "hold schlägt fehl: Warnung"                   1 "$(out_has 'hold für rust-coreutils fehlgeschlagen')"
+check "hold schlägt fehl: Ende-Zeile mit Grund"       1 "$(grep -c '^=== .* Ende: hold-fehlgeschlagen$' "$T/apt.log")"
+run_apt
+check "hold nach Fehler: erneuter Versuch"           1 "$(calls '^apt-mark hold rust-coreutils$')"
+check "hold nach Fehler: upgrade läuft"              1 "$(calls 'apt-get .* upgrade$')"
+check "hold nach Fehler: Stempel geschrieben"        ja "$(stamp_exists)"
+
+reset_state; mkconf "APT_UPGRADE=daily"
 run_apt "STUB_INSTALLED=rust-coreutils coreutils"
 check "nur installierte Pakete werden gehalten"       2 "$(calls '^apt-mark hold ')"
 check "nicht installiert: kein hold für gnu-coreutils" 0 "$(calls '^apt-mark hold gnu-coreutils$')"
@@ -247,7 +261,7 @@ run_apt
 check "APT_HOLD mit Sonderzeichen: Standardliste"     4 "$(calls '^apt-mark hold ')"
 
 # --- APT_TIMEOUT
-for pair in "900:900" "60:60" "3600:3600" "5:600" "99999:600" "abc:600" "-1:600"; do
+for pair in "900:900" "60:60" "3600:3600" "5:1800" "99999:1800" "abc:1800" "-1:1800"; do
     reset_state; mkconf "APT_UPGRADE=daily" "APT_TIMEOUT=${pair%%:*}"
     run_apt
     check "APT_TIMEOUT=${pair%%:*} -> ${pair##*:} s"  "timeout 120|timeout ${pair##*:}" "$(grep '^timeout ' "$STUB_LOG" | tr '\n' '|' | sed 's/|$//')"
@@ -292,7 +306,7 @@ S="$T/g1"
 ginstall "$S"
 check "Gast ohne Option: Installer läuft"             0 "$?"
 check "Gast: APT_UPGRADE=6h als Standard"             "APT_UPGRADE=6h" "$(gval "$S" APT_UPGRADE)"
-check "Gast: APT_TIMEOUT=600"                         "APT_TIMEOUT=600" "$(gval "$S" APT_TIMEOUT)"
+check "Gast: APT_TIMEOUT=1800"                         "APT_TIMEOUT=1800" "$(gval "$S" APT_TIMEOUT)"
 check "Gast: APT_HOLD mit den coreutils-Paketen"      "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" "$(gval "$S" APT_HOLD)"
 check "Gast: rootbridge-apt installiert"              ja "$([ -x "$S/usr/local/bin/rootbridge-apt" ] && echo ja || echo nein)"
 check "Gast: rootbridge-apt hat Gast-Shebang"         "#!/bin/bash" "$(head -n 1 "$S/usr/local/bin/rootbridge-apt")"
@@ -322,6 +336,15 @@ check "Gast --apt-upgrade 12h"                        "APT_UPGRADE=12h" "$(gval 
 ginstall "$S" --apt-upgrade 6h
 check "Gast --apt-upgrade 6h"                         "APT_UPGRADE=6h" "$(gval "$S" APT_UPGRADE)"
 check "Gast --apt-upgrade 6h: genau eine Zeile"       1 "$(gcount "$S" APT_UPGRADE)"
+
+S="$T/old-timeout"; mkdir -p "$S/etc"
+printf '%s\n' "APT_TIMEOUT=600" > "$(gconf "$S")"
+ginstall "$S"
+check "Alter Standard: 600 -> 1800 Sekunden"           "APT_TIMEOUT=1800" "$(gval "$S" APT_TIMEOUT)"
+before="$(cksum < "$(gconf "$S")")"; b0="$(cbak "$S")"
+ginstall "$S"
+check "Timeout-Migration zweiter Lauf: unverändert"    "$before" "$(cksum < "$(gconf "$S")")"
+check "Timeout-Migration zweiter Lauf: keine Sicherung" "$b0" "$(cbak "$S")"
 
 S="$T/g2"; mkdir -p "$S/etc"; printf '%s\n' "WORKDIR=/srv/mine" "APT_UPGRADE=always" "APT_TIMEOUT=900" > "$(gconf "$S")"
 ginstall "$S"

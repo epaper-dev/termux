@@ -9,7 +9,9 @@
 #                   [--model NAME|none] [--claude | --no-claude] [--codex | --no-codex]
 #                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update]
 #
-# Setup (automatic, nothing to ask for): what is missing gets installed first: the Termux packages
+# Setup: an interactive Termux shell asks for the device name used in Claude Remote Control
+# (Enter accepts the suggested name; --remote-name NAME skips the question).
+# Missing components are installed automatically: the Termux packages
 #   (pkg install), the Ubuntu guest (proot-distro install, a download of a few hundred MB),
 #   python3/curl/certificates in the guest and Claude Code (official installer). A device that has it
 #   all just gets the normal installation. --no-setup only checks and tells you what is missing
@@ -48,9 +50,9 @@
 #      and follows the phone; ~/.termux/colors-light.properties, colors-dark.properties and colors.properties
 #      are optional overrides of yours). Only colour files that earlier versions installed, still exactly as
 #      installed, are removed. --no-colors leaves those and the Claude Code theme alone. A ~/.bashrc block
-#      (alias `ubuntu`, reloads the Termux settings
+#      (aliases `ubuntu` for the guest shell, `claude` / `codex` for the tool sessions; reloads the Termux settings
 #      in every new shell; ordinary Termux windows stay plain shells, Claude Code starts
-#      via the widgets, `ubuntu` or `rootbridge attach`), the Termux:Widget shortcuts
+#      via the widgets, `claude`, `codex` or `rootbridge attach`), the Termux:Widget shortcuts
 #      "Claude" and "Ubuntu" with the widget icon (an icon you chose stays; icons of the
 #      earlier names "Claude Code" / "Ubuntu Shell" / "Claude >_" / "Ubuntu >_" are carried
 #      over; --no-widgets skips all this), optional boot script, an extra keys row in
@@ -121,7 +123,7 @@ while [ $# -gt 0 ]; do
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift ;;
-        -h|--help) sed -n '2,69p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,/^set -eu/{ /^set -eu/d; p; }' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -346,7 +348,7 @@ AUTOSTART_DELAY=3
 # REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); default android, change with install.sh --remote-name
 # APT_UPGRADE=6h        # apt-get update + upgrade in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
 # CLAUDE_UPDATE=6h      # claude update in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --claude-update / --no-claude-update
-# CODEX_UPDATE=6h       # codex update (and the Codex plugin) at session start: same values; set with install.sh --codex-update / --no-codex-update
+# CODEX_UPDATE=6h       # codex update at session start: same values; set with install.sh --codex-update / --no-codex-update
 # TOOL_CLAUDE=on        # on | off: Claude Code is part of this installation; set with install.sh --claude / --no-claude
 # TOOL_CODEX=on         # on | off: Codex is part of this installation; set with install.sh --codex / --no-codex
 EOF
@@ -363,24 +365,6 @@ if grep -qx 'WORKDIR=/root/workspace' "$CFG"; then
         backup "$CFG"; mv -f "$tmp" "$CFG"
         say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
     fi
-fi
-if [ "$REMOTE_NAME_SET" = 1 ]; then
-    # store the name in the Termux config: it survives a reinstall of the guest
-    tmp="$CFG.new.$$"
-    cp "$CFG" "$tmp"
-    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
-    if grep -q '^REMOTE_NAME=' "$tmp"; then
-        sed -i "s|^REMOTE_NAME=.*|REMOTE_NAME=$REMOTE_NAME|" "$tmp"
-    else
-        printf 'REMOTE_NAME=%s\n' "$REMOTE_NAME" >> "$tmp"
-    fi
-    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  Remote-Control-Name gespeichert: $REMOTE_NAME"; fi
-else
-    # no option given: reuse the name stored by an earlier install
-    v="$(sed -n 's/^REMOTE_NAME=//p' "$CFG" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; say "  Remote-Control-Name aus der Konfig: $REMOTE_NAME"
-    else say "  Remote-Control-Name (Standard): $REMOTE_NAME"; fi
 fi
 if [ "$APT_MODE_SET" = 1 ]; then
     # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
@@ -444,6 +428,38 @@ fi
 if [ "$USE_CODEX_SET" = 1 ]; then
     cfg_set TOOL_CODEX "$([ "$USE_CODEX" = yes ] && echo on || echo off)" "Codex: $USE_CODEX"
 fi
+# Resolve the device name after the enabled tools, so Codex-only installs ask no Claude question.
+if [ "$REMOTE_NAME_SET" != 1 ]; then
+    v="$(cfg_get REMOTE_NAME)"
+    if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; fi
+    if [ "$USE_CLAUDE" = yes ] && [ -t 0 ]; then
+        say "Wie soll dieses Gerät in Claude Remote Control heißen?"
+        say "  Erlaubt: Buchstaben, Ziffern, Punkt, _ und -; maximal 64 Zeichen (z. B. boox-max-lumi)."
+        while true; do
+            printf 'Gerätename [%s]: ' "$REMOTE_NAME"
+            IFS= read -r answer || die "Namensabfrage abgebrochen; für einen Aufruf ohne Nachfrage --remote-name NAME verwenden."
+            answer="${answer:-$REMOTE_NAME}"
+            if [[ "$answer" =~ $NAME_RE ]]; then
+                REMOTE_NAME="$answer"; REMOTE_NAME_SET=1; break
+            fi
+            say "Ungültiger Gerätename. Bitte ohne Leerzeichen oder Sonderzeichen eingeben."
+        done
+    else
+        say "  Remote-Control-Name: $REMOTE_NAME (ohne Nachfrage; ändern mit --remote-name NAME)"
+    fi
+fi
+if [ "$REMOTE_NAME_SET" = 1 ]; then
+    # store the name in the Termux config: it survives a reinstall of the guest
+    tmp="$CFG.new.$$"
+    cp "$CFG" "$tmp"
+    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
+    if grep -q '^REMOTE_NAME=' "$tmp"; then
+        sed -i "s|^REMOTE_NAME=.*|REMOTE_NAME=$REMOTE_NAME|" "$tmp"
+    else
+        printf 'REMOTE_NAME=%s\n' "$REMOTE_NAME" >> "$tmp"
+    fi
+    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  Remote-Control-Name gespeichert: $REMOTE_NAME"; fi
+fi
 if [ "$CODEX_UPD_SET" = 1 ]; then
     cfg_set CODEX_UPDATE "$CODEX_UPD_MODE" "codex-update-Modus gespeichert: $CODEX_UPD_MODE"
 else
@@ -501,10 +517,12 @@ else
 fi
 TMP_RC="$(mktemp)"
 cat > "$TMP_RC" <<'EOF'
-alias ubuntu='rootbridge attach'
+alias ubuntu='rootbridge shell'
+alias claude='rootbridge attach claude'
+alias codex='rootbridge attach codex'
 if [[ $- == *i* ]] && [ -z "${TMUX:-}" ]; then
     # reload the Termux settings in every new Termux shell (Claude Code is NOT started here:
-    # use the widget "Claude", `ubuntu` or `rootbridge attach`)
+    # use the widgets, `claude`, `codex` or `rootbridge attach`)
     if command -v termux-reload-settings >/dev/null 2>&1; then termux-reload-settings; fi
 fi
 EOF
@@ -530,7 +548,7 @@ if [ "$DO_WIDGETS" = 1 ]; then
         done
     done
     # a tool that is switched off gets no widget (and our widget of an earlier install goes, with a copy in backups)
-    for pair in "claude:Claude:$USE_CLAUDE" "codex:Codex:$USE_CODEX"; do
+    for pair in "claude:Claude:$USE_CLAUDE" "claude-new:Claude Neu:$USE_CLAUDE" "codex:Codex:$USE_CODEX"; do
         if [ "${pair##*:}" = no ]; then
             w="${pair#*:}"; w="${w%%:*}"
             if [ -f "$SC/$w" ] && grep -q 'rootbridge' "$SC/$w" 2>/dev/null; then
@@ -539,10 +557,10 @@ if [ "$DO_WIDGETS" = 1 ]; then
             fi
         fi
     done
-    WIDGET_LIST="ubuntu:Ubuntu"
-    [ "$USE_CODEX" = yes ] && WIDGET_LIST="codex:Codex $WIDGET_LIST"
-    [ "$USE_CLAUDE" = yes ] && WIDGET_LIST="claude:Claude $WIDGET_LIST"
-    for pair in $WIDGET_LIST; do
+    WIDGET_LIST=("ubuntu:Ubuntu")
+    [ "$USE_CODEX" = yes ] && WIDGET_LIST+=("codex:Codex")
+    [ "$USE_CLAUDE" = yes ] && WIDGET_LIST+=("claude:Claude" "claude-new:Claude Neu")
+    for pair in "${WIDGET_LIST[@]}"; do
         src="${pair%%:*}"; name="${pair#*:}"
         inst "$REPO/termux/shortcuts/$src" "$SC/$name"
         # One default icon for both widgets: installed if there is none, and in place of an icon that is exactly a default
@@ -668,13 +686,14 @@ fi
 say
 say "Fertig. Weiter:"
 say "  rootbridge status        # Zustand prüfen"
+say "  source ~/.bashrc         # Kurzbefehle in dieser Termux-Shell laden (oder ein neues Fenster öffnen)"
+say "  ubuntu                   # Ubuntu-Shell öffnen (auch Widget 'Ubuntu')"
 if [ "$USE_CLAUDE" = yes ]; then
-    say "  ubuntu                   # an die Claude-Code-Sitzung anhängen (legt sie an; auch Widget 'Claude')"
-else
-    say "  ubuntu                   # an die Codex-Sitzung anhängen (legt sie an; auch Widget 'Codex')"
+    say "  claude                   # Claude-Code-Sitzung öffnen (legt sie an; auch Widget 'Claude')"
+    say "  claude -n                # neue Claude-Unterhaltung in einem eigenen Fenster starten"
 fi
-if [ "$USE_CODEX" = yes ] && [ "$USE_CLAUDE" = yes ]; then
-    say "  rootbridge attach codex  # an das Codex-Fenster anhängen (auch Widget 'Codex')"
+if [ "$USE_CODEX" = yes ]; then
+    say "  codex                    # Codex-Sitzung öffnen (legt sie an; auch Widget 'Codex')"
 fi
 say "  rootbridge start         # Daemon + Sitzung (Termux:Boot ruft das nach einem Neustart auf)"
 say "Normale Termux-Fenster bleiben reine Shells; Claude Code und Codex starten nicht mehr automatisch."
@@ -688,7 +707,7 @@ if [ "$DO_GUEST" = 1 ] && [ "$USE_CODEX" = yes ]; then
     say "Codex: einmal anmelden mit   rootbridge codex-login   (der Browser öffnet sich)."
     if [ "$USE_CLAUDE" = yes ]; then
         say "Bis dahin blockiert der Pre-Commit-Review jeden Commit von Claude Code (Notausgang: rootbridge codex-off)."
-        say "Beim Start eines der beiden Fenster werden beide aktualisiert (claude update, codex update, Plugin)."
+        say "Beim Start eines der beiden Fenster werden beide aktualisiert (claude update, codex update)."
     else
         say "Beim Start von Codex wird Codex aktualisiert (codex update)."
     fi

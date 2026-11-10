@@ -188,6 +188,58 @@ HOME="$H4" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR
 check "--no-guest: Name gespeichert"                  "REMOTE_NAME=android" "$(grep '^REMOTE_NAME=' "$H4/.config/termux-rootbridge/config")"
 check "--no-guest: Gast-Installer nicht aufgerufen"   0 "$(wc -l < "$STUB_LOG" | tr -d ' ')"
 
+# Actual pseudo-terminal: exercise read/validation and the full Termux -> guest name transfer.
+rinstall_tty() {
+    local answers="$1"; shift
+    python3 -I - "$INSTALL" "$H" "$P" "$T/stubs:$PATH" "$T/prompt.log" "$answers" "$@" <<'PYTEST'
+import errno, os, pty, select, signal, sys, time
+installer, home, prefix, path, log, answers, *options = sys.argv[1:]
+pid, master = pty.fork()
+if pid == 0:
+    env = os.environ.copy()
+    env.update(HOME=home, PREFIX=prefix, PATH=path, ROOTBRIDGE_ALLOW_GUEST="1", BRIDGE_DIR=home+"/.rootbridge")
+    os.execvpe("bash", ["bash", installer, "--no-boot", "--no-migrate", "--no-deps-check", "--no-extra-keys", "--no-setup", "--autonomous", "no", *options], env)
+if answers:
+    os.write(master, answers.encode())
+output = bytearray()
+deadline = time.monotonic()+60
+while True:
+    if time.monotonic() > deadline:
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+        raise SystemExit("Installer did not finish in pseudo-terminal")
+    if select.select([master], [], [], 0.2)[0]:
+        try:
+            data = os.read(master, 65536)
+        except OSError as e:
+            if e.errno == errno.EIO: break
+            raise
+        if not data: break
+        output.extend(data)
+_, status = os.waitpid(pid, 0)
+os.close(master)
+with open(log, "wb") as stream:
+    stream.write(output.replace(b"\r\n", b"\n"))
+sys.exit(os.waitstatus_to_exitcode(status))
+PYTEST
+}
+H="$T/prompt-home"; mkdir -p "$H"
+CFG="$H/.config/termux-rootbridge/config"
+rinstall_tty $'bad name\nboox-max-lumi\n'
+check "Namensabfrage: Installer erfolgreich" 0 "$?"
+check "Namensabfrage: ungültiger Name wird abgewiesen" 1 "$(grep -c 'Ungültiger Gerätename' "$T/prompt.log")"
+check "Namensabfrage: gültiger Name gespeichert" 'REMOTE_NAME=boox-max-lumi' "$(grep '^REMOTE_NAME=' "$CFG")"
+check "Namensabfrage: Name erreicht den Gast" 'CLAUDE_ARGS="--remote-control boox-max-lumi --continue"' "$(gline2)"
+before="$(cksum < "$CFG")"
+rinstall_tty $'\n'
+check "Namensabfrage: gespeicherter Name als Vorschlag" 1 "$(grep -c 'Gerätename \[boox-max-lumi\]' "$T/prompt.log")"
+check "Namensabfrage: Enter behält die Konfiguration" "$before" "$(cksum < "$CFG")"
+rinstall_tty '' --remote-name boox-lumi
+check "Expliziter Name: keine Abfrage am Terminal" 0 "$(grep -c 'Gerätename \[' "$T/prompt.log")"
+check "Expliziter Name: neuer Name gespeichert" 'REMOTE_NAME=boox-lumi' "$(grep '^REMOTE_NAME=' "$CFG")"
+rinstall_tty '' --no-claude
+check "Codex allein: keine Claude-Namensabfrage" 0 "$(grep -c 'Gerätename \[' "$T/prompt.log")"
+
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
 [ "$FAIL" -eq 0 ]

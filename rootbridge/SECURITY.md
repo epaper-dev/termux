@@ -50,6 +50,8 @@ sandbox against a hostile agent or a compromised guest. Read the limits before r
   restricts writing, not reading: it can read more of the guest than the repository.
 * **The review hook takes the command apart like a shell, nothing more.** It reviews a `git commit` that is run (also after
   `cd`, with `git -C`, behind `sudo` / `env` / `time`, in `bash -c '…'` and `$(…)`); text in quotes or heredocs does not count.
+  Commands with an executable `git commit` and unquoted parentheses are blocked: the hook cannot reliably track
+  directory changes across subshells. Run the commit separately instead. Quoted text and heredoc bodies do not count.
   It does not recognise git aliases (`git ci`), scripts or programs that commit for you, and `merge`, `rebase` or
   `cherry-pick`. A command it cannot take apart falls back to a text search, so a real commit is not missed. A `git` that fails blocks the commit (only "not a git repository" passes). Files that
   only a `git add` of the same command brings in are in no diff: they are listed to Codex and part of the approval hash.

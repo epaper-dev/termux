@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # rootbridge-claude - guest entry point (started by `rootbridge start`):
 #   1. apt-get update + upgrade (rootbridge-apt, at most once every 6 h by default, never blocks the start)
-#   2. rootbridge-update: claude update, codex update and the Codex plugin (CLAUDE_UPDATE / CODEX_UPDATE, at most
+#   2. rootbridge-update: claude update and codex update (CLAUDE_UPDATE / CODEX_UPDATE, at most
 #      once every 6 h by default, never blocks the start). Starting Claude Code also updates Codex and the other way
 #      round (rootbridge-codex does the same): the two review each other.
 #   3. Claude Code with autonomous mode available
@@ -57,7 +57,7 @@ if command -v rootbridge-apt >/dev/null 2>&1; then
     rootbridge-apt || true
 fi
 
-# claude update, codex update, Codex plugin (CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
+# claude update, codex update (CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
 if command -v rootbridge-update >/dev/null 2>&1; then
     rootbridge-update || true
 fi
@@ -77,7 +77,49 @@ after_claude() {
     exec bash -l
 }
 
-read -r -a extra <<< "$(conf_get CLAUDE_ARGS || true)"
-[ "${1:-}" = --continue ] && extra+=(--continue)
+has_claude_conversation() {
+    python3 -I "${ROOTBRIDGE_CONVERSATION_CHECK:-/usr/local/lib/termux-rootbridge/claude-conversation.py}" \
+        "${CLAUDE_CONFIG_DIR:-${HOME:-/root}/.claude}" "$PWD"
+}
+
+prepare_claude_args() {
+    local arg new=0 skip_resume=0 continue_requested=0 auto_new=0
+    extra=()
+    case "${1:-}" in
+        --new|-n) new=1 ;;
+        --continue|-c|"") ;;
+        *) echo "rootbridge-claude: unbekannte Option: $1" >&2; return 2 ;;
+    esac
+    local configured=()
+    read -r -a configured <<< "$(conf_get CLAUDE_ARGS || true)"
+    case "${1:-}" in --continue|-c) continue_requested=1 ;; esac
+    for arg in "${configured[@]}"; do
+        case "$arg" in --continue|-c) continue_requested=1 ;; esac
+    done
+    if [ "$new" = 0 ] && [ "$continue_requested" = 1 ] && ! has_claude_conversation; then
+        auto_new=1
+        echo "Keine gespeicherte Unterhaltung für $PWD gefunden - starte Claude neu." >&2
+    fi
+    for arg in "${configured[@]}"; do
+        if [ "$auto_new" = 1 ]; then
+            case "$arg" in --continue|-c) continue ;; esac
+        fi
+        if [ "$new" = 1 ]; then
+            if [ "$skip_resume" = 1 ]; then
+                skip_resume=0
+                [[ "$arg" = -* ]] || continue
+            fi
+            case "$arg" in
+                --continue|-c|--resume=*|--continue=*) continue ;;
+                --resume|-r) skip_resume=1; continue ;;
+            esac
+        fi
+        extra+=("$arg")
+    done
+    if [ "$new" = 0 ] && [ "$auto_new" = 0 ]; then
+        case "${1:-}" in --continue|-c) extra+=(--continue) ;; esac
+    fi
+}
+prepare_claude_args "${1:-}" || exit $?
 ( limit_nofile; exec "$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}" )
 after_claude "$?"

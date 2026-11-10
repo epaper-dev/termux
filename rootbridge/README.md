@@ -94,8 +94,10 @@ yet. `--model NAME` always writes the given model, `--model none` leaves it alon
 stays). Before, the folder was never created, so a fresh installation started Claude Code in `/root`. An old default
 `WORKDIR=/root/workspace` is moved to `/root/work` if the folder `/root/workspace` does not exist.
 
-Then start Claude Code with the **Claude** widget, or type `ubuntu` (alias for `rootbridge attach`) in a Termux
-shell. The first start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +
+Then start Claude Code with the **Claude** widget, or type `claude` (alias for `rootbridge attach claude`) in a Termux
+shell. `codex` opens the Codex session; `ubuntu` opens a plain Ubuntu shell. After installation, run `source ~/.bashrc`
+or open a new Termux window to load the shortcuts.
+The first Claude start creates the session: it starts the daemon, updates the guest's packages (`apt-get update` +
 `upgrade`, at most once every 6 hours, see below), runs `claude update` (likewise) and starts Claude Code; later
 starts just attach to it.
 **Ordinary Termux windows stay plain shells** (with the colours loaded), nothing starts by itself. With Termux:Boot the
@@ -198,10 +200,13 @@ Termux config (`TOOL_CLAUDE` / `TOOL_CODEX`) and reused by every later install; 
 * **Login.** `rootbridge codex-login` runs `codex login` with the browser hand-off (`--device-auth` when there is no
   browser). `rootbridge status` shows whether Codex, its login, the plugin and the hook are in place.
 * **Both stay current.** Starting either window runs `rootbridge-apt` and then `rootbridge-update`: `claude update`,
-  `codex update` and the plugin update, each at most once per 6 h after a success (`CLAUDE_UPDATE` / `CODEX_UPDATE` =
+  `codex update`, each at most once per 6 h after a success (`CLAUDE_UPDATE` / `CODEX_UPDATE` =
   `6h|<N>h|daily|always|off`, stamps in `/var/lib/termux-rootbridge/`; `--codex-update M`, `--no-codex-update`). Two
   sessions starting at once take turns (lock), and a failing step never stops the start. `nodejs` and `git` are `apt`
-  packages, so `rootbridge-apt` keeps them current. A plugin update applies after a restart of Claude Code.
+  packages, so `rootbridge-apt` keeps them current.
+* **Update the plugin manually.** Startup does not update the marketplace or plugin automatically. When needed, run
+  `/root/.local/bin/claude plugin marketplace update openai-codex` followed by
+  `/root/.local/bin/claude plugin update codex@openai-codex` in the Ubuntu guest, then restart Claude Code.
 * **Pre-commit review.** With both tools, a hook in the managed settings (`codex-precommit-review.py`, timeout 900 s,
   `onFailure: "block"`) lets Codex review every `git commit` of Claude Code. A first line `ALLOW` lets the commit through;
   `BLOCK`, or no clear answer, stops it and hands Codex's findings to Claude, which fixes them and commits again. It is a
@@ -224,9 +229,11 @@ Termux config (`TOOL_CLAUDE` / `TOOL_CODEX`) and reused by every later install; 
 | Command (Termux) | What it does |
 |---|---|
 | `rootbridge start` | daemon + session; `--no-attach` creates it in the background (Termux:Boot runs that after a reboot) |
-| `rootbridge attach` / alias `ubuntu` | attach to the Claude Code session |
-| `rootbridge attach codex` | attach to the Codex window (widget **Codex**; the session is created if it is missing) |
-| `rootbridge shell` | plain Ubuntu shell in this terminal (starts the daemon for `androidsu`, but no Claude Code and no tmux session; widget "Ubuntu") |
+| `claude` / `rootbridge attach claude` | open the Claude Code session or attach to the running session (widget **Claude**) |
+| `claude -n` / `claude --new` | start a new Claude conversation in a separate window |
+| `codex` / `rootbridge attach codex` | attach to the Codex window (widget **Codex**; the session is created if it is missing) |
+| `ubuntu` / `rootbridge shell` | plain Ubuntu shell in this terminal (starts the daemon for `androidsu`, but no Claude Code and no tmux session; widget "Ubuntu") |
+| `rootbridge attach` | open the default tool: Claude Code, or Codex on an installation without Claude Code |
 | `rootbridge status` | daemon, session, guest install, last audit lines |
 | `rootbridge login <server>` | `claude mcp login <server>` with browser hand-off |
 | `rootbridge codex-login` | `codex login` with browser hand-off (`--device-auth` without a browser) |
@@ -269,7 +276,7 @@ Termux: `~/.config/termux-rootbridge/config` (parsed as data, never executed): `
 `TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE`, `CLAUDE_UPDATE`, `CODEX_UPDATE`, `TOOL_CLAUDE` and `TOOL_CODEX` (all read by `install.sh`).
 Guest: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
-upgrade, default 600), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `CODEX_UPDATE` (same values), `CODEX_ARGS` (extra arguments for Codex), `CODEX_PRECOMMIT` (`off` = no pre-commit review, set by `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (see below). Termux config only: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), see `ptt help`.
+upgrade, default 1800), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `CODEX_UPDATE` (same values), `CODEX_ARGS` (extra arguments for Codex), `CODEX_PRECOMMIT` (`off` = no pre-commit review, set by `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (see below). Termux config only: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), see `ptt help`.
 
 `NOFILE_LIMIT` (default `2048`, `0` = leave the limit alone) is the file-descriptor limit Claude Code is started with.
 Claude Code closes every descriptor up to that limit after each fork, and under proot every `close()` is a trapped
