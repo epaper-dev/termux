@@ -51,7 +51,7 @@ PYEOF
     say "Block entfernt: $f"
 done
 
-rm -f "$PREFIX/bin/rootbridge" "$PREFIX/bin/rootbridge-daemon"
+rm -f "$PREFIX/bin/rootbridge" "$PREFIX/bin/rootbridge-daemon" "$PREFIX/bin/ptt"
 rm -rf "$PREFIX/lib/termux-rootbridge"
 rm -f "$HOME/.termux/boot/10-rootbridge.sh"
 # widgets, under every name this project has used: "Claude"/"Ubuntu" are generic, so only remove a script

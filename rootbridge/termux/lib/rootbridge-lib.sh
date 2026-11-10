@@ -19,6 +19,11 @@ CLAUDE_ARGS=""
 TOOL_CLAUDE="on"        # on | off: Claude Code is part of this installation (install.sh --no-claude sets off)
 TOOL_CODEX="on"         # on | off: Codex is part of this installation (install.sh --no-codex sets off)
 AUTOSTART_DELAY=3
+PTT_TARGET=""           # tmux target that `ptt` presses its key in (empty = "<SESSION>:claude")
+PTT_KEY="M-k"           # tmux key name; Claude Code: "voice:pushToTalk" bound to meta+k in ~/.claude/keybindings.json
+PTT_MODE="hold"         # hold | tap: `ptt start` repeats the key until `ptt stop` (hold), or presses it once (tap)
+PTT_INTERVAL=50         # milliseconds between the repeats of hold mode
+PTT_MAX=120             # seconds after which hold mode / tap mode stop waiting for `ptt stop`
 THEME_FOLLOW="on"       # on | off: "Auto epaper" follows light/dark (rootbridge theme)
 THEME_RESTART="off"     # on | off: fallback, restart Claude Code (--continue) after a change
 
@@ -50,6 +55,16 @@ rb_load_config() {
                 case "$val" in "-c"|"-mm -c") SU_ARGS="$val" ;; esac ;;
             AUTH_OPEN)
                 case "$val" in auto|copy|off) AUTH_OPEN="$val" ;; esac ;;
+            PTT_TARGET)
+                [[ "$val" =~ ^[A-Za-z0-9._:@%=-]{1,64}$ ]] && PTT_TARGET="$val" ;;
+            PTT_KEY)
+                [[ "$val" =~ ^[A-Za-z0-9-]{1,16}$ ]] && PTT_KEY="$val" ;;
+            PTT_MODE)
+                case "$val" in hold|tap) PTT_MODE="$val" ;; esac ;;
+            PTT_INTERVAL)
+                [[ "$val" =~ ^[0-9]{2,4}$ ]] && [ "$val" -ge 20 ] && PTT_INTERVAL="$val" ;;
+            PTT_MAX)
+                [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -ge 1 ] && PTT_MAX="$val" ;;
             THEME_FOLLOW|THEME_RESTART|TOOL_CLAUDE|TOOL_CODEX)
                 case "$val" in on|off) printf -v "$key" '%s' "$val" ;; esac ;;
             CLAUDE_ARGS)
