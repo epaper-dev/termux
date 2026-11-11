@@ -1,4 +1,16 @@
 {
+  "extraKnownMarketplaces": {
+    "openai-codex": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/openai/codex-plugin-cc.git"
+      },
+      "autoUpdate": false
+    }
+  },
+  "enabledPlugins": {
+    "codex@openai-codex": true
+  },
   "hooks": {
     "PreToolUse": [
       {

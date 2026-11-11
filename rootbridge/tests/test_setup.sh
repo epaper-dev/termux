@@ -7,8 +7,8 @@
 #   B. setup-guest.sh: python3 / curl / certificates through apt-get, Claude Code through the official
 #      installer, nothing when it is all there, failures of apt-get / curl / the installer.
 #   C. the guest ~/.bashrc block puts ~/.local/bin on the PATH (where the Claude Code installer puts claude).
-#   D. setup-guest.sh with Codex: git and nodejs through apt-get, Codex through the official standalone installer
-#      (non-interactive), the Codex plugin through `claude plugin ...`, Codex only, failures, nothing without the
+#   D. setup-guest.sh with Codex: git, bubblewrap and nodejs through apt-get, Codex through the official standalone installer
+#      (non-interactive), no plugin CLI calls, Codex only, failures, nothing without the
 #      network on a second run. B runs setup-guest.sh with --codex no (the Claude Code part on its own).
 # Nothing real is touched: fake HOME/PREFIX, and pkg, proot-distro, apt-get, curl, tmux are stubs. Commands
 # that must count as "missing" are left out of a PATH made of symlinks (the shim), so the result does not
@@ -97,6 +97,7 @@ case "${1:-}" in
                 curl) cp "$STUB_AV/curl" "$STUB_BIN/curl" ;;
                 ca-certificates) mkdir -p "$(dirname "$ROOTBRIDGE_CA_BUNDLE")"; echo cert > "$ROOTBRIDGE_CA_BUNDLE" ;;
                 git) printf '#!/bin/bash\nexit 0\n' > "$STUB_BIN/git" ;;
+                bubblewrap) printf '#!/bin/bash\nexit 0\n' > "$STUB_BIN/bwrap" ;;
                 nodejs) printf '#!/bin/bash\n[ "${1:-}" = --version ] && echo "${STUB_NODE_VERSION:-v22.22.1}"\nexit 0\n' > "$STUB_BIN/node" ;;
             esac
         done ;;
@@ -137,17 +138,11 @@ else
 fi
 exit 0
 EOF
-# the claude the fake Claude Code installer leaves behind: logs, and `plugin install` brings the plugin files
+# The setup must never run Claude Code (including its plugin subcommands).
 cat > "$AV/claude-real" <<'EOF'
 #!/bin/bash
 echo "claude $*" >> "$STUB_LOG"
-case "$1 $2 $3" in
-    "plugin marketplace add") [ -z "${STUB_PLUGIN_FAIL:-}" ] || exit 1 ;;
-    "plugin install codex@openai-codex")
-        [ -z "${STUB_PLUGIN_INSTALL_FAIL:-}" ] || exit 1
-        [ -n "${STUB_PLUGIN_NOFILES:-}" ] || mkdir -p "$HOME/.claude/plugins/cache/openai-codex/codex/1.0.6" ;;
-esac
-exit 0
+exit 97
 EOF
 chmod +x "$AV"/*
 
@@ -163,7 +158,7 @@ SHIM="$T/shim"; mkdir -p "$SHIM"
     done
 } | tr '\0' '\n' | awk -F/ '
     { n = $NF }
-    n ~ /^(tmux|proot-distro|termux-open-url|python3|setsid|curl|claude|codex|git|node|nodejs|apt-get|pkg)$/ { next }
+    n ~ /^(tmux|proot-distro|termux-open-url|python3|setsid|curl|claude|codex|git|bwrap|node|nodejs|apt-get|pkg)$/ { next }
     !(n in seen) { seen[n] = 1; print }' | tr '\n' '\0' | xargs -0 ln -s -t "$SHIM" 2>/dev/null
 [ -e "$SHIM/bash" ] && [ -e "$SHIM/sed" ] || { echo "ABBRUCH: Shim-PATH unvollständig" >&2; exit 1; }
 
@@ -235,15 +230,19 @@ G="$E/prefix/var/lib/proot-distro/containers/ubuntu/rootfs"
 mkdir -p "$G/usr/bin" "$G/etc/ssl/certs" "$G/root/.local/bin"
 printf '#!/bin/bash\n' > "$G/usr/bin/python3"; printf '#!/bin/bash\n' > "$G/usr/bin/curl"; echo cert > "$G/etc/ssl/certs/ca-certificates.crt"
 printf '#!/bin/bash\n' > "$G/root/.local/bin/claude"; chmod +x "$G/root/.local/bin/claude"
-printf '#!/bin/bash\n' > "$G/usr/bin/git"; printf '#!/bin/bash\n' > "$G/usr/bin/node"
+for b in git node bwrap; do printf '#!/bin/bash\n' > "$G/usr/bin/$b"; done
 ln -sf /root/.codex/packages/standalone/current/bin/codex "$G/root/.local/bin/codex"   # target only inside the guest
-mkdir -p "$G/root/.claude/plugins/cache/openai-codex/codex/1.0.6"
 : > "$LOG"
 ROOTBRIDGE_GUEST_HOME=/root rinstall
 check "A2b Gast vollständig: läuft durch"                       0 "$?"
 check "A2b Gast vollständig: setup-guest.sh wird nicht gerufen" 0 "$(count "$LOG" 'setup-guest.sh')"
 check "A2b Gast vollständig: install-guest.sh läuft"            1 "$(count "$LOG" '^staged install-guest.sh$')"
 check "A2b nichts eingerichtet: kein 'Noch von Hand'"           0 "$(count "$E/out.log" 'Noch von Hand')"
+rm -f "$G/usr/bin/bwrap"
+: > "$LOG"
+ROOTBRIDGE_GUEST_HOME=/root rinstall
+check "A2d nur bwrap fehlt im Gast: setup-guest.sh läuft"       1 "$(count "$LOG" '^staged setup-guest.sh$')"
+printf '#!/bin/bash\n' > "$G/usr/bin/bwrap"
 rm -f "$G/root/.local/bin/claude"
 : > "$LOG"
 rinstall
@@ -394,17 +393,18 @@ has_link() { [ -L "$1" ] && echo ja || echo nein; }
 newenv d1
 gx bash "$SETUP_GUEST"
 check "D1 frisch, beide Tools: läuft durch"                     0 "$?"
-check "D1 apt-get install: auch git und nodejs"                 "apt-get install -y --no-install-recommends python3 curl ca-certificates git nodejs [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
+check "D1 apt-get install: auch git, bubblewrap und nodejs"     "apt-get install -y --no-install-recommends python3 curl ca-certificates git bubblewrap nodejs [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
 check "D1 zwei Installer geladen (Claude Code und Codex)"       2 "$(count "$LOG" '^curl')"
 check "D1 Codex-Installer: die offizielle URL"                  1 "$(count "$LOG" '^curl -fsSL https://chatgpt.com/codex/install.sh -o ')"
 check "D1 Codex-Installer läuft nicht-interaktiv mit dem Gast-HOME" "codex-installer: ran with HOME=$E/ghome NON_INTERACTIVE=1" "$(grep '^codex-installer: ' "$LOG")"
 check "D1 Codex-Installer: ~/.local/bin vorn im PATH (kein Profil-Block)" "codex-installer-path: $E/ghome/.local/bin" "$(grep '^codex-installer-path:' "$LOG")"
 check "D1 codex liegt in ~/.local/bin (Link mit Ziel im Gast)"  ja "$(has_link "$E/ghome/.local/bin/codex")"
-check "D1 Plugin: marketplace add über HTTPS, dann install"                "claude plugin marketplace add https://github.com/openai/codex-plugin-cc.git|claude plugin install codex@openai-codex" "$(grep '^claude plugin' "$LOG" | paste -sd'|')"
-check "D1 Plugin-Dateien liegen da"                             ja "$([ -d "$E/ghome/.claude/plugins/cache/openai-codex/codex/1.0.6" ] && echo ja || echo nein)"
-a="$(lineno "$LOG" '^apt-get install')"; b="$(lineno "$LOG" '^installer: ran')"; c="$(lineno "$LOG" '^codex-installer: ran')"; d="$(lineno "$LOG" '^claude plugin marketplace add')"
-check "D1 Reihenfolge: apt < Claude Code < Codex < Plugin"      ja "$([ "$a" -lt "$b" ] && [ "$b" -lt "$c" ] && [ "$c" -lt "$d" ] && echo ja || echo "nein ($a $b $c $d)")"
-check "D1 Meldungen"                                            "1 1 1" "$(count "$E/out.log" '== Gast: Codex$') $(count "$E/out.log" 'codex installiert:') $(count "$E/out.log" 'Plugin codex@openai-codex installiert')"
+check "D1 kein Claude-/Plugin-Aufruf während der Einrichtung"  0 "$(count "$LOG" '^claude ')"
+check "D1 Plugin wird erst beim Claude-Start geladen"          nein "$([ -d "$E/ghome/.claude/plugins" ] && echo ja || echo nein)"
+check "D1 bwrap ist verfügbar"                                ja "$([ -x "$E/bin/bwrap" ] && echo ja || echo nein)"
+a="$(lineno "$LOG" '^apt-get install')"; b="$(lineno "$LOG" '^installer: ran')"; c="$(lineno "$LOG" '^codex-installer: ran')"
+check "D1 Reihenfolge: apt < Claude Code < Codex"               ja "$([ "$a" -lt "$b" ] && [ "$b" -lt "$c" ] && echo ja || echo "nein ($a $b $c)")"
+check "D1 Meldungen"                                            "1 1" "$(count "$E/out.log" '== Gast: Codex$') $(count "$E/out.log" 'codex installiert:')"
 dl="$(ls "${TMPDIR:-/tmp}"/tmp.*/codex-install.sh 2>/dev/null | head -n 1)"
 check "D1 Installer-Dateien werden aufgeräumt"                  "" "$dl"
 
@@ -412,13 +412,13 @@ check "D1 Installer-Dateien werden aufgeräumt"                  "" "$dl"
 gx bash "$SETUP_GUEST"
 check "D2 zweiter Lauf: läuft durch"                            0 "$?"
 check "D2 zweiter Lauf: weder apt-get noch curl noch claude"    0 "$(count "$LOG" '^apt-get\|^curl\|^claude\|^codex-installer')"
-check "D2 zweiter Lauf: alles 'schon installiert'"              "1 1 1" "$(count "$E/out.log" '^  claude ist schon installiert') $(count "$E/out.log" '^  codex ist schon installiert') $(count "$E/out.log" '^  das Plugin codex@openai-codex ist schon installiert')"
+check "D2 zweiter Lauf: beide Tools 'schon installiert'"        "1 1" "$(count "$E/out.log" '^  claude ist schon installiert') $(count "$E/out.log" '^  codex ist schon installiert')"
 
 # Codex only: no Claude Code, no plugin, no nodejs (only the plugin needs it), git stays
 newenv d3
 gx bash "$SETUP_GUEST" --claude no
 check "D3 --claude no: läuft durch"                             0 "$?"
-check "D3 --claude no: apt-get ohne nodejs"                     "apt-get install -y --no-install-recommends python3 curl ca-certificates git [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
+check "D3 --claude no: apt-get mit bubblewrap, ohne nodejs"     "apt-get install -y --no-install-recommends python3 curl ca-certificates git bubblewrap [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
 check "D3 --claude no: nur der Codex-Installer"                 "1 0" "$(count "$LOG" '^curl') $(count "$LOG" '^installer: ran')"
 check "D3 --claude no: codex da, claude nicht"                  "ja nein" "$(has_link "$E/ghome/.local/bin/codex") $([ -e "$E/ghome/.local/bin/claude" ] && echo ja || echo nein)"
 check "D3 --claude no: kein Plugin-Aufruf"                      0 "$(count "$LOG" '^claude')"
@@ -429,10 +429,19 @@ mkdir -p "$E/ca" "$E/ghome/.local/bin"; echo cert > "$E/ca/ca-certificates.crt"
 cp "$AV/claude-real" "$E/ghome/.local/bin/claude"; chmod +x "$E/ghome/.local/bin/claude"
 ln -s /root/.codex/packages/standalone/current/bin/codex "$E/ghome/.local/bin/codex"
 printf '#!/bin/bash\nexit 0\n' > "$E/bin/git"; printf '#!/bin/bash\necho v22.22.1\n' > "$E/bin/node"; chmod +x "$E/bin/git" "$E/bin/node"
+printf '#!/bin/bash\nexit 0\n' > "$E/bin/bwrap"; chmod +x "$E/bin/bwrap"
 gx bash "$SETUP_GUEST"
 check "D4 nur das Plugin fehlt: läuft durch"                    0 "$?"
 check "D4 nur das Plugin fehlt: kein apt-get, kein curl"        0 "$(count "$LOG" '^apt-get\|^curl')"
-check "D4 nur das Plugin fehlt: die beiden Plugin-Befehle"      2 "$(count "$LOG" '^claude plugin')"
+check "D4 nur das Plugin fehlt: keine Plugin-Befehle"           0 "$(count "$LOG" '^claude plugin')"
+
+# Reinstalling an older setup repairs just the missing sandbox package, without invoking Claude Code.
+rm -f "$E/bin/bwrap"
+: > "$LOG"
+gx bash "$SETUP_GUEST"
+check "D4b nur bwrap fehlt: läuft durch"                       0 "$?"
+check "D4b nur bwrap fehlt: genau bubblewrap installiert"      "apt-get install -y --no-install-recommends bubblewrap [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
+check "D4b nur bwrap fehlt: keine Downloads oder Plugin-Befehle" 0 "$(count "$LOG" '^curl\|^claude ')"
 
 # an old node: a hint, the setup goes on
 newenv d5
@@ -468,16 +477,13 @@ gx env STUB_CODEX_NOBINARY=1 bash "$SETUP_GUEST" --claude no
 check "D11 Codex-Installer ohne codex danach: Abbruch"          1 "$?"
 check "D11 Codex-Installer ohne codex: Meldung"                 1 "$(count "$E/out.log" 'es gibt kein codex')"
 newenv d12
-gx env STUB_PLUGIN_FAIL=1 bash "$SETUP_GUEST"
-check "D12 marketplace add schlägt fehl: Abbruch"               1 "$?"
-check "D12 marketplace add: Meldung nennt --no-codex"           1 "$(count "$E/out.log" 'plugin marketplace add https://github.com/openai/codex-plugin-cc.git ist fehlgeschlagen.*--no-codex')"
-newenv d13
-gx env STUB_PLUGIN_INSTALL_FAIL=1 bash "$SETUP_GUEST"
-check "D13 plugin install schlägt fehl: Abbruch"                1 "$?"
-newenv d14
-gx env STUB_PLUGIN_NOFILES=1 bash "$SETUP_GUEST"
-check "D14 plugin install ohne Dateien: Abbruch"                1 "$?"
-check "D14 plugin install ohne Dateien: Meldung"                1 "$(count "$E/out.log" 'die Plugin-Dateien fehlen')"
+gx bash "$SETUP_GUEST" --claude no
+rm -f "$E/bin/bwrap"
+: > "$LOG"
+gx env STUB_APT_FAIL=install bash "$SETUP_GUEST" --claude no
+check "D12 bubblewrap-Installation schlägt fehl: Abbruch"      1 "$?"
+check "D12 bubblewrap-Installation: verständliche Fehlermeldung" 1 "$(count "$E/out.log" 'apt-get install bubblewrap ist fehlgeschlagen')"
+check "D12 bubblewrap-Installation: kein bwrap vorhanden"      nein "$([ -x "$E/bin/bwrap" ] && echo ja || echo nein)"
 newenv d15
 gx bash "$SETUP_GUEST" --claude no --codex no
 check "D15 beides aus: Abbruch"                                 1 "$?"

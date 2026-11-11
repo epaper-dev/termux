@@ -57,7 +57,8 @@ androidsu ── solicitud + ticket ──────────────�
 * Paquetes del invitado: `python3` (hooks), coreutils con `sha256sum`, `od`, `timeout`
 * Claude Code ≥ 2.1.295 (`onFailure: "block"` para los hooks)
 * Codex (activado por defecto, `--no-codex` lo omite): `install.sh` lo instala con el instalador oficial; el plugin de
-  Claude Code y la revisión previa al commit necesitan además `git` y `nodejs` (≥ 18.18) en el invitado, que instala con `apt`
+  Claude Code y la revisión previa al commit necesitan además `git` y `nodejs` (≥ 18.18) en el invitado, y Codex necesita
+  `bubblewrap` (`bwrap`). El instalador configura estos paquetes con `apt`.
 
 ## Instalación
 
@@ -192,10 +193,14 @@ y la revisión previa al commit viven dentro de Claude Code); siempre queda al m
 se guarda en la configuración de Termux (`TOOL_CLAUDE` / `TOOL_CODEX`) y la reutiliza cada instalación posterior; con
 `--claude` / `--codex` vuelves a activar una herramienta.
 
-* **Instalación.** En el invitado: `git` y `nodejs` con `apt` (el plugin necesita Node.js 18.18 o superior), Codex con el
-  instalador autónomo oficial (`chatgpt.com/codex/install.sh`, no interactivo, en `~/.local/bin`; trae su propio sandbox
-  `bwrap`) y el plugin de Codex para Claude Code (`codex@openai-codex` de `openai/codex-plugin-cc`). Cada paso solo se
-  ejecuta si falta, así que una segunda ejecución no toca la red.
+* **Instalación.** En el invitado: `git`, `bubblewrap` (`bwrap`) y, con ambas herramientas, `nodejs` con `apt` (el plugin
+  necesita Node.js 18.18 o superior), Codex con el instalador autónomo oficial (`chatgpt.com/codex/install.sh`, no
+  interactivo, en `~/.local/bin`). El instalador escribe los hooks y declara el plugin en los Managed Settings
+  (`extraKnownMarketplaces` con la fuente HTTPS y `enabledPlugins`), sin ejecutar `claude plugin …`.
+  Claude Code descarga `codex@openai-codex` al arrancar; necesita red. Si aún no está activo, consulta `/plugin` y ejecuta
+  `/reload-plugins` o reinicia Claude Code. El hook previo al commit bloquea los commits hasta que el plugin esté listo.
+  Una segunda ejecución no usa la red si ya están los requisitos; instala `bwrap` si falta aunque Codex ya esté instalado.
+  `--no-codex`, `--no-claude` y la desinstalación eliminan esta declaración y conservan las de otros plugins.
 * **Widget «Codex»** y `rootbridge attach codex`: una segunda ventana en la misma sesión de tmux. Codex arranca con sus
   valores por defecto (su sandbox y sus preguntas de aprobación), **no** en un modo bypass; `CODEX_ARGS` en
   `/etc/termux-rootbridge.conf` añade opciones. El hook `android-root-guard` solo protege a Claude Code; `androidsu` sigue

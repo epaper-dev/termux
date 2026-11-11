@@ -71,14 +71,32 @@ print("pre=%d codex=%d guard=%d post=%d timeout=%s onFailure=%s" % (
 PY
 }
 bashrc() { printf '%s' "$1/home/tester/.bashrc"; }
+plugins() {
+    python3 -I - "$1/etc/claude-code/managed-settings.json" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except FileNotFoundError:
+    d = {}
+m = d.get("extraKnownMarketplaces", {}).get("openai-codex", {})
+foreign = (d.get("enabledPlugins", {}).get("other@team") is False
+           and d.get("extraKnownMarketplaces", {}).get("team") == {"source": {"source": "directory", "path": "/opt/team"}})
+print(d.get("enabledPlugins", {}).get("codex@openai-codex"), m.get("source", {}).get("url", "-"), m.get("autoUpdate", "-"), foreign)
+PY
+}
 
 S="$T/g1"
+mkdir -p "$S/etc/claude-code"
+cat > "$S/etc/claude-code/managed-settings.json" <<'EOF'
+{"enabledPlugins":{"other@team":false},"extraKnownMarketplaces":{"team":{"source":{"source":"directory","path":"/opt/team"}}}}
+EOF
 ginstall "$S"
 check "Gast ohne Option: Installer läuft"                  0 "$?"
 check "Gast: TOOL_CLAUDE=on"                               on "$(gval "$S" TOOL_CLAUDE)"
 check "Gast: TOOL_CODEX=on"                                on "$(gval "$S" TOOL_CODEX)"
 check "Gast: CODEX_UPDATE=6h als Standard"                 6h "$(gval "$S" CODEX_UPDATE)"
 check "Gast: Hooks der Managed Settings"                   "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$S")"
+check "Gast: Plugin für Claude-Start deklariert, andere Einträge bleiben" "True https://github.com/openai/codex-plugin-cc.git False True" "$(plugins "$S")"
 for f in usr/local/bin/rootbridge-codex usr/local/bin/rootbridge-update usr/local/bin/rootbridge-claude \
          usr/local/lib/termux-rootbridge/codex-precommit-review.py usr/local/lib/termux-rootbridge/android-root-guard.py; do
     check "Gast: $f installiert"                           ja "$(has "$S/$f")"
@@ -101,6 +119,7 @@ ginstall "$S" --codex no
 check "Gast --codex no: Installer läuft"                   0 "$?"
 check "Gast --codex no: TOOL_CODEX=off"                    off "$(gval "$S" TOOL_CODEX)"
 check "Gast --codex no: kein Codex-Hook, Guard bleibt"     "pre=1 codex=0 guard=1 post=1 timeout=- onFailure=-" "$(msum "$S")"
+check "Gast --codex no: eigene Plugin-Deklaration weg, andere bleiben" "None - - True" "$(plugins "$S")"
 check "Gast --codex no: rootbridge-codex entfernt"         nein "$(has "$S/usr/local/bin/rootbridge-codex")"
 check "Gast --codex no: Hook-Skript entfernt"              nein "$(has "$S/usr/local/lib/termux-rootbridge/codex-precommit-review.py")"
 check "Gast --codex no: kein codex() in der bashrc"        0 "$(count "$(bashrc "$S")" '^codex()')"
@@ -111,6 +130,7 @@ check "Gast ohne Option danach: weiter kein Codex-Hook"    "pre=1 codex=0 guard=
 ginstall "$S" --codex yes
 check "Gast --codex yes: Hook wieder da"                   "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$S")"
 check "Gast --codex yes: TOOL_CODEX=on"                    on "$(gval "$S" TOOL_CODEX)"
+check "Gast --codex yes: Plugin-Deklaration wieder da" "True https://github.com/openai/codex-plugin-cc.git False True" "$(plugins "$S")"
 
 # --- Codex only
 S2="$T/g2"
@@ -119,6 +139,7 @@ check "Gast --claude no: Installer läuft"                  0 "$?"
 check "Gast --claude no: TOOL_CLAUDE=off"                  off "$(gval "$S2" TOOL_CLAUDE)"
 check "Gast --claude no: Codex bleibt"                     on "$(gval "$S2" TOOL_CODEX)"
 check "Gast --claude no: keine Managed Settings"           "keine Datei" "$(msum "$S2")"
+check "Gast --claude no: keine Plugin-Deklaration" "None - - False" "$(plugins "$S2")"
 check "Gast --claude no: kein rootbridge-claude"           nein "$(has "$S2/usr/local/bin/rootbridge-claude")"
 check "Gast --claude no: kein Guard, kein Login-Hook, kein Codex-Hook" "nein nein nein" \
       "$(has "$S2/usr/local/lib/termux-rootbridge/android-root-guard.py") $(has "$S2/usr/local/lib/termux-rootbridge/auth-url-hook.py") $(has "$S2/usr/local/lib/termux-rootbridge/codex-precommit-review.py")"
@@ -130,6 +151,8 @@ check "Gast --claude no: keine CLAUDE_ARGS"                0 "$(count "$(gconf "
 check "Gast --claude no: Arbeitsordner trotzdem da"        ja "$(has "$S2/root/work")"
 ginstall "$S2" --claude yes
 check "Gast --claude yes danach: Managed Settings mit beiden Hooks" "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$S2")"
+ginstall "$S2" --claude no
+check "Gast --claude no nach beiden Tools: Plugin-Deklaration entfernt" "None - - False" "$(plugins "$S2")"
 
 # --- both off, option values
 ginstall "$T/g3" --claude no --codex no
@@ -149,6 +172,7 @@ bash "$GUEST" --root "$S" --uninstall > "$T/guest.log" 2>&1
 check "Gast Deinstallation: läuft"                         0 "$?"
 check "Gast Deinstallation: rootbridge-codex und -update weg" "nein nein" "$(has "$S/usr/local/bin/rootbridge-codex") $(has "$S/usr/local/bin/rootbridge-update")"
 check "Gast Deinstallation: kein Codex-Hook mehr"          0 "$(count "$S/etc/claude-code/managed-settings.json" 'codex-precommit-review')"
+check "Gast Deinstallation: eigene Plugin-Deklaration weg, andere bleiben" "None - - True" "$(plugins "$S")"
 check "Gast Deinstallation: Hook-Skript weg"               nein "$(has "$S/usr/local/lib/termux-rootbridge/codex-precommit-review.py")"
 
 # =========================================================================== 2. rootbridge-update
@@ -569,7 +593,7 @@ irun --codex-update bogus
 check "install.sh --codex-update bogus: Code 2"            2 "$IRC"
 check "install.sh --codex-update bogus: Gast nicht angefasst" 0 "$(wc -c < "$ILOG" | tr -d ' ')"
 
-# readiness check of the guest: with Codex and the plugin missing, the setup runs even though Claude Code is there
+# Readiness checks prerequisites; the plugin cache is populated later by Claude Code itself.
 mkdir -p "$GROOT/usr/bin" "$GROOT/etc/ssl/certs" "$GROOT/root/.local/bin"
 for b in python3 curl; do printf '#!/bin/bash\n' > "$GROOT/usr/bin/$b"; done
 echo cert > "$GROOT/etc/ssl/certs/ca-certificates.crt"
@@ -584,9 +608,12 @@ check "Gast mit Claude Code, Codex fehlt: mit --claude yes --codex yes" 1 "$(gre
 printf '#!/bin/bash\n' > "$GROOT/usr/bin/git"; printf '#!/bin/bash\n' > "$GROOT/usr/bin/node"
 ln -s /root/.codex/packages/standalone/current/bin/codex "$GROOT/root/.local/bin/codex"
 rm -f "$H/.config/termux-rootbridge/config"
-ROOTBRIDGE_GUEST_HOME=/root irun --setup
-check "Gast mit Codex, git, node, aber ohne Plugin: setup-guest.sh läuft" 1 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
-mkdir -p "$GROOT/root/.claude/plugins/cache/openai-codex/codex/1.0.6"
+ROOTBRIDGE_GUEST_HOME=/root irun --setup --no-voice
+check "Gast mit Codex, git, node, aber ohne bwrap: setup-guest.sh läuft" 1 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
+printf '#!/bin/bash\n' > "$GROOT/usr/bin/bwrap"
+rm -f "$H/.config/termux-rootbridge/config"
+ROOTBRIDGE_GUEST_HOME=/root irun --setup --no-voice
+check "Gast mit allen Voraussetzungen, ohne Plugin: setup-guest.sh läuft nicht" 0 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
 rm -f "$H/.config/termux-rootbridge/config"
 ROOTBRIDGE_GUEST_HOME=/root irun --setup
 check "Gast ohne sox (rec), Voice an: setup-guest.sh läuft, mit --voice yes" "1 1" "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1) $(grep 'setup-guest.sh' "$ILOG" | grep -c -- '--voice yes')"
