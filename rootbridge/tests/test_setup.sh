@@ -18,11 +18,16 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL="$ROOT/install.sh"
-SETUP_GUEST="$ROOT/guest/setup-guest.sh"
+SETUP_GUEST_REAL="$ROOT/guest/setup-guest.sh"
 GUEST="$ROOT/guest/install-guest.sh"
 
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
+# These cases test the base setup (python3, curl, certificates, Claude Code, Codex, plugin): the voice part (sox) has its own test
+# (test_voice.sh). The wrapper puts --voice no in front; a machine that has sox itself must not change the result either.
+SETUP_GUEST="$T/setup-guest-novoice.sh"
+printf '#!/bin/bash\nexec bash "%s" --voice no "$@"\n' "$SETUP_GUEST_REAL" > "$SETUP_GUEST"
+chmod +x "$SETUP_GUEST"
 ORIG_PATH="$PATH"
 
 PASS=0; FAIL=0
