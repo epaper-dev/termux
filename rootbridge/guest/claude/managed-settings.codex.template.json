@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "@PYTHON@ -I @LIBDIR@/codex-precommit-review.py",
-            "timeout": 900,
+            "timeout": 1560,
             "onFailure": "block"
           }
         ]

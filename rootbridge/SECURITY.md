@@ -27,7 +27,10 @@ sandbox against a hostile agent or a compromised guest. Read the limits before r
 * **Codex pre-commit review.** With Claude Code and Codex installed, a second hook (`codex-precommit-review.py`, managed
   settings, `onFailure: "block"`) lets Codex review every `git commit` of Claude Code, a strict loop that fails closed (no
   login, plugin or `node`, or a failing Codex blocks the commit). The approved diffs live in `~/.claude/codex-precommit`, a
-  protected path like the other bridge files. Only you switch it off: `rootbridge codex-off`.
+  protected path like the other bridge files. Only you switch it off: `rootbridge codex-off`. The hook's log and state live in a
+  private directory (0700, files 0600), commands are logged by their first word and length only, every `git` call is bounded in
+  time and size (a hanging `git` blocks instead of letting Claude Code's cut-off pass the commit unreviewed), and what goes to
+  Claude is cleaned of control characters, capped and marked as foreign text.
 
 ### Known limits
 

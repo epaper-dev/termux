@@ -242,7 +242,7 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
   im Ubuntu-Gast zuerst `/root/.local/bin/claude plugin marketplace update openai-codex` und danach
   `/root/.local/bin/claude plugin update codex@openai-codex` aus. Starte Claude Code anschließend neu.
 * **Pre-Commit-Review.** Mit beiden Programmen lässt ein Hook in den Managed Settings (`codex-precommit-review.py`, Timeout
-  900 s, `onFailure: "block"`) Codex jeden `git commit` von Claude Code prüfen. Eine erste Zeile `ALLOW` lässt den Commit
+  1560 s, `onFailure: "block"`) Codex jeden `git commit` von Claude Code prüfen. Eine erste Zeile `ALLOW` lässt den Commit
   durch; `BLOCK` oder keine klare Antwort hält ihn an und gibt Codex' Befunde an Claude, das sie behebt und erneut committet.
   Es ist eine strikte Schleife: Nach einem `BLOCK` kommt derselbe Diff nie durch, nur ein geänderter Diff, den Codex danach
   freigibt; ein freigegebener Diff wird gemerkt. Fail-closed: Ohne Codex-Anmeldung, Plugin oder `node`, oder wenn Codex oder `git`
@@ -257,6 +257,13 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
   ein verschluckter Fehler); Kleineres kommt als Hinweis hinter `ALLOW`. Die Prüfung sieht den Arbeitsbaum, wie er beim
   Start des Befehls ist: Was derselbe Befehl vor dem Commit noch ändert (`sed -i … && git commit -a`, ein Build-Skript),
   ist nicht erfasst.
+  Codex prüft mit Effort `high` innerhalb eines Budgets von 1500 s ab Start des Hooks (das Hook-Timeout von 1560 s liegt
+  darüber, denn der eigene Abbruch von Claude Code beendet einen Hook ohne Urteil). Jeder `git`-Aufruf hat ein Zeitlimit und
+  eine Größenkappe, das Log ist privat (0600), wird rotiert und enthält keine Befehlsargumente, und was an Claude geht,
+  wird von Steuerzeichen befreit, gekürzt und als Fremdtext gekennzeichnet. Pro Gerät lassen sich in der Umgebung, mit der
+  Claude Code startet, `CODEX_PRECOMMIT_TIMEOUT_S` (60-3000), `CODEX_PRECOMMIT_ATTEMPTS` (1-5),
+  `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) und `CODEX_PRECOMMIT_EFFORT` (`none` bis `xhigh`) setzen; das Hook-Timeout in den
+  Managed Settings ist zusammen mit dem Budget anzuheben.
 * **Daten.** Der Diff und alles, was Codex im Arbeitsbaum liest, gehen an OpenAI, unter dem Konto, mit dem du dich angemeldet
   hast. Die Sandbox von Codex beschränkt das Schreiben, nicht das Lesen: Es kann mehr vom Gast lesen als das Repository.
 
