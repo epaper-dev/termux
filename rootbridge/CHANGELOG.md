@@ -5,6 +5,18 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* The Codex pre-commit review hook is hardened and tunable per device. Every `git` call has a time limit and a size cap
+  (a hanging `git` or an oversized diff blocks, never passes), the time budget counts from the start of the hook, the
+  log is private (0600), rotated and free of command arguments, and what goes to Claude is cleaned of escape sequences and
+  control characters, capped and marked as foreign text. The default effort is now `high` (was `xhigh`), the budget 1500 s
+  and the hook timeout in the managed settings 1560 s (was 900 s). Measured with `gpt-6.1-sol`: with `xhigh` a review took
+  up to 847 s from the start of the hook (over the old 840 s budget, so the verdict was lost); `high` used about a quarter
+  of the reasoning tokens (mean 540 against 2394) and finished in 38-117 s. `CODEX_PRECOMMIT_TIMEOUT_S`,
+  `CODEX_PRECOMMIT_ATTEMPTS`, `CODEX_PRECOMMIT_GIT_TIMEOUT_S` and `CODEX_PRECOMMIT_EFFORT` set them. The command parser
+  now skips heredoc bodies inside `$( … )`: a single apostrophe in a commit message written as
+  `git commit -m "$(cat <<'EOF' … EOF)"` used to end in a parse error, and the text-search fallback then reviewed the
+  directory Claude Code was started in instead of the repository of the commit. Tests:
+  `tests/test_codex_precommit_hardening.py`.
 * A plain `install.sh` rerun now includes Codex again after an earlier `--no-codex`, restoring its CLI setup, Termux
   shortcut, widget and the Claude Code review hook. `--no-codex` applies to the current run; `TOOL_CODEX` still records
   that run's choice for the launchers. Claude's stored choice stays unchanged.

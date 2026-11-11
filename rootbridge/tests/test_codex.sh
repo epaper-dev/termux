@@ -95,7 +95,7 @@ check "Gast ohne Option: Installer läuft"                  0 "$?"
 check "Gast: TOOL_CLAUDE=on"                               on "$(gval "$S" TOOL_CLAUDE)"
 check "Gast: TOOL_CODEX=on"                                on "$(gval "$S" TOOL_CODEX)"
 check "Gast: CODEX_UPDATE=6h als Standard"                 6h "$(gval "$S" CODEX_UPDATE)"
-check "Gast: Hooks der Managed Settings"                   "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$S")"
+check "Gast: Hooks der Managed Settings"                   "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$S")"
 check "Gast: Plugin für Claude-Start deklariert, andere Einträge bleiben" "True https://github.com/openai/codex-plugin-cc.git False True" "$(plugins "$S")"
 for f in usr/local/bin/rootbridge-codex usr/local/bin/rootbridge-update usr/local/bin/rootbridge-claude \
          usr/local/lib/termux-rootbridge/codex-precommit-review.py usr/local/lib/termux-rootbridge/android-root-guard.py; do
@@ -112,7 +112,7 @@ check "Gast: Hook-Befehl hat den Marker (Deinstallation findet ihn)" 1 "$(count 
 before="$(cksum < "$(gconf "$S")")$(cksum < "$S/etc/claude-code/managed-settings.json")"
 ginstall "$S"
 check "Gast zweiter Lauf: Konfig und Managed Settings unverändert" "$before" "$(cksum < "$(gconf "$S")")$(cksum < "$S/etc/claude-code/managed-settings.json")"
-check "Gast zweiter Lauf: Hook genau einmal"               "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$S")"
+check "Gast zweiter Lauf: Hook genau einmal"               "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$S")"
 
 # --- --codex no
 ginstall "$S" --codex no
@@ -128,7 +128,7 @@ ginstall "$S"
 check "Gast ohne Option danach: die Wahl bleibt (aus)"     off "$(gval "$S" TOOL_CODEX)"
 check "Gast ohne Option danach: weiter kein Codex-Hook"    "pre=1 codex=0 guard=1 post=1 timeout=- onFailure=-" "$(msum "$S")"
 ginstall "$S" --codex yes
-check "Gast --codex yes: Hook wieder da"                   "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$S")"
+check "Gast --codex yes: Hook wieder da"                   "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$S")"
 check "Gast --codex yes: TOOL_CODEX=on"                    on "$(gval "$S" TOOL_CODEX)"
 check "Gast --codex yes: Plugin-Deklaration wieder da" "True https://github.com/openai/codex-plugin-cc.git False True" "$(plugins "$S")"
 
@@ -150,7 +150,7 @@ check "Gast --claude no: PATH-Zeile in der bashrc"         1 "$(count "$(bashrc 
 check "Gast --claude no: keine CLAUDE_ARGS"                0 "$(count "$(gconf "$S2")" '^CLAUDE_ARGS=')"
 check "Gast --claude no: Arbeitsordner trotzdem da"        ja "$(has "$S2/root/work")"
 ginstall "$S2" --claude yes
-check "Gast --claude yes danach: Managed Settings mit beiden Hooks" "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$S2")"
+check "Gast --claude yes danach: Managed Settings mit beiden Hooks" "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$S2")"
 ginstall "$S2" --claude no
 check "Gast --claude no nach beiden Tools: Plugin-Deklaration entfernt" "None - - False" "$(plugins "$S2")"
 
@@ -534,7 +534,7 @@ check "install.sh: Codex-Widget startet das Codex-Fenster" 1 "$(count "$H/.short
 check "install.sh: Codex-Widget ist ausführbar"            ja "$([ -x "$H/.shortcuts/Codex" ] && echo ja || echo nein)"
 check "install.sh: Codex-Widget hat das Standard-Icon"     0 "$(cmp -s "$ROOT/termux/shortcuts/icons/widget.png" "$H/.shortcuts/icons/Codex.png"; echo $?)"
 check "install.sh: gibt --claude yes --codex yes an den Gast" 1 "$(guestargs | grep -c -- '--claude yes --codex yes')"
-check "install.sh: Gast hat beide Hooks"                   "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$T/iguest")"
+check "install.sh: Gast hat beide Hooks"                   "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$T/iguest")"
 check "install.sh: Abschlussmeldung nennt rootbridge codex-login" 1 "$(count "$T/install.log" 'rootbridge codex-login')"
 for entry in "ubuntu:Ubuntu-Shell" "claude:Claude-Code-Sitzung" "codex:Codex-Sitzung"; do
     check "install.sh: Abschlussmeldung erklärt ${entry%%:*}" 1 "$(count "$T/install.log" "^  ${entry%%:*} .*${entry#*:}")"
@@ -557,7 +557,7 @@ check "install.sh danach: keine übernommene Codex-Abwahl" 0 "$(count "$T/instal
 check "install.sh danach: Gast bekommt --codex yes"       1 "$(guestargs | grep -c -- '--codex yes')"
 check "install.sh danach: Termux-Konfig wieder on"        on "$(iget TOOL_CODEX)"
 check "install.sh danach: bestehende Gast-Konfig wieder on" on "$(sed -n 's/^TOOL_CODEX=//p' "$T/iguest/etc/termux-rootbridge.conf")"
-check "install.sh danach: Review-Hook wieder vorhanden" "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$T/iguest")"
+check "install.sh danach: Review-Hook wieder vorhanden" "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$T/iguest")"
 check "install.sh danach: Codex-Kurzbefehl nach source verfügbar" "alias codex='rootbridge attach codex'" \
       "$(env -i HOME="$H" PATH=/usr/bin:/bin bash --noprofile --norc -c 'source "$HOME/.bashrc"; alias codex')"
 KEEP_GUEST=1 irun --no-codex

@@ -259,10 +259,11 @@ class HookTest(unittest.TestCase):
             fh.write("y = 2\n")
         self.assertEqual(self.run_hook(command=command, cwd=repo, reply="BLOCK: changed").returncode, 2)
 
-    def test_the_review_runs_with_effort_xhigh(self):
+    def test_the_review_runs_with_effort_high(self):
+        # Standard der gehärteten Fassung: high (Termux-Original: xhigh, dort ist es nicht einstellbar).
         self.assertEqual(self.run_hook(reply="BLOCK: bad").returncode, 2)
         with open(self.prompt_file + ".args") as fh:
-            self.assertEqual(fh.read().split(), ["task", "--json", "--effort", "xhigh"])
+            self.assertEqual(fh.read().split(), ["task", "--json", "--effort", "high"])
 
     def test_no_untracked_list_when_there_are_none(self):
         self.assertEqual(self.run_hook(command="git add -A && git commit -m x", reply="BLOCK: bad").returncode, 2)

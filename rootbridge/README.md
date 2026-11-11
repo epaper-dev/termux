@@ -216,7 +216,7 @@ a new window.
 * **Update the plugin manually.** Startup does not update the marketplace or plugin automatically. When needed, run
   `/root/.local/bin/claude plugin marketplace update openai-codex` followed by
   `/root/.local/bin/claude plugin update codex@openai-codex` in the Ubuntu guest, then restart Claude Code.
-* **Pre-commit review.** With both tools, a hook in the managed settings (`codex-precommit-review.py`, timeout 900 s,
+* **Pre-commit review.** With both tools, a hook in the managed settings (`codex-precommit-review.py`, timeout 1560 s,
   `onFailure: "block"`) lets Codex review every `git commit` of Claude Code. A first line `ALLOW` lets the commit through;
   `BLOCK`, or no clear answer, stops it and hands Codex's findings to Claude, which fixes them and commits again. It is a
   strict loop: after a `BLOCK` the same diff never passes, only a changed diff that Codex then approves; an approved diff is
@@ -230,6 +230,12 @@ a new window.
   Codex blocks only for high severity (a bug that breaks something, a security hole, a secret, data loss, a swallowed
   error); smaller findings come as notes after `ALLOW`. The review sees the working tree as it is when the command
   starts: what the same command changes before the commit (`sed -i … && git commit -a`, a build script) is not covered.
+  Codex reviews at effort `high` within a budget of 1500 s from the start of the hook (the hook timeout of 1560 s stays
+  above it, because Claude Code's own cut-off ends a hook without a verdict). Every `git` call has a time limit and a size
+  cap, the log is private (0600) and rotated and holds no command arguments, and what goes to Claude is cleaned of control
+  characters, capped and marked as foreign text. Per device, the environment Claude Code starts with can set
+  `CODEX_PRECOMMIT_TIMEOUT_S` (60-3000), `CODEX_PRECOMMIT_ATTEMPTS` (1-5), `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) and
+  `CODEX_PRECOMMIT_EFFORT` (`none` to `xhigh`); raise the hook timeout in the managed settings together with the budget.
 * **Data.** The diff and whatever Codex reads in the working tree go to OpenAI, under the account you logged in with.
   Codex's sandbox restricts writing, not reading: it can read more of the guest than the repository.
 
