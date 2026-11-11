@@ -51,6 +51,15 @@ PYEOF
     say "Block entfernt: $f"
 done
 
+# the side key reader and our PulseAudio configuration (a default.pa of the user, without our marker, stays)
+if [ -f "$PREFIX/bin/sidekey-ptt" ] && grep -q 'sidekey-ptt' "$PREFIX/bin/sidekey-ptt" 2>/dev/null; then
+    pkill -f 'sidekey-ptt' 2>/dev/null || true
+    rm -f "$PREFIX/bin/sidekey-ptt"
+fi
+if grep -qs 'termux-rootbridge voice' "$HOME/.config/pulse/default.pa"; then
+    rm -f "$HOME/.config/pulse/default.pa"
+    say "PulseAudio-Konfiguration entfernt: ~/.config/pulse/default.pa"
+fi
 rm -f "$PREFIX/bin/rootbridge" "$PREFIX/bin/rootbridge-daemon" "$PREFIX/bin/ptt"
 rm -rf "$PREFIX/lib/termux-rootbridge"
 rm -f "$HOME/.termux/boot/10-rootbridge.sh"

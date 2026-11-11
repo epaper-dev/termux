@@ -246,24 +246,35 @@ se guarda en la configuración de Termux (`TOOL_CLAUDE` / `TOOL_CODEX`) y la reu
 | `rootbridge guard-off` / `guard-on` | interruptor de emergencia para los hooks |
 | `rootbridge codex-off` / `codex-on` | interruptor de emergencia de la revisión previa al commit de Codex (reinicia Claude Code) |
 | `ptt start` / `stop` / `toggle` / `status` | pulsar para hablar: pulsa una tecla en la ventana de Claude Code para `/voice` (ver abajo) |
+| `rootbridge voice start\|stop\|status\|grant` | PulseAudio y micrófono para `/voice`; `grant` da a Termux el permiso de micrófono de Android (root) |
 
 Dentro de Claude Code no cambia nada: pide lo que quieras. Cuando Claude necesita root, ejecuta
 `androidsu '<comando>'` y aparece una confirmación que muestra exactamente ese comando. Cada decisión queda en
 `~/.rootbridge/audit.log`.
 
-### Pulsar para hablar con `/voice`
+### Dictado por voz (`/voice`) y pulsar para hablar
 
-`/voice` de Claude Code necesita una tecla mantenida, y eso no es posible con un teclado en pantalla. `ptt` es esa tecla, para que otra cosa
-pueda mantenerla: una tecla lateral, un widget, un script. Se configura una vez:
+Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinstalación conserva la elección). Necesita Claude Code. El instalador prepara:
 
-1. `~/.claude/keybindings.json`: `{"bindings": [{"context": "Chat", "bindings": {"meta+k": "voice:pushToTalk"}}]}`
-2. `/voice hold` en Claude Code.
-3. `ptt start` inicia la grabación (repite Alt+K cada 50 ms, como una tecla mantenida), `ptt stop` la termina y el texto llega al campo de
-   entrada. Sin parada, las repeticiones terminan tras `PTT_MAX` segundos (120).
+* **`sox`** en el invitado (`rec`, con el que graba Claude Code) y **PulseAudio** en Termux. PulseAudio escucha solo en `127.0.0.1`, admite un cliente solo con su cookie
+  (privada de Termux; el invitado recibe `PULSE_COOKIE`) y lleva el micrófono del teléfono (`~/.config/pulse/default.pa`: el archivo propio de Termux más la fuente del micrófono y 200 % de ganancia, porque la
+  fuente «reconocimiento de voz» de Android suena baja). Arranca con la sesión (`rootbridge start` / `attach`); un `default.pa` propio se conserva.
+* **Ajustes de Claude Code**: `~/.claude/keybindings.json` recibe `meta+k` = `voice:pushToTalk` y `~/.claude/settings.json` recibe
+  `"voice": {"enabled": true, "mode": "hold"}`. Ambos solo donde aún no has decidido nada (una asignación existente de la acción o un valor `voice` se conservan).
+* **`ptt`**: `ptt start` pulsa la tecla por ti, `ptt stop` la suelta. En el modo `hold` (por defecto) repite Alt+K cada 50 ms, como una tecla
+  mantenida, de modo que solo tu propio `stop` termina la grabación (un teclado en pantalla no puede mantener una tecla). Sin parada, las
+  repeticiones terminan tras `PTT_MAX` segundos (120). `ptt` solo pulsa una tecla en una ventana de tmux (`PTT_TARGET`, por defecto
+  `ubuntu:claude`; `PTT_KEY`, por defecto `M-k`) y sirve para cualquier programa que escuche una tecla.
+* **Permiso de micrófono de Android** para Termux (un permiso en tiempo de ejecución: desaparece con cada nueva instalación de la app; las apps de Termux comparten
+  un id de usuario y solo la **app Termux:API** declara `RECORD_AUDIO`, así que debe estar instalada). Necesita root:
+  en un terminal el instalador lo pide (el gestor de root pregunta) y lo omite si el micrófono ya funciona; en una ejecución por script solo muestra
+  el aviso. `rootbridge voice grant` lo concede en cualquier momento, `rootbridge voice status` muestra PulseAudio y el micrófono,
+  `rootbridge voice start|stop` controlan el servidor de audio a mano.
 
-`ptt` solo pulsa una tecla en una ventana de tmux (`PTT_TARGET`, por defecto `ubuntu:claude`; `PTT_KEY`, por defecto `M-k`) y sirve para
-cualquier programa que escuche una tecla. El micrófono necesita `sox` en el invitado, un servidor PulseAudio en Termux con fuente de
-micrófono y el permiso de micrófono de Android para Termux; es configuración del dispositivo, no del instalador.
+**Tecla lateral del Hisense A9** (`--sidekey`, desactivada por defecto, se guarda como `SIDEKEY`): mantener la tecla lateral = grabar, soltar = parar. El instalador coloca
+`sidekey-ptt` en `$PREFIX/bin`; mantiene un `cat` de root sobre `/dev/input/event2` (la tecla, código 766) y llama a `ptt start` / `ptt stop`.
+La pulsación corta y la doble siguen con la app E-Ink; ajusta su pulsación larga a «Nothing». `rootbridge start|attach` arrancan el lector (una instancia),
+`--no-sidekey` lo elimina. Es un puente hasta que la app E-Ink y la app de Termux lo hagan por sí mismas.
 
 ## Inicios de sesión y enlaces MCP
 
@@ -283,7 +294,7 @@ Termux: `~/.config/termux-rootbridge/config` (se interpreta como datos, nunca se
 Invitado: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
 la actualización, por defecto 1800), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
-`daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (ver abajo). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
+`daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (ver abajo). `VOICE` / `SIDEKEY` (`on` / `off`). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
 
 `NOFILE_LIMIT` (por defecto `2048`, `0` = dejar el límite como está) es el límite de descriptores de archivo con el que
 se inicia Claude Code. Claude Code cierra todos los descriptores hasta ese límite tras cada fork, y bajo proot cada
@@ -307,6 +318,7 @@ Remote Control (nunca `--continue`) y lo omite para `-p`, `--version` y `--help`
 | Hook de inicio de sesión (19 pruebas: formas de respuesta, reglas de URL, modos) | — |
 | Instaladores: raíz de staging, idempotencia, migración de la v1, desinstalación | — |
 | Codex junto a Claude Code: opciones de instalación y la elección guardada, pasos de actualización con marcas y bloqueo, ventanas de tmux, `codex-login` / `codex-off` / `status`, el bucle de revisión previa al commit (`node` simulado) | `codex-login` y el widget **Codex** en un dispositivo; `claude plugin update`, `codex update` y `onFailure: "block"` tras un fallo del hook; `bwrap` en otros dispositivos |
+| Voz y tecla lateral: opciones del instalador y la elección guardada, `default.pa` (la nuestra, la tuya, actualización con copia), `rootbridge voice`, ajustes y asignación de teclas en el invitado sin sobrescribir las tuyas, `sox` solo con Claude Code, desinstalación (stubs de `pulseaudio` / `pactl` / `su` / `pkg`) | el micrófono con hardware real, `pm grant` con root real (aviso de Magisk), `sidekey-ptt` con la tecla real, el permiso de micrófono tras una nueva instalación de Termux |
 
 Confirmado en un dispositivo (Hisense A9, 04/11/2026): instalador, colores y tema, actualización de apt,
 `claude update`, límite de descriptores de archivo, widgets, fin de la sesión con `/exit`, la confirmación de root en modo bypass (el hook preguntó en Claude Code y `androidsu` solo

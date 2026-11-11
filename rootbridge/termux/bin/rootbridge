@@ -12,6 +12,7 @@
 #   rootbridge codex-off | codex-on  emergency switch for the Codex pre-commit review (Claude Code restart)
 #   rootbridge guard-off | guard-on  emergency switch for the Claude Code hooks
 #   rootbridge theme light|dark      Claude Code theme "Auto epaper" follows (tmux hook)
+#   rootbridge voice start|stop|status|grant   microphone for /voice: PulseAudio, source, Android permission
 #   rootbridge daemon-start | daemon-stop
 #   rootbridge version
 
@@ -129,6 +130,7 @@ cmd_attach() {
     tool="$(pick_tool "$tool")" || exit 1
     [ "$new" = 0 ] || [ "$tool" = claude ] || die "--new ist nur für Claude Code verfügbar"
     daemon_start
+    extras_start
     if session_exists; then
         if [ "$new" = 1 ]; then
             # Select a new window, never respawn or replace an existing conversation.
@@ -158,6 +160,7 @@ cmd_start() {
     done
     tool="$(pick_tool "$tool")" || exit 1
     daemon_start
+    extras_start
     [ "$attach" = 1 ] && [ -t 0 ] && [ -t 1 ] || { session_create "$tool"; return 0; }
     if ! session_exists; then
         local label="Claude Code"; [ "$tool" = codex ] && label="Codex"
@@ -212,6 +215,70 @@ status_codex() {
     fi
 }
 
+# --- voice: PulseAudio with the microphone for the guest (sox in the guest records from it) ---------------------
+VOICE_SOURCE="OpenSL_ES_source"
+voice_running() { pulseaudio --check >/dev/null 2>&1; }
+voice_source() { pactl list short sources 2>/dev/null | grep -q "$VOICE_SOURCE"; }
+
+# voice_start: PulseAudio running, with the microphone source (quiet when something is missing: a session must start anyway)
+voice_start() {
+    command -v pulseaudio >/dev/null 2>&1 || return 0
+    voice_running || pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 || return 0
+    # the source is missing when Android's microphone permission was not there at the first start
+    if command -v pactl >/dev/null 2>&1 && ! voice_source; then
+        pactl load-module module-sles-source >/dev/null 2>&1 \
+            && pactl set-source-volume "$VOICE_SOURCE" 131072 >/dev/null 2>&1
+    fi
+    return 0
+}
+
+# Android's microphone permission for Termux: a runtime permission, so it is gone with every new installation of the app.
+# All Termux apps share one user id, and only the Termux:API app declares RECORD_AUDIO (the app itself does not): the grant goes
+# to it first, then to the app as a fallback (a build that declares it too). Needs root (the root manager asks); that is why
+# this is a command of its own and not hidden in a start.
+voice_grant() {
+    local pkg granted=""
+    command -v "$RB_SU" >/dev/null 2>&1 || die "kein su gefunden - die Mikrofon-Berechtigung braucht Root: ${RB_SU}"
+    for pkg in com.termux.api com.termux; do
+        # shellcheck disable=SC2086   # SU_ARGS is "-c" or "-mm -c" on purpose
+        if timeout 60 "$RB_SU" $SU_ARGS "pm grant $pkg android.permission.RECORD_AUDIO" </dev/null; then granted=1; break; fi
+    done
+    [ -n "$granted" ] || die "pm grant ist fehlgeschlagen (Root verweigert? Ist die App Termux:API installiert? Nur sie deklariert RECORD_AUDIO für alle Termux-Apps)"
+    echo "Mikrofon-Berechtigung für Termux erteilt."
+    voice_start
+}
+
+voice_status() {
+    command -v pulseaudio >/dev/null 2>&1 || { echo "PulseAudio:    nicht installiert (pkg install pulseaudio)"; return 0; }
+    if voice_running; then echo "PulseAudio:    läuft"; else echo "PulseAudio:    gestoppt (rootbridge voice start)"; return 0; fi
+    if voice_source; then echo "Mikrofon:      ok ($VOICE_SOURCE)"; else echo "Mikrofon:      FEHLT (rootbridge voice grant, dann voice start)"; fi
+}
+
+cmd_voice() {
+    case "${1:-}" in
+        start)  voice_start; voice_status ;;
+        stop)   pulseaudio --kill >/dev/null 2>&1 || true; echo "PulseAudio gestoppt." ;;
+        status) voice_status ;;
+        grant)  voice_grant ;;
+        *) die "voice: start | stop | status | grant" ;;
+    esac
+}
+
+# sidekey_start: the side key reader of the Hisense A9 (SIDEKEY=on), one instance (it takes a lock itself)
+sidekey_start() {
+    [ "$SIDEKEY" = on ] || return 0
+    command -v sidekey-ptt >/dev/null 2>&1 || return 0
+    pgrep -f 'sidekey-ptt' >/dev/null 2>&1 && return 0
+    setsid nohup sidekey-ptt >/dev/null 2>&1 < /dev/null &
+    return 0
+}
+
+# what runs next to a session: the microphone (VOICE=on) and the side key reader (SIDEKEY=on)
+extras_start() {
+    if [ "$VOICE" = on ]; then voice_start; fi
+    sidekey_start
+}
+
 cmd_status() {
     local pid root
     echo "rootbridge $VERSION"
@@ -238,6 +305,16 @@ cmd_status() {
         fi
     else
         echo "Gast ($DISTRO):    nicht gefunden"
+    fi
+    if [ "$VOICE" = on ]; then
+        echo "Sprache (/voice):"
+        voice_status | sed 's/^/  /'
+        command -v ptt >/dev/null 2>&1 && echo "  ptt:           ok" || echo "  ptt:           FEHLT"
+    else
+        echo "Sprache:      nicht Teil der Installation (--no-voice)"
+    fi
+    if [ "$SIDEKEY" = on ]; then
+        if pgrep -f 'sidekey-ptt' >/dev/null 2>&1; then echo "Seitentaste:  Leser läuft"; else echo "Seitentaste:  Leser gestoppt (rootbridge start)"; fi
     fi
     if [ -f "$BRIDGE_DIR/audit.log" ]; then
         echo "Letzte Audit-Einträge:"
@@ -345,9 +422,10 @@ case "${1:-}" in
     guard-off)    cmd_guard off ;;
     guard-on)     cmd_guard on ;;
     theme)        shift; cmd_theme "$@" ;;
+    voice)        shift; cmd_voice "$@" ;;
     daemon-start) daemon_start; echo "Daemon läuft." ;;
     daemon-stop)  daemon_stop; echo "Daemon gestoppt." ;;
     version|--version) echo "rootbridge $VERSION" ;;
-    ""|help|-h|--help) sed -n '2,16p' "$self" | sed 's/^# \{0,1\}//' ;;
+    ""|help|-h|--help) sed -n '2,17p' "$self" | sed 's/^# \{0,1\}//' ;;
     *) die "unbekannter Befehl: $1 (rootbridge help)" ;;
 esac

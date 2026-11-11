@@ -42,7 +42,7 @@ settings() { printf '%s' "$1$ROOTBRIDGE_GUEST_HOME/.claude/settings.json"; }
 baks() { find "$1$ROOTBRIDGE_GUEST_HOME/.claude" -name 'settings.json.bak-*' 2>/dev/null | wc -l | tr -d ' '; }
 ginstall() {  # ginstall <stage> [args...]  (quiet; output in $T/guest.log)
     local stage="$1"; shift
-    bash "$GUEST" --root "$stage" --autonomous no --model none "$@" > "$T/guest.log" 2>&1
+    bash "$GUEST" --root "$stage" --autonomous no --model none --voice no "$@" > "$T/guest.log" 2>&1
 }
 
 S="$T/g1"
@@ -175,7 +175,7 @@ export STUB_LOG="$T/proot.log" STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$GUEST_ROOT"
 rinstall() {  # rinstall <home> [args...]  (fake HOME/PREFIX, stubs first in PATH, no migration, no deps check)
     local home="$1"; shift
     HOME="$home" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$home/.rootbridge" \
-        bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-setup --autonomous no "$@" > "$T/install.log" 2>&1
+        bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-setup --no-voice --autonomous no "$@" > "$T/install.log" 2>&1
 }
 reloads() { grep -c '^reload$' "$RB_LOG" || true; }
 cbaks() { find "$1/.termux" -name 'colors*.properties.bak-*' 2>/dev/null | wc -l | tr -d ' '; }

@@ -18,6 +18,8 @@ AUTH_OPEN="auto"        # auto | copy | off   (used by the Claude hook)
 CLAUDE_ARGS=""
 TOOL_CLAUDE="on"        # on | off: Claude Code is part of this installation (install.sh --no-claude sets off)
 TOOL_CODEX="on"         # on | off: Codex is part of this installation (install.sh --no-codex sets off)
+VOICE="on"              # on | off: voice dictation for Claude Code (sox, PulseAudio, microphone); install.sh --no-voice sets off
+SIDEKEY="off"           # on | off: side key of the Hisense A9 as push to talk (sidekey-ptt); install.sh --sidekey sets on
 AUTOSTART_DELAY=3
 PTT_TARGET=""           # tmux target that `ptt` presses its key in (empty = "<SESSION>:claude")
 PTT_KEY="M-k"           # tmux key name; Claude Code: "voice:pushToTalk" bound to meta+k in ~/.claude/keybindings.json
@@ -65,7 +67,7 @@ rb_load_config() {
                 [[ "$val" =~ ^[0-9]{2,4}$ ]] && [ "$val" -ge 20 ] && PTT_INTERVAL="$val" ;;
             PTT_MAX)
                 [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -ge 1 ] && PTT_MAX="$val" ;;
-            THEME_FOLLOW|THEME_RESTART|TOOL_CLAUDE|TOOL_CODEX)
+            THEME_FOLLOW|THEME_RESTART|TOOL_CLAUDE|TOOL_CODEX|VOICE|SIDEKEY)
                 case "$val" in on|off) printf -v "$key" '%s' "$val" ;; esac ;;
             CLAUDE_ARGS)
                 [[ "$val" =~ ^[A-Za-z0-9._\ =:/,-]*$ ]] && CLAUDE_ARGS="$val" ;;

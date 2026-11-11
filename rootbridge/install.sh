@@ -8,6 +8,7 @@
 #                   [--claude-update 6h|<N>h|daily|always|off | --no-claude-update] [--no-setup]
 #                   [--model NAME|none] [--claude | --no-claude] [--codex | --no-codex]
 #                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update]
+#                   [--voice | --no-voice] [--sidekey | --no-sidekey]
 #
 # Setup: an interactive Termux shell asks for the device name used in Claude Remote Control
 # (Enter accepts the suggested name; --remote-name NAME skips the question).
@@ -38,6 +39,16 @@
 #   --claude / --codex turn a tool on again. --codex-update sets how often `codex update` runs at the start of a
 #   session (6h default, like --claude-update; stored as CODEX_UPDATE). Still manual: the Codex login,
 #   `rootbridge codex-login`.
+#
+# --voice / --no-voice: voice dictation for Claude Code's /voice, on by default (needs Claude Code). The installer sets up sox in
+#   the guest (rec), PulseAudio in Termux (127.0.0.1 only, with the microphone source and 200 % gain, started with the session),
+#   the guest's ~/.claude/keybindings.json (meta+k = voice:pushToTalk) and "voice": {"enabled": true, "mode": "hold"} in
+#   ~/.claude/settings.json (both only where you have not decided yet), and `ptt` (start / stop). Android's microphone
+#   permission for Termux needs root: on a terminal the installer asks for it (the root manager prompts), otherwise run
+#   `rootbridge voice grant` once. The choice is stored in the Termux config (VOICE).
+# --sidekey / --no-sidekey: the side key of the Hisense A9 as push to talk (hold = record, release = stop): installs sidekey-ptt,
+#   which keeps a root `cat` on /dev/input/event2 running, and starts it with the session. Off by default, stored as SIDEKEY.
+#   Set the long press of the E-Ink app to "Nothing". A bridge until the E-Ink app does it itself.
 #
 # Claude Code starts in /root/work in the guest (WORKDIR; the installer creates the folder).
 #
@@ -87,6 +98,7 @@ MODEL=""; MODEL_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
 USE_CLAUDE=yes; USE_CLAUDE_SET=0; USE_CODEX=yes; USE_CODEX_SET=0   # which tools: yes | no
+USE_VOICE=yes; USE_VOICE_SET=0; USE_SIDEKEY=no; USE_SIDEKEY_SET=0   # voice dictation / side key as push to talk
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 APT_RE='^(always|off|daily|[1-9][0-9]{0,2}h)$'
 while [ $# -gt 0 ]; do
@@ -120,6 +132,10 @@ while [ $# -gt 0 ]; do
         --no-claude) USE_CLAUDE=no; USE_CLAUDE_SET=1 ;;
         --codex) USE_CODEX=yes; USE_CODEX_SET=1 ;;
         --no-codex) USE_CODEX=no; USE_CODEX_SET=1 ;;
+        --voice) USE_VOICE=yes; USE_VOICE_SET=1 ;;
+        --no-voice) USE_VOICE=no; USE_VOICE_SET=1 ;;
+        --sidekey) USE_SIDEKEY=yes; USE_SIDEKEY_SET=1 ;;
+        --no-sidekey) USE_SIDEKEY=no; USE_SIDEKEY_SET=1 ;;
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift ;;
@@ -162,6 +178,9 @@ fi
 
 BOTH_OFF_MSG="Mindestens eines von Claude Code und Codex muss installiert werden (nicht --no-claude und --no-codex zusammen)."
 if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then echo "$BOTH_OFF_MSG" >&2; exit 2; fi
+if [ "$USE_SIDEKEY" = yes ] && [ "$USE_VOICE" = no ] && [ "$USE_SIDEKEY_SET" = 1 ] && [ "$USE_VOICE_SET" = 1 ]; then
+    echo "--sidekey braucht die Sprachsteuerung (nicht zusammen mit --no-voice)." >&2; exit 2
+fi
 
 say() { printf '%s\n' "$*"; }
 die() { echo "install.sh: $*" >&2; exit 1; }
@@ -351,6 +370,11 @@ AUTOSTART_DELAY=3
 # CODEX_UPDATE=6h       # codex update at session start: same values; set with install.sh --codex-update / --no-codex-update
 # TOOL_CLAUDE=on        # on | off: Claude Code is part of this installation; set with install.sh --claude / --no-claude
 # TOOL_CODEX=on         # on | off: Codex is part of this installation; set with install.sh --codex / --no-codex
+# VOICE=on              # on | off: voice dictation for Claude Code (PulseAudio, microphone); set with install.sh --voice / --no-voice
+# SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
+# PTT_TARGET=ubuntu:claude   # `ptt`: tmux window it presses its key in (default <SESSION>:claude)
+# PTT_KEY=M-k           # `ptt`: tmux key name (Claude Code: voice:pushToTalk is bound to meta+k)
+# PTT_MODE=hold         # `ptt`: hold (repeat the key until stop) | tap (one press each); PTT_INTERVAL=50 (ms), PTT_MAX=120 (s)
 EOF
     say "  neu: $CFG"
 fi
@@ -427,6 +451,19 @@ if [ "$USE_CLAUDE_SET" = 1 ]; then
 fi
 if [ "$USE_CODEX_SET" = 1 ]; then
     cfg_set TOOL_CODEX "$([ "$USE_CODEX" = yes ] && echo on || echo off)" "Codex: $USE_CODEX"
+fi
+# voice and side key: same idea (an option wins and is stored; without one the stored value counts)
+if [ "$USE_VOICE_SET" != 1 ] && [ "$(cfg_get VOICE)" = off ]; then
+    USE_VOICE=no; say "  Sprache: abgewählt (aus der Konfig; wieder an mit --voice)"
+fi
+if [ "$USE_SIDEKEY_SET" != 1 ] && [ "$(cfg_get SIDEKEY)" = on ]; then
+    USE_SIDEKEY=yes; say "  Seitentaste: an (aus der Konfig; aus mit --no-sidekey)"
+fi
+if [ "$USE_VOICE_SET" = 1 ]; then
+    cfg_set VOICE "$([ "$USE_VOICE" = yes ] && echo on || echo off)" "Sprache: $USE_VOICE"
+fi
+if [ "$USE_SIDEKEY_SET" = 1 ]; then
+    cfg_set SIDEKEY "$([ "$USE_SIDEKEY" = yes ] && echo on || echo off)" "Seitentaste: $USE_SIDEKEY"
 fi
 # Resolve the device name after the enabled tools, so Codex-only installs ask no Claude question.
 if [ "$REMOTE_NAME_SET" != 1 ]; then
@@ -586,6 +623,74 @@ if [ "$DO_BOOT" = 1 ] && [ -d "$HOME/.termux/boot" ]; then
     inst "$REPO/termux/boot/10-rootbridge.sh" "$HOME/.termux/boot/10-rootbridge.sh"
 fi
 
+# inst_py <src> <dest>: like inst, for a Python program (the shebang points at Termux' python3)
+inst_py() {
+    local tmp="$2.new.$$"
+    mkdir -p "$(dirname "$2")"
+    sed "1s|^#!.*|#!$PREFIX/bin/python3|" "$1" > "$tmp"
+    chmod 755 "$tmp"
+    if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 0; fi
+    backup "$2"
+    mv -f "$tmp" "$2"
+    say "  installiert: $2"
+}
+
+# Voice dictation (/voice of Claude Code) works only with Claude Code: without it there is nothing to talk to.
+VOICE_ON=no
+if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then VOICE_ON=yes; fi
+say "== Sprache (/voice) und Seitentaste"
+if [ "$VOICE_ON" = yes ]; then
+    # PulseAudio in Termux: the guest records from it (sox in the guest, PULSE_SERVER=127.0.0.1)
+    if [ ! -x "$PREFIX/bin/pulseaudio" ]; then
+        if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; then
+            say "  pkg install -y pulseaudio"
+            if DEBIAN_FRONTEND=noninteractive pkg install -y -o Dpkg::Options::=--force-confold pulseaudio; then
+                hash -r; SETUP_DID=1
+            else
+                say "  Hinweis: pkg install pulseaudio ist fehlgeschlagen - ohne PulseAudio kein Mikrofon. Erneut starten: bash install.sh"
+            fi
+        else
+            say "  Hinweis: pulseaudio fehlt (pkg install pulseaudio) - ohne PulseAudio kein Mikrofon."
+        fi
+    fi
+    # PulseAudio configuration: Termux' own default.pa plus the microphone and the local socket. A default.pa of your own stays.
+    PA_FILE="$HOME/.config/pulse/default.pa"
+    if [ -e "$PA_FILE" ] && ! grep -q 'termux-rootbridge voice' "$PA_FILE" 2>/dev/null; then
+        say "  $PA_FILE ist deine eigene Datei und bleibt unverändert (ohne die Zeilen aus termux/pulse/default.pa kein Mikrofon)"
+    else
+        TMP_PA="$(mktemp)"
+        sed "s|@PREFIX@|$PREFIX|g" "$REPO/termux/pulse/default.pa" > "$TMP_PA"
+        put_data "$TMP_PA" "$PA_FILE" 644 || true
+        rm -f "$TMP_PA"
+    fi
+    # Android's microphone permission for Termux (root). Only on a terminal, where the root manager can ask you; a pipe or a
+    # script run never starts a root command by itself.
+    if [ "$DO_SETUP" = 1 ] && { [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; }; then
+        "$PREFIX/bin/rootbridge" voice start >/dev/null 2>&1 || true
+        if "$PREFIX/bin/rootbridge" voice status 2>/dev/null | grep -q 'Mikrofon:  *ok'; then
+            say "  Mikrofon: ok (die Berechtigung für Termux ist da)"
+        else
+            say "  Mikrofon-Berechtigung für Termux erteilen (Root; der Root-Manager fragt):"
+            "$PREFIX/bin/rootbridge" voice grant \
+                || say "  Hinweis: ohne Berechtigung kein Mikrofon. Später:  rootbridge voice grant"
+        fi
+    else
+        say "  Mikrofon-Berechtigung: einmal von Hand   rootbridge voice grant   (braucht Root; PulseAudio startet mit der Sitzung)"
+    fi
+else
+    say "  übersprungen ($([ "$USE_CLAUDE" = yes ] && echo '--no-voice' || echo 'ohne Claude Code gibt es kein /voice'))"
+fi
+# the side key reader (Hisense A9): installed on request only; a reader of an earlier install goes when it is switched off
+if [ "$USE_SIDEKEY" = yes ] && [ "$VOICE_ON" = yes ]; then
+    inst_py "$REPO/termux/bin/sidekey-ptt" "$PREFIX/bin/sidekey-ptt"
+elif [ -f "$PREFIX/bin/sidekey-ptt" ] && grep -q 'sidekey-ptt' "$PREFIX/bin/sidekey-ptt" 2>/dev/null; then
+    pkill -f 'sidekey-ptt' 2>/dev/null || true
+    rm -f "$PREFIX/bin/sidekey-ptt"
+    say "  Seitentasten-Leser entfernt (abgewählt)"
+elif [ "$USE_SIDEKEY" = yes ]; then
+    say "  Seitentaste: ohne die Sprachsteuerung nicht eingerichtet"
+fi
+
 say "== 4/5 Migration der alten Popup-Bridge (v1)"
 if [ "$DO_MIGRATE" = 1 ]; then
     OLD_FILES=""
@@ -657,6 +762,9 @@ if [ "$DO_GUEST" = 1 ]; then
             { [ -x "$GROOT$h/.local/bin/codex" ] || [ -L "$GROOT$h/.local/bin/codex" ]; } || return 1
             [ -e "$GROOT/usr/bin/git" ] || return 1
         fi
+        if [ "$VOICE_ON" = yes ]; then
+            [ -e "$GROOT/usr/bin/rec" ] || return 1      # sox: Claude Code records through it
+        fi
         if [ "$USE_CLAUDE" = yes ] && [ "$USE_CODEX" = yes ]; then
             { [ -e "$GROOT/usr/bin/node" ] || [ -e "$GROOT/usr/bin/nodejs" ]; } || return 1
             compgen -G "$GROOT$h/.claude/plugins/cache/openai-codex/codex/*/" >/dev/null || return 1
@@ -666,11 +774,11 @@ if [ "$DO_GUEST" = 1 ]; then
     if [ "$DO_SETUP" = 1 ] && ! guest_ready; then
         say "  Gast: Voraussetzungen, Claude Code und Codex einrichten (Claude Code: $USE_CLAUDE, Codex: $USE_CODEX)"
         proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/setup-guest.sh \
-            --claude "$USE_CLAUDE" --codex "$USE_CODEX" \
+            --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" \
             || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh"
         SETUP_DID=1
     fi
-    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX")
+    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
     if [ "$MODEL_SET" = 1 ]; then GUEST_ARGS+=(--model "$MODEL"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
@@ -718,6 +826,12 @@ if [ "$SETUP_DID" = 1 ]; then
         say "das Widget 'Claude' auf den Homescreen legen, beim ersten Start in Claude Code anmelden (/login, der Browser öffnet sich)."
     else
         say "das Widget 'Codex' auf den Homescreen legen, Codex anmelden (rootbridge codex-login)."
+    fi
+fi
+if [ "$VOICE_ON" = yes ]; then
+    say "Sprache: /voice in Claude Code (Modus hold, Alt+K); 'ptt start' / 'ptt stop' halten die Taste für dich (rootbridge voice status prüft das Mikrofon)."
+    if [ "$USE_SIDEKEY" = yes ]; then
+        say "Seitentaste: Langdruck = aufnehmen, loslassen = stoppen. In den E-Ink-Einstellungen den Langdruck auf 'Nothing' stellen."
     fi
 fi
 if [ "$DO_EXTRAKEYS" = 1 ]; then

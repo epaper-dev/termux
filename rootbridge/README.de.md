@@ -268,23 +268,34 @@ wieder an.
 | `rootbridge guard-off` / `guard-on` | Notschalter für die Hooks |
 | `rootbridge codex-off` / `codex-on` | Notschalter für die Codex-Pre-Commit-Review (Claude Code neu starten) |
 | `ptt start` / `stop` / `toggle` / `status` | Push-to-Talk: drückt im Claude-Code-Fenster eine Taste für `/voice` (siehe unten) |
+| `rootbridge voice start\|stop\|status\|grant` | PulseAudio und Mikrofon für `/voice`; `grant` gibt Termux die Mikrofon-Berechtigung von Android (Root) |
 
 In Claude Code ändert sich nichts: Du sagst, was du willst. Braucht Claude Root, ruft es `androidsu '<befehl>'`
 auf, und du siehst eine Rückfrage mit genau diesem Befehl. Jede Entscheidung steht in `~/.rootbridge/audit.log`.
 
-### Push-to-Talk für `/voice`
+### Sprachdiktat (`/voice`) und Push-to-Talk
 
-`/voice` von Claude Code braucht eine gehaltene Taste, und das geht mit einer Bildschirmtastatur nicht. `ptt` ist die Taste dafür,
-damit etwas anderes sie halten kann: eine Seitentaste, ein Widget, ein Skript. Einmal einrichten:
+Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Neuinstallation behält die Wahl). Es braucht Claude Code. Der Installer richtet ein:
 
-1. `~/.claude/keybindings.json`: `{"bindings": [{"context": "Chat", "bindings": {"meta+k": "voice:pushToTalk"}}]}`
-2. In Claude Code `/voice hold`.
-3. `ptt start` startet die Aufnahme (es wiederholt Alt+K alle 50 ms, wie eine gehaltene Taste), `ptt stop` beendet sie, und der Text
-   landet im Eingabefeld. Ohne Stopp enden die Wiederholungen nach `PTT_MAX` Sekunden (120).
+* **`sox`** im Gast (`rec`, darüber nimmt Claude Code auf) und **PulseAudio** in Termux. PulseAudio hört nur auf `127.0.0.1`, lässt einen Client nur mit seinem Cookie
+  ein (privat in Termux; der Gast bekommt `PULSE_COOKIE`) und trägt das Mikrofon des Telefons (`~/.config/pulse/default.pa`: Termux' eigene Datei plus die Mikrofonquelle und 200 % Verstärkung, weil die
+  Android-Quelle „Spracherkennung“ leise ist). Es startet mit der Sitzung (`rootbridge start` / `attach`); eine eigene `default.pa` bleibt.
+* **Einstellungen von Claude Code**: `~/.claude/keybindings.json` bekommt `meta+k` = `voice:pushToTalk`, `~/.claude/settings.json` bekommt
+  `"voice": {"enabled": true, "mode": "hold"}`. Beides nur, wo du noch nichts entschieden hast (eine vorhandene Belegung der Aktion oder ein `voice`-Wert bleibt).
+* **`ptt`**: `ptt start` drückt die Taste für dich, `ptt stop` lässt sie los. Im Modus `hold` (Standard) wiederholt es Alt+K alle 50 ms, wie eine
+  gehaltene Taste, damit nur dein eigenes `stop` die Aufnahme beendet (eine gehaltene Taste kann eine Bildschirmtastatur nicht). Ohne Stopp
+  enden die Wiederholungen nach `PTT_MAX` Sekunden (120). `ptt` drückt nur eine Taste in einem tmux-Fenster (`PTT_TARGET`, Standard
+  `ubuntu:claude`; `PTT_KEY`, Standard `M-k`) und passt damit zu jedem Programm, das auf eine Taste hört.
+* **Mikrofon-Berechtigung von Android** für Termux (eine Laufzeit-Berechtigung: sie ist mit jeder Neuinstallation der App weg; die Termux-Apps teilen
+  eine Benutzerkennung, und nur die **App Termux:API** deklariert `RECORD_AUDIO`, sie muss also installiert sein). Sie braucht Root:
+  auf einem Terminal fragt der Installer danach (der Root-Manager meldet sich) und überspringt es, wenn das Mikrofon schon geht; in einem
+  Skriptlauf gibt er nur den Hinweis aus. `rootbridge voice grant` holt sie jederzeit, `rootbridge voice status` zeigt PulseAudio und Mikrofon,
+  `rootbridge voice start|stop` steuern den Audio-Server von Hand.
 
-`ptt` drückt nur eine Taste in einem tmux-Fenster (`PTT_TARGET`, Standard `ubuntu:claude`; `PTT_KEY`, Standard `M-k`) und passt damit
-zu jedem Programm, das auf eine Taste hört. Das Mikrofon selbst braucht `sox` im Gast, einen PulseAudio-Server in Termux mit
-Mikrofonquelle und die Mikrofon-Berechtigung von Android für Termux; das ist Geräte-Einrichtung, nicht Teil des Installers.
+**Seitentaste des Hisense A9** (`--sidekey`, standardmäßig aus, gespeichert als `SIDEKEY`): Seitentaste halten = aufnehmen, loslassen = stoppen. Der Installer legt
+`sidekey-ptt` nach `$PREFIX/bin`; es hält ein root-`cat` auf `/dev/input/event2` (die Taste, Scancode 766) und ruft `ptt start` / `ptt stop`.
+Kurz- und Doppeldruck bleiben bei der E-Ink-App; ihren Langdruck auf „Nothing“ stellen. `rootbridge start|attach` starten den Leser (eine Instanz),
+`--no-sidekey` entfernt ihn. Es ist eine Brücke, bis die E-Ink-App und die Termux-App das selbst können.
 
 ## Logins und MCP-Links
 
@@ -305,6 +316,7 @@ Kurzfassung (Details: [docs/LOGIN.md](docs/LOGIN.md)):
 | Login-Hook (19 Tests: Antwortformen, URL-Regeln, Modi) | — |
 | Installer: Staging-Root, Idempotenz, v1-Migration, Deinstallation | — |
 | Codex neben Claude Code: Installationsoptionen und gespeicherte Wahl, Update-Schritte mit Stempeln und Sperre, tmux-Fenster, `codex-login` / `codex-off` / `status`, die Pre-Commit-Schleife (Stub-`node`) | `codex-login` und das Widget **Codex** auf einem Gerät; `claude plugin update`, `codex update` und `onFailure: "block"` nach einem Absturz des Hooks; `bwrap` auf anderen Geräten |
+| Sprache und Seitentaste: Installationsoptionen und gespeicherte Wahl, `default.pa` (unsere, deine, Update mit Backup), `rootbridge voice`, Einstellungen und Tastenbelegung im Gast ohne deine zu überschreiben, `sox` nur mit Claude Code, Deinstallation (Stubs für `pulseaudio` / `pactl` / `su` / `pkg`) | das Mikrofon mit echter Hardware, `pm grant` mit echtem Root (Magisk-Rückfrage), `sidekey-ptt` an der echten Taste, die Mikrofon-Berechtigung nach einer Neuinstallation von Termux |
 
 Auf einem Gerät bestätigt (Hisense A9, 04.11.2026): Installer, Farben und Theme, apt-Upgrade, `claude update`, das
 Dateideskriptor-Limit, Widgets, Sitzungsende mit `/exit`, die Root-Rückfrage im Bypass-Modus (der Hook fragte in Claude Code, `androidsu` lief erst nach
