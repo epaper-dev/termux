@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""sidekey-ptt - side key of the Hisense A9 (long press) as push to talk: `ptt start` on press, `ptt stop` on release.
+
+BRIDGE until the E-Ink app (hisense-a9/patching) and the Termux app do this themselves. It keeps a root `cat` on
+/dev/input/event2 (gpio-keys, scan code 766 = 0x2fe) alive and reads nothing else. Short and double presses are ignored
+(they stay with the E-Ink app). Set the long press of the E-Ink app to "Nothing", or its menu opens as well.
+
+Installed by `install.sh --sidekey` (SIDEKEY=on in the rootbridge config) and started by `rootbridge start|attach`.
+Runs in Termux as the Termux user; root is only the `cat` (su). One instance (flock). Log: ~/.cache/sidekey-ptt.log
+Stop it:  pkill -f sidekey-ptt        (a stray `cat` ends with the next key press)
+
+Test hooks (environment): SIDEKEY_CMD (event source instead of su), SIDEKEY_PTT (ptt binary), SIDEKEY_LONG (seconds),
+SIDEKEY_ONCE=1 (leave at the end of the event stream), SIDEKEY_CACHE (log and lock directory).
+"""
+import fcntl
+import os
+import select
+import shlex
+import signal
+import struct
+import subprocess
+import sys
+import time
+
+HOME = os.path.expanduser("~")
+CACHE = os.environ.get("SIDEKEY_CACHE", os.path.join(HOME, ".cache"))
+LOG = os.path.join(CACHE, "sidekey-ptt.log")
+LOCK = os.path.join(CACHE, "sidekey-ptt.lock")
+DEV = "/dev/input/event2"
+SCAN = 766                                           # KEY 0x2fe
+LONG = float(os.environ.get("SIDEKEY_LONG", "0.4"))  # Android's long press timeout (settings: long_press_timeout 400)
+PTT = os.environ.get("SIDEKEY_PTT", "ptt")
+CMD = shlex.split(os.environ["SIDEKEY_CMD"]) if os.environ.get("SIDEKEY_CMD") else ["su", "-c", "cat " + DEV]
+ONCE = os.environ.get("SIDEKEY_ONCE") == "1"
+EVENT = struct.Struct("<qqHHi")                      # struct input_event on 64 bit: time (2 x 8), type, code, value
+EV_KEY = 1
+
+proc = None
+talking = False
+
+
+def log(msg):
+    try:
+        if os.path.exists(LOG) and os.path.getsize(LOG) > 200_000:
+            os.replace(LOG, LOG + ".1")
+        with open(LOG, "a") as f:
+            f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg))
+    except OSError:
+        pass
+
+
+def ptt(action):
+    try:
+        r = subprocess.run([PTT, action], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=5)
+        if r.returncode != 0:
+            log("ptt %s: Exit %d" % (action, r.returncode))
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log("ptt %s: %s" % (action, e))
+
+
+def release():
+    global talking
+    if talking:
+        talking = False
+        ptt("stop")
+
+
+def shutdown(signum, _frame):
+    log("beendet (Signal %d)" % signum)
+    release()
+    if proc is not None:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    sys.exit(0)
+
+
+def run_once():
+    """Read one event stream until it ends; returns how many seconds it lasted."""
+    global proc, talking
+    t_start = time.monotonic()
+    proc = subprocess.Popen(CMD, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    fd = proc.stdout.fileno()
+    buf = b""
+    down = None                      # monotonic time of the press that is still held
+    while True:
+        wait = None
+        if down is not None and not talking:
+            wait = max(0.0, down + LONG - time.monotonic())
+        ready, _, _ = select.select([fd], [], [], wait)
+        now = time.monotonic()
+        if down is not None and not talking and now >= down + LONG:
+            talking = True
+            log("Langdruck: ptt start")
+            ptt("start")
+        if not ready:
+            continue
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            break
+        buf += chunk
+        while len(buf) >= EVENT.size:
+            _, _, etype, code, value = EVENT.unpack(buf[:EVENT.size])
+            buf = buf[EVENT.size:]
+            if etype != EV_KEY or code != SCAN:
+                continue
+            if value == 1 and down is None:
+                down = time.monotonic()
+            elif value == 0:
+                if talking:
+                    log("losgelassen: ptt stop")
+                    release()
+                down = None
+    release()
+    try:
+        proc.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    return time.monotonic() - t_start
+
+
+def main():
+    os.makedirs(CACHE, exist_ok=True)
+    lock = open(LOCK, "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print("sidekey-ptt laeuft schon", file=sys.stderr)
+        return 0
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
+    log("gestartet, Quelle: %s" % " ".join(CMD))
+    delay = 2
+    while True:
+        lasted = run_once()
+        if ONCE:
+            return 0
+        log("Ereignisstrom endete nach %.0f s (su verweigert, oder cat beendet), neuer Versuch in %d s" % (lasted, delay))
+        time.sleep(delay)
+        delay = 2 if lasted > 10 else min(60, delay * 2)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

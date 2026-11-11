@@ -45,6 +45,9 @@ cd "$workdir" 2>/dev/null || cd /root || exit 1
 
 export BROWSER=/usr/local/bin/rootbridge-open
 export IS_SANDBOX=1          # Claude Code refuses bypass mode as root otherwise
+# Voice (/voice): PulseAudio in Termux lets a client in only with its cookie, which lies in the Termux home (the guest shares it)
+pulse_cookie=/data/data/com.termux/files/home/.config/pulse/cookie
+[ -r "$pulse_cookie" ] && export PULSE_COOKIE="$pulse_cookie"
 
 claude_bin=/root/.local/bin/claude
 [ -x "$claude_bin" ] || claude_bin="$(command -v claude || true)"

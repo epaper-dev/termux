@@ -18,11 +18,16 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL="$ROOT/install.sh"
-SETUP_GUEST="$ROOT/guest/setup-guest.sh"
+SETUP_GUEST_REAL="$ROOT/guest/setup-guest.sh"
 GUEST="$ROOT/guest/install-guest.sh"
 
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
+# These cases test the base setup (python3, curl, certificates, Claude Code, Codex, plugin): the voice part (sox) has its own test
+# (test_voice.sh). The wrapper puts --voice no in front; a machine that has sox itself must not change the result either.
+SETUP_GUEST="$T/setup-guest-novoice.sh"
+printf '#!/bin/bash\nexec bash "%s" --voice no "$@"\n' "$SETUP_GUEST_REAL" > "$SETUP_GUEST"
+chmod +x "$SETUP_GUEST"
 ORIG_PATH="$PATH"
 
 PASS=0; FAIL=0
@@ -192,7 +197,7 @@ envrun() {
         ROOTBRIDGE_CA_BUNDLE="$E/ca/ca-certificates.crt" ROOTBRIDGE_GUEST_HOME="${ROOTBRIDGE_GUEST_HOME:-$E/ghome}" \
         "$@"
 }
-rinstall() { envrun bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --autonomous no "$@" > "$E/out.log" 2>&1; }
+rinstall() { envrun bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --no-voice --autonomous no "$@" > "$E/out.log" 2>&1; }
 
 ALL_DEPS="tmux proot-distro python3 setsid termux-open-url"
 
@@ -296,19 +301,19 @@ check "A13 ohne pkg: nennt die fehlenden Pakete"                1 "$(count "$E/o
 
 # failures stop early
 newenv a7
-envrun env STUB_PKG_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys > "$E/out.log" 2>&1
+envrun env STUB_PKG_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --no-voice > "$E/out.log" 2>&1
 check "A7 pkg schlägt fehl: Abbruch"                            1 "$?"
 check "A7 pkg schlägt fehl: Meldung"                            1 "$(count "$E/out.log" 'ist fehlgeschlagen (Netz? pkg update?)')"
 check "A7 pkg schlägt fehl: kein proot-distro"                  0 "$(count "$LOG" '^proot-distro')"
 
 newenv a8 $ALL_DEPS
-envrun env STUB_PROOT_INSTALL_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys > "$E/out.log" 2>&1
+envrun env STUB_PROOT_INSTALL_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --no-voice > "$E/out.log" 2>&1
 check "A8 proot-distro install schlägt fehl: Abbruch"           1 "$?"
 check "A8 proot-distro install schlägt fehl: Meldung"           1 "$(count "$E/out.log" 'proot-distro install ubuntu ist fehlgeschlagen')"
 check "A8 proot-distro install schlägt fehl: kein Gast-Skript"  0 "$(count "$LOG" 'staged')"
 
 newenv a9 $ALL_DEPS
-envrun env STUB_SETUP_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys > "$E/out.log" 2>&1
+envrun env STUB_SETUP_FAIL=1 bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --no-voice > "$E/out.log" 2>&1
 check "A9 setup-guest schlägt fehl: Abbruch"                    1 "$?"
 check "A9 setup-guest schlägt fehl: install-guest läuft nicht"  0 "$(count "$LOG" 'install-guest.sh')"
 

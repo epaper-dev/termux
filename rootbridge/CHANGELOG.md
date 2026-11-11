@@ -79,6 +79,17 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   `tests/test_autonomous.sh`.
 
 ### Added
+* **Voice dictation and the side key in the installer** (`/voice` of Claude Code on a phone): `install.sh` now sets up everything that was
+  device work before. **On by default, `--no-voice` leaves it out** (stored as `VOICE`): `sox` in the guest, PulseAudio in Termux
+  (`~/.config/pulse/default.pa` from `termux/pulse/default.pa`: Termux' own file plus `module-native-protocol-tcp` listening on `127.0.0.1` only and
+  admitting a client only with its cookie (no `auth-anonymous`, no `auth-ip-acl`: both let a client in without it) (the guest gets `PULSE_COOKIE`: `rootbridge-claude` and the `.bashrc` block), the
+  microphone source `module-sles-source` and 200 % gain; a `default.pa` of your own stays, ours is replaced with a backup), started by
+  `rootbridge start|attach`; in the guest `~/.claude/keybindings.json` (`meta+k` = `voice:pushToTalk`) and `"voice": {"enabled": true,
+  "mode": "hold"}` in `~/.claude/settings.json`, each only where you have not decided yet. **Android's microphone permission** for Termux
+  (`pm grant com.termux.api ... RECORD_AUDIO`, then `com.termux` as a fallback; root; the Termux apps share a user id and only Termux:API declares it) is asked for by the installer **only on a terminal** and only when the microphone does not work yet;
+  `rootbridge voice grant|start|stop|status` do the steps by hand. **`--sidekey`** (off by default, stored as `SIDEKEY`) installs
+  `sidekey-ptt`, the side key of the Hisense A9 as push to talk (a root `cat` on `/dev/input/event2`, `--no-sidekey` removes it); a bridge until
+  the E-Ink app does it itself. Without Claude Code there is no voice part. `tests/test_voice.sh` has 122 checks.
 * **`ptt`, push to talk for a program in a tmux window** (Termux, no root): `ptt start` / `stop` / `toggle` / `status`. It was made for
   Claude Code's `/voice` on a phone with an on-screen keyboard (no key can be held): bind `voice:pushToTalk` to `meta+k` in
   `~/.claude/keybindings.json`, set `/voice hold`, and something that calls `ptt start` on press and `ptt stop` on release

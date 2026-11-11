@@ -4,7 +4,7 @@
 #
 #   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
 #                    [--theme NAME] [--model NAME|none] [--apt-upgrade 6h|<N>h|daily|always|off]
-#                    [--claude yes|no] [--codex yes|no] [--claude-update M] [--codex-update M] [--uninstall]
+#                    [--claude yes|no] [--codex yes|no] [--voice yes|no] [--claude-update M] [--codex-update M] [--uninstall]
 #
 #   --claude yes|no   Claude Code is part of the installation (default yes). no = Codex only: no Claude Code
 #                     settings, hooks, managed settings or claude() wrapper (an existing value in the config stays
@@ -16,6 +16,9 @@
 #                     start of a session (rootbridge-update). Same values and rules as --claude-update.
 #   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
+#   --voice yes|no    voice dictation for Claude Code (default yes; needs Claude Code): ~/.claude/keybindings.json gets
+#                     meta+k = voice:pushToTalk (Chat context; an existing binding for that action stays), and
+#                     ~/.claude/settings.json "voice": {"enabled": true, "mode": "hold"} where you have not set it yet
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
 #                     (no warning dialog for bypass mode) and, if settings.json has no default mode yet,
 #                     permissions.defaultMode = bypassPermissions (Claude Code starts in bypass mode; every
@@ -54,7 +57,7 @@ MODEL=opusplan; MODEL_SET=0
 APT_MODE=""; APT_MODE_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
-CLAUDE_ON=""; CODEX_ON=""
+CLAUDE_ON=""; CODEX_ON=""; VOICE_ON=yes
 UNINSTALL=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -85,6 +88,9 @@ while [ $# -gt 0 ]; do
         --codex)
             [ $# -ge 2 ] || { echo "--codex braucht yes oder no" >&2; exit 2; }
             CODEX_ON="$2"; shift 2 ;;
+        --voice)
+            [ $# -ge 2 ] || { echo "--voice braucht yes oder no" >&2; exit 2; }
+            VOICE_ON="$2"; shift 2 ;;
         --uninstall) UNINSTALL=1; shift ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
@@ -134,7 +140,7 @@ case "$AUTONOMOUS" in
     yes|no|ask) ;;
     *) echo "--autonomous: ungültiger Wert '$AUTONOMOUS' (erlaubt: yes, no, ask)" >&2; exit 2 ;;
 esac
-for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON"; do
+for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON" "voice:$VOICE_ON"; do
     case "${pair#*:}" in
         ""|yes|no) ;;
         *) echo "--${pair%%:*}: ungültiger Wert '${pair#*:}' (erlaubt: yes, no)" >&2; exit 2 ;;
@@ -592,6 +598,12 @@ if [ "$MODEL" != none ] && [ "$CLAUDE_ON" = yes ]; then
     fi
 fi
 
+# voice dictation (/voice): on, push to talk with a held key ("hold"; `ptt` holds it for you). A value you set yourself stays.
+if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
+    settings_queue voice.enabled true missing
+    settings_queue voice.mode '"hold"' missing
+fi
+
 # Claude Code theme (only when asked for: install.sh passes --theme unless --no-colors)
 if [ "$THEME_SET" = 1 ] && [ "$CLAUDE_ON" = yes ]; then
     settings_queue theme "\"$THEME\""
@@ -615,6 +627,56 @@ if [ "$THEME_SET" = 1 ] && [ "$CLAUDE_ON" = yes ]; then
     fi
 fi
 settings_apply
+
+# ~/.claude/keybindings.json: meta+k starts and stops the recording (Chat context). The file is created if it is missing; in an
+# existing one the binding is added only if nothing is bound to voice:pushToTalk yet and meta+k is free. A file that is not
+# valid JSON, or has an unexpected shape, stays as it is.
+if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
+    KB="$ROOT$HOME_DIR/.claude/keybindings.json"
+    mkdir -p "$(dirname "$KB")"
+    rc=0
+    python3 -I - "$KB" "$KB.new.$$" <<'PY' || rc=$?
+import json, os, sys
+path, out = sys.argv[1:3]
+ACTION, KEY = "voice:pushToTalk", "meta+k"
+if os.path.exists(path):
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except ValueError:
+        sys.exit(10)
+else:
+    data = {"$schema": "https://www.schemastore.org/claude-code-keybindings.json", "bindings": []}
+if not isinstance(data, dict) or not isinstance(data.get("bindings"), list):
+    sys.exit(10)
+chat = None
+for block in data["bindings"]:
+    if not isinstance(block, dict) or not isinstance(block.get("bindings"), dict):
+        sys.exit(10)
+    if block.get("context") == "Chat" and block["bindings"].get(KEY) == ACTION:
+        sys.exit(13)                      # our binding from an earlier install
+    if ACTION in block["bindings"].values():
+        sys.exit(11)                      # already bound to something: the user's choice
+    if block.get("context") == "Chat":
+        chat = block
+if chat is None:
+    chat = {"context": "Chat", "bindings": {}}
+    data["bindings"].append(chat)
+if KEY in chat["bindings"]:
+    sys.exit(12)                          # meta+k is used for something else
+chat["bindings"][KEY] = ACTION
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+PY
+    case "$rc" in
+        0)  backup "$KB"; mv -f "$KB.new.$$" "$KB"; say "  ~/.claude/keybindings.json: $([ -s "$KB.bak-$STAMP" ] && echo ergänzt || echo angelegt) (meta+k = voice:pushToTalk)" ;;
+        13) say "  ~/.claude/keybindings.json: meta+k = voice:pushToTalk ist schon gesetzt" ;;
+        11) say "  ~/.claude/keybindings.json: voice:pushToTalk ist schon belegt - bleibt unverändert (ptt drückt PTT_KEY, Standard M-k)" ;;
+        12) say "  Hinweis: ~/.claude/keybindings.json: meta+k ist anders belegt - nicht gesetzt (PTT_KEY in der Termux-Konfig anpassen)" ;;
+        *)  say "  Hinweis: ~/.claude/keybindings.json ist kein erwartetes JSON - nicht geändert" ;;
+    esac
+    rm -f "$KB.new.$$"
+fi
 
 # guest ~/.bashrc: claude() wrapper with browser hand-off and bypass availability
 B="$ROOT$HOME_DIR/.bashrc"
@@ -665,6 +727,12 @@ if [ "$CODEX_ON" = yes ]; then
 cat >> "$B.new.$$" <<EOF
 # Browser hand-off for \`codex login\`: the link opens in Android's browser (like for Claude Code).
 codex() { BROWSER=$BINDIR/rootbridge-open command codex "\$@"; }
+EOF
+fi
+if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
+# Voice: PulseAudio in Termux lets a client in only with its cookie (private to Termux; the guest shares the Termux home)
+cat >> "$B.new.$$" <<'EOF'
+[ -r /data/data/com.termux/files/home/.config/pulse/cookie ] && export PULSE_COOKIE=/data/data/com.termux/files/home/.config/pulse/cookie
 EOF
 fi
 cat >> "$B.new.$$" <<EOF

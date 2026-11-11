@@ -589,6 +589,13 @@ check "Gast mit Codex, git, node, aber ohne Plugin: setup-guest.sh läuft" 1 "$(
 mkdir -p "$GROOT/root/.claude/plugins/cache/openai-codex/codex/1.0.6"
 rm -f "$H/.config/termux-rootbridge/config"
 ROOTBRIDGE_GUEST_HOME=/root irun --setup
+check "Gast ohne sox (rec), Voice an: setup-guest.sh läuft, mit --voice yes" "1 1" "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1) $(grep 'setup-guest.sh' "$ILOG" | grep -c -- '--voice yes')"
+rm -f "$H/.config/termux-rootbridge/config"
+ROOTBRIDGE_GUEST_HOME=/root irun --setup --no-voice
+check "Gast ohne sox, --no-voice: setup-guest.sh läuft nicht" 0 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
+printf '#!/bin/bash\n' > "$GROOT/usr/bin/rec"
+rm -f "$H/.config/termux-rootbridge/config"
+ROOTBRIDGE_GUEST_HOME=/root irun --setup
 check "Gast komplett: setup-guest.sh läuft nicht"          0 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
 rm -rf "${GROOT:?}/usr/bin" "${GROOT:?}/root"
 

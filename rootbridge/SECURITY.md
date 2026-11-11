@@ -60,6 +60,13 @@ sandbox against a hostile agent or a compromised guest. Read the limits before r
   starts: what the same command changes before the commit (`sed -i … && git commit -a`, a build script) is not covered. It also reads the
   approved-diff state from a file that a process in the guest could write; the guard asks before Claude Code does that with
   its tools, nothing more. It is a safety net against slips, not a sandbox.
+* **Voice and the side key.** PulseAudio (installed with the voice part) listens on `127.0.0.1` only and lets a client in only with its cookie
+  (`~/.config/pulse/cookie`, private to Termux). Anonymous access would let every app on the phone record the microphone through Termux'
+  permission, because every app reaches `127.0.0.1`; the guest shares the Termux home and reads the cookie (`PULSE_COOKIE`), so any process in
+  the guest can record while PulseAudio runs. The microphone
+  permission for Termux is granted with a root command (`pm grant ... RECORD_AUDIO`, to Termux:API and for the shared user id to every Termux app) that `install.sh` runs **only on a terminal**, where the root manager asks you,
+  and `rootbridge voice grant` runs on request; neither goes through the Claude Code hook. `--sidekey` keeps a root `cat` on `/dev/input/event2` alive
+  (reads the side key and the volume key, writes nothing); `--no-sidekey` or `uninstall.sh` removes it.
 * **Bypass mode is bypass mode.** Everything not covered above runs unattended by design. Use it with projects
   and MCP servers you trust.
 * Hardening idea for later: run the guest with `proot-distro --isolated` and bind only `~/.rootbridge`.

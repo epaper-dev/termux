@@ -1,0 +1,14 @@
+# termux-rootbridge voice: PulseAudio of Termux with the microphone for the guest (installed by install.sh; remove this file
+# to go back to Termux' own setup). Termux' own default.pa first, then:
+.include @PREFIX@/etc/pulse/default.pa
+# a failing line below (e.g. Android's microphone permission is missing) must not stop PulseAudio:
+# `rootbridge voice grant` fixes the permission, `rootbridge voice start` loads the source afterwards
+.nofail
+# the guest reaches PulseAudio over 127.0.0.1 (PULSE_SERVER is set in the guest). Listen on the loopback address only, and let a client
+# in only with the cookie (~/.config/pulse/cookie, private to Termux; the guest reads it through PULSE_COOKIE): every app on the phone
+# can reach 127.0.0.1, and without the cookie any of them could record the microphone through Termux' permission.
+# No auth-anonymous and no auth-ip-acl: a match of the ACL authenticates the client WITHOUT the cookie (protocol-native.c).
+load-module module-native-protocol-tcp listen=127.0.0.1
+# the microphone, and 200 % gain (65536 = 100 %): Android's "voice recognition" source is quiet
+load-module module-sles-source
+set-source-volume OpenSL_ES_source 131072

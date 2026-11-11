@@ -3,14 +3,16 @@
 # install-guest.sh). Makes a fresh Ubuntu ready for the bridge, without any question:
 #   1. python3, curl and the CA certificates (apt-get; only when one is missing); git when Codex is part of
 #      the installation (Codex reviews through git, and so does the pre-commit hook); nodejs when both tools are
-#      (the Codex plugin of Claude Code is a node program, Node.js 18.18 or newer)
+#      (the Codex plugin of Claude Code is a node program, Node.js 18.18 or newer); sox for /voice
+#      when Claude Code and voice are both part of it (Claude Code records through `rec`)
 #   2. Claude Code with the official installer (only when there is no claude yet)
 #   3. Codex with the official standalone installer (only when there is no codex yet)
 #   4. the Codex plugin of Claude Code, openai/codex-plugin-cc (only when both tools are part of it and the
 #      plugin is not there yet)
 # Idempotent: with everything in place it changes nothing and does not touch the network.
 #
-#   setup-guest.sh [--claude yes|no] [--codex yes|no]       (both default to yes)
+#   setup-guest.sh [--claude yes|no] [--codex yes|no] [--voice yes|no]       (all default to yes)
+#     --voice: sox with the PulseAudio plugin (apt-get), which Claude Code's /voice records through; only with Claude Code
 #
 #   CLAUDE_INSTALL_URL        installer script of Claude Code (default https://claude.ai/install.sh)
 #   CODEX_INSTALL_URL         installer script of Codex (default https://chatgpt.com/codex/install.sh)
@@ -23,7 +25,7 @@ HOME_DIR="${ROOTBRIDGE_GUEST_HOME:-/root}"
 CA_BUNDLE="${ROOTBRIDGE_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 INSTALL_URL="${CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CODEX_URL="${CODEX_INSTALL_URL:-https://chatgpt.com/codex/install.sh}"
-CLAUDE_ON=yes; CODEX_ON=yes
+CLAUDE_ON=yes; CODEX_ON=yes; VOICE_ON=yes
 
 say() { printf '%s\n' "$*"; }
 die() { echo "setup-guest.sh: $*" >&2; exit 1; }
@@ -32,6 +34,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --claude) [ $# -ge 2 ] || die "--claude braucht yes oder no"; CLAUDE_ON="$2"; shift 2 ;;
         --codex)  [ $# -ge 2 ] || die "--codex braucht yes oder no";  CODEX_ON="$2";  shift 2 ;;
+        --voice)  [ $# -ge 2 ] || die "--voice braucht yes oder no";  VOICE_ON="$2";  shift 2 ;;
         *) echo "setup-guest.sh: unbekannte Option: $1" >&2; exit 2 ;;
     esac
 done
@@ -39,6 +42,7 @@ case "$CLAUDE_ON$CODEX_ON" in
     yesyes|yesno|noyes) ;;
     *) die "--claude / --codex: erlaubt ist yes oder no, und mindestens eines von beiden muss yes sein" ;;
 esac
+case "$VOICE_ON" in yes|no) ;; *) die "--voice: erlaubt ist yes oder no" ;; esac
 
 TMPDIR_SETUP="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_SETUP"' EXIT
@@ -60,6 +64,9 @@ if [ "$CODEX_ON" = yes ]; then
 fi
 if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
     command -v node >/dev/null 2>&1 || pkgs="$pkgs nodejs"
+fi
+if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
+    command -v rec >/dev/null 2>&1 || pkgs="$pkgs sox libsox-fmt-pulse"
 fi
 if [ -n "$pkgs" ]; then
     say "  apt-get install:$pkgs"
