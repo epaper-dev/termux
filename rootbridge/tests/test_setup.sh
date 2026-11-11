@@ -249,6 +249,20 @@ rinstall
 check "A2c claude fehlt im Gast: setup-guest.sh läuft"          1 "$(count "$LOG" '^staged setup-guest.sh$')"
 check "A2c claude fehlt im Gast: Hinweis 'Noch von Hand'"       1 "$(count "$E/out.log" 'Noch von Hand')"
 
+# A previous --no-codex installation is upgraded by a plain rerun, including the Codex setup step.
+newenv a14
+rinstall --no-codex
+check "A14 --no-codex: läuft durch"                           0 "$?"
+check "A14 --no-codex: Setup ohne Codex"                      1 "$(grep 'setup-guest.sh' "$LOG" | grep -c -- '--codex no')"
+check "A14 --no-codex: kein Codex-Widget"                     nein "$([ -f "$E/home/.shortcuts/Codex" ] && echo ja || echo nein)"
+: > "$LOG"
+rinstall
+check "A14 danach ohne Option: läuft durch"                  0 "$?"
+check "A14 danach: Codex-Installation wird angefordert"       1 "$(grep 'setup-guest.sh' "$LOG" | grep -c -- '--codex yes')"
+check "A14 danach: Gast-Installer aktiviert Codex"            1 "$(grep 'install-guest.sh' "$LOG" | grep -c -- '--codex yes')"
+check "A14 danach: Codex-Widget vorhanden"                    ja "$([ -x "$E/home/.shortcuts/Codex" ] && echo ja || echo nein)"
+check "A14 danach: Codex-Laufzeit wieder aktiviert"           TOOL_CODEX=on "$(grep '^TOOL_CODEX=' "$E/home/.config/termux-rootbridge/config")"
+
 # the old option is still accepted and changes nothing
 newenv a11
 rinstall --setup
