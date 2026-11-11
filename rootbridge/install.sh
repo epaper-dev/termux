@@ -761,13 +761,13 @@ if [ "$DO_GUEST" = 1 ]; then
             # ~/.local/bin/codex is a link with an absolute target inside the guest: the link itself counts
             { [ -x "$GROOT$h/.local/bin/codex" ] || [ -L "$GROOT$h/.local/bin/codex" ]; } || return 1
             [ -e "$GROOT/usr/bin/git" ] || return 1
+            [ -e "$GROOT/usr/bin/bwrap" ] || return 1
         fi
         if [ "$VOICE_ON" = yes ]; then
             [ -e "$GROOT/usr/bin/rec" ] || return 1      # sox: Claude Code records through it
         fi
         if [ "$USE_CLAUDE" = yes ] && [ "$USE_CODEX" = yes ]; then
             { [ -e "$GROOT/usr/bin/node" ] || [ -e "$GROOT/usr/bin/nodejs" ]; } || return 1
-            compgen -G "$GROOT$h/.claude/plugins/cache/openai-codex/codex/*/" >/dev/null || return 1
         fi
         return 0
     }

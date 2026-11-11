@@ -5,6 +5,10 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* Setup no longer runs `claude plugin marketplace add` or `claude plugin install`. It installs the hooks and declares
+  `codex@openai-codex` and its HTTPS marketplace in managed settings, so Claude Code fetches the plugin at startup.
+  Other plugin entries survive reinstall, tool opt-out and uninstall. Codex now gets the distribution's `bubblewrap`
+  package (`bwrap`), including when rerunning the installer on an existing installation without it.
 * Termux shell shortcuts now match their names: `ubuntu` opens a plain Ubuntu shell (`rootbridge shell`),
   `claude` opens the Claude Code session (`rootbridge attach claude`), and `codex` opens the Codex session
   (`rootbridge attach codex`). `claude -n` / `claude --new` starts a separate Claude conversation. Running the
@@ -96,9 +100,9 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   (a side key, a widget) does the rest. In `hold` mode (default) `ptt start` repeats the key (`PTT_INTERVAL`, default 50 ms) until
   `ptt stop`, like a key held down; `tap` mode presses it once for each. Settings in the config (read as data): `PTT_TARGET`
   (default `<SESSION>:claude`), `PTT_KEY` (default `M-k`), `PTT_MODE`, `PTT_INTERVAL`, `PTT_MAX`. `tests/test_ptt.sh` has 39 checks.
-* **Codex next to Claude Code**, on by default: `install.sh` installs `git` and `nodejs` (`apt`), Codex (the official standalone
-  installer, non-interactive; it brings its own `bwrap`) and the Codex plugin of Claude Code (`codex@openai-codex`), each only
-  when it is missing. `--no-codex` leaves it out, `--no-claude` gives a Codex-only installation (no Claude Code, managed
+* **Codex next to Claude Code**, on by default: `install.sh` installs `git`, `bubblewrap` and `nodejs` (`apt`) and Codex
+  (the official standalone installer, non-interactive), each only when missing. The hooks and declaration of
+  `codex@openai-codex` let Claude Code fetch its plugin at startup. `--no-codex` leaves it out, `--no-claude` gives a Codex-only installation (no Claude Code, managed
   settings, hooks, plugin or `claude()` function; at least one tool stays), `--claude` / `--codex` turn a tool on again. The
   choice is stored in the Termux config (`TOOL_CLAUDE` / `TOOL_CODEX`) and in the guest config, so later installs keep it.
   `setup-guest.sh` takes `--claude yes|no` and `--codex yes|no`; `install-guest.sh` the same plus `--codex-update`.

@@ -217,10 +217,13 @@ import json, os, sys
 target, out, python, libdir = sys.argv[1:5]
 MARK = "termux-rootbridge"
 new, asks = {}, []
+plugins = {"enabledPlugins": {}, "extraKnownMarketplaces": {}}
 for template_path in sys.argv[5:]:
     raw = open(template_path, encoding="utf-8").read()
     raw = raw.replace("@PYTHON@", python).replace("@LIBDIR@", libdir)
     tpl = json.loads(raw)
+    for key in plugins:
+        plugins[key].update(tpl.get(key, {}))
     for event, entries in tpl.get("hooks", {}).items():
         new.setdefault(event, []).extend(entries)
     for rule in tpl.get("permissions", {}).get("ask", []):
@@ -237,6 +240,16 @@ for event, entries in new.items():
     kept = [e for e in hooks.get(event, [])
             if not any(MARK in h.get("command", "") for h in e.get("hooks", []))]
     hooks[event] = kept + entries
+# These two declarations belong to the Codex review hook. Claude Code fetches the plugin at startup.
+# Removing the Codex template must also remove the declarations, while keeping other plugins/marketplaces.
+for key, owned in (("enabledPlugins", "codex@openai-codex"), ("extraKnownMarketplaces", "openai-codex")):
+    values = cur.get(key, {})
+    values.pop(owned, None)
+    values.update(plugins[key])
+    if values:
+        cur[key] = values
+    else:
+        cur.pop(key, None)
 perms = cur.setdefault("permissions", {})
 ask = perms.setdefault("ask", [])
 for rule in asks:
@@ -342,6 +355,11 @@ for event in list(cur.get("hooks", {})):
 cur["hooks"] = cur.get("hooks") or {}
 if not cur["hooks"]:
     cur.pop("hooks")
+for key, owned in (("enabledPlugins", "codex@openai-codex"), ("extraKnownMarketplaces", "openai-codex")):
+    if key in cur:
+        cur[key].pop(owned, None)
+        if not cur[key]:
+            del cur[key]
 ask = [r for r in cur.get("permissions", {}).get("ask", [])
        if "androidsu" not in r and "termux-rootbridge" not in r
        and "/etc/claude-code" not in r and "rootbridge" not in r
@@ -551,7 +569,7 @@ say "  Arbeitsordner: $wd"
 # bridge directory must exist as a real node inside the guest (proot bind quirk)
 mkdir -p "$ROOT$BRIDGE_DIR" 2>/dev/null || say "  Hinweis: $BRIDGE_DIR nicht anlegbar (Termux-Home nicht gebunden?)"
 
-# managed settings (hooks + ask rules). Only with Claude Code; the Codex pre-commit review hook only with both.
+# managed settings (hooks + ask rules + plugin declaration). Only with Claude Code; Codex review only with both.
 if [ "$CLAUDE_ON" = yes ]; then
     templates=("$SRC/claude/managed-settings.template.json")
     [ "$CODEX_ON" = yes ] && templates+=("$SRC/claude/managed-settings.codex.template.json")
@@ -559,7 +577,10 @@ if [ "$CLAUDE_ON" = yes ]; then
     merge_managed "$ROOT$MANAGED" "$ROOT$MANAGED.new.$$" "$PYTHON" "$LIBDIR" "${templates[@]}"
     commit_file "$ROOT$MANAGED.new.$$" "$ROOT$MANAGED"
     say "  Managed Settings: $MANAGED"
-    [ "$CODEX_ON" = yes ] && say "  Codex-Review vor dem Commit: Hook in den Managed Settings (Notausgang: rootbridge codex-off)"
+    if [ "$CODEX_ON" = yes ]; then
+        say "  Codex-Review vor dem Commit: Hook in den Managed Settings (Notausgang: rootbridge codex-off)"
+        say "  Codex-Plugin: Claude Code lädt codex@openai-codex beim Start automatisch (Netz nötig)."
+    fi
 else
     unmerge_managed
     say "  Managed Settings: ohne Claude Code nichts zu tun (Einträge dieser Installation entfernt)"

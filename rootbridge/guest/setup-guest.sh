@@ -2,13 +2,13 @@
 # setup-guest.sh - runs INSIDE the guest (install.sh --setup calls it through proot-distro, before
 # install-guest.sh). Makes a fresh Ubuntu ready for the bridge, without any question:
 #   1. python3, curl and the CA certificates (apt-get; only when one is missing); git when Codex is part of
-#      the installation (Codex reviews through git, and so does the pre-commit hook); nodejs when both tools are
+#      the installation (Codex reviews through git, and so does the pre-commit hook), plus bubblewrap for its sandbox; nodejs when both tools are
 #      (the Codex plugin of Claude Code is a node program, Node.js 18.18 or newer); sox for /voice
 #      when Claude Code and voice are both part of it (Claude Code records through `rec`)
 #   2. Claude Code with the official installer (only when there is no claude yet)
 #   3. Codex with the official standalone installer (only when there is no codex yet)
-#   4. the Codex plugin of Claude Code, openai/codex-plugin-cc (only when both tools are part of it and the
-#      plugin is not there yet)
+# The hooks and Codex plugin declaration are written by install-guest.sh. Claude Code fetches the plugin at
+# session start; setup never invokes `claude plugin ...`.
 # Idempotent: with everything in place it changes nothing and does not touch the network.
 #
 #   setup-guest.sh [--claude yes|no] [--codex yes|no] [--voice yes|no]       (all default to yes)
@@ -50,8 +50,6 @@ trap 'rm -rf "$TMPDIR_SETUP"' EXIT
 claude_present() { [ -x "$HOME_DIR/.local/bin/claude" ] || command -v claude >/dev/null 2>&1; }
 # the codex in ~/.local/bin is a link with an absolute target (the standalone package under ~/.codex)
 codex_present() { [ -x "$HOME_DIR/.local/bin/codex" ] || [ -L "$HOME_DIR/.local/bin/codex" ] || command -v codex >/dev/null 2>&1; }
-# the plugin is "there" when its files are (claude plugin install fetches them into the plugin cache)
-plugin_present() { ls -d "$HOME_DIR"/.claude/plugins/cache/openai-codex/codex/*/ >/dev/null 2>&1; }
 
 # ------------------------------------------------------------------ 1. packages
 say "== Gast: Voraussetzungen"
@@ -61,6 +59,7 @@ command -v curl    >/dev/null 2>&1 || pkgs="$pkgs curl"
 [ -s "$CA_BUNDLE" ]                 || pkgs="$pkgs ca-certificates"
 if [ "$CODEX_ON" = yes ]; then
     command -v git >/dev/null 2>&1 || pkgs="$pkgs git"
+    command -v bwrap >/dev/null 2>&1 || pkgs="$pkgs bubblewrap"
 fi
 if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
     command -v node >/dev/null 2>&1 || pkgs="$pkgs nodejs"
@@ -122,24 +121,5 @@ if [ "$CODEX_ON" = yes ]; then
         codex_present \
             || die "Der Codex-Installer lief durch, aber es gibt kein codex ($HOME_DIR/.local/bin/codex)."
         say "  codex installiert: $HOME_DIR/.local/bin/codex"
-    fi
-fi
-
-# ------------------------------------------------------------------ 4. Codex plugin for Claude Code
-if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
-    say "== Gast: Codex-Plugin für Claude Code"
-    if plugin_present; then
-        say "  das Plugin codex@openai-codex ist schon installiert"
-    else
-        claude_bin="$HOME_DIR/.local/bin/claude"
-        [ -x "$claude_bin" ] || claude_bin="$(command -v claude)"
-        export PATH="$HOME_DIR/.local/bin:$PATH"
-        HOME="$HOME_DIR" timeout 180 "$claude_bin" plugin marketplace add https://github.com/openai/codex-plugin-cc.git \
-            || die "claude plugin marketplace add https://github.com/openai/codex-plugin-cc.git ist fehlgeschlagen (Netz? git?). Erneut starten: bash install.sh --setup (ohne Codex: --no-codex)"
-        HOME="$HOME_DIR" timeout 180 "$claude_bin" plugin install codex@openai-codex \
-            || die "claude plugin install codex@openai-codex ist fehlgeschlagen. Erneut starten: bash install.sh --setup (ohne Codex: --no-codex)"
-        plugin_present \
-            || die "claude plugin install lief durch, aber die Plugin-Dateien fehlen ($HOME_DIR/.claude/plugins/cache/openai-codex/codex)."
-        say "  Plugin codex@openai-codex installiert"
     fi
 fi
