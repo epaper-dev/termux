@@ -516,8 +516,9 @@ printf '#!/bin/bash\necho "rootbridge $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs
 chmod +x "$T/istubs"/*
 export STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$T/iguest"
 ILOG="$T/i.log"
-irun() {   # irun [args...]; the guest root starts empty every time, HOME/PREFIX stay
-    rm -rf "$T/iguest"; : > "$ILOG"
+irun() {   # irun [args...]; fresh guest unless KEEP_GUEST=1, HOME/PREFIX stay
+    [ "${KEEP_GUEST:-0}" = 1 ] || rm -rf "$T/iguest"
+    : > "$ILOG"
     STUB_LOG="$ILOG" HOME="$H" PREFIX="$P" PATH="$T/istubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H/.rootbridge" \
         bash "$INSTALL" --no-boot --no-migrate --no-deps-check --no-extra-keys --no-colors --no-setup "$@" > "$T/install.log" 2>&1
     IRC=$?
@@ -549,10 +550,19 @@ check "install.sh --no-codex: Wahl in der Termux-Konfig"   off "$(iget TOOL_CODE
 check "install.sh --no-codex: kein Codex-Hook im Gast"     "pre=1 codex=0 guard=1 post=1 timeout=- onFailure=-" "$(msum "$T/iguest")"
 check "install.sh --no-codex: Abschluss ohne Codex-Login-Satz" 0 "$(count "$T/install.log" 'rootbridge codex-login')"
 
-irun
-check "install.sh danach ohne Option: Wahl bleibt (kein Codex)" "nein" "$(has "$H/.shortcuts/Codex")"
-check "install.sh danach: Meldung über die gespeicherte Wahl" 1 "$(count "$T/install.log" 'Codex: abgewählt')"
-check "install.sh danach: Gast bekommt --codex no"         1 "$(guestargs | grep -c -- '--codex no')"
+KEEP_GUEST=1 irun
+check "install.sh danach ohne Option: läuft"               0 "$IRC"
+check "install.sh danach ohne Option: Codex-Widget wieder da" "ja" "$(has "$H/.shortcuts/Codex")"
+check "install.sh danach: keine übernommene Codex-Abwahl" 0 "$(count "$T/install.log" 'Codex: abgewählt')"
+check "install.sh danach: Gast bekommt --codex yes"       1 "$(guestargs | grep -c -- '--codex yes')"
+check "install.sh danach: Termux-Konfig wieder on"        on "$(iget TOOL_CODEX)"
+check "install.sh danach: bestehende Gast-Konfig wieder on" on "$(sed -n 's/^TOOL_CODEX=//p' "$T/iguest/etc/termux-rootbridge.conf")"
+check "install.sh danach: Review-Hook wieder vorhanden" "pre=2 codex=1 guard=1 post=1 timeout=900 onFailure=block" "$(msum "$T/iguest")"
+check "install.sh danach: Codex-Kurzbefehl nach source verfügbar" "alias codex='rootbridge attach codex'" \
+      "$(env -i HOME="$H" PATH=/usr/bin:/bin bash --noprofile --norc -c 'source "$HOME/.bashrc"; alias codex')"
+KEEP_GUEST=1 irun --no-codex
+check "install.sh erneutes --no-codex: Widget wieder entfernt" nein "$(has "$H/.shortcuts/Codex")"
+check "install.sh erneutes --no-codex: Review-Hook wieder entfernt" "pre=1 codex=0 guard=1 post=1 timeout=- onFailure=-" "$(msum "$T/iguest")"
 irun --codex
 check "install.sh --codex: Codex-Widget wieder da"         ja "$(has "$H/.shortcuts/Codex")"
 check "install.sh --codex: Wahl in der Konfig on"          on "$(iget TOOL_CODEX)"

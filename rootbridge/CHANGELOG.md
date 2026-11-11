@@ -5,6 +5,9 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* A plain `install.sh` rerun now includes Codex again after an earlier `--no-codex`, restoring its CLI setup, Termux
+  shortcut, widget and the Claude Code review hook. `--no-codex` applies to the current run; `TOOL_CODEX` still records
+  that run's choice for the launchers. Claude's stored choice stays unchanged.
 * Setup no longer runs `claude plugin marketplace add` or `claude plugin install`. It installs the hooks and declares
   `codex@openai-codex` and its HTTPS marketplace in managed settings, so Claude Code fetches the plugin at startup.
   Other plugin entries survive reinstall, tool opt-out and uninstall. Codex now gets the distribution's `bubblewrap`
@@ -104,7 +107,8 @@ Rewrite. The tmux popup and the second Termux window are gone; confirmation happ
   (the official standalone installer, non-interactive), each only when missing. The hooks and declaration of
   `codex@openai-codex` let Claude Code fetch its plugin at startup. `--no-codex` leaves it out, `--no-claude` gives a Codex-only installation (no Claude Code, managed
   settings, hooks, plugin or `claude()` function; at least one tool stays), `--claude` / `--codex` turn a tool on again. The
-  choice is stored in the Termux config (`TOOL_CLAUDE` / `TOOL_CODEX`) and in the guest config, so later installs keep it.
+  current choice is stored in the Termux config (`TOOL_CLAUDE` / `TOOL_CODEX`) and in the guest config for the launchers.
+  Codex is included on every `install.sh` run unless `--no-codex` is given again; Claude keeps its stored choice.
   `setup-guest.sh` takes `--claude yes|no` and `--codex yes|no`; `install-guest.sh` the same plus `--codex-update`.
 * **Widget "Codex"** and `rootbridge attach codex`: the Codex window (`rootbridge-codex`) is a second window of the same tmux
   session; `rootbridge start [--no-attach] [claude|codex]` opens the session with either one (Codex on an installation

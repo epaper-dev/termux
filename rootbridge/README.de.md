@@ -209,11 +209,14 @@ Es würde den Namen zusätzlich im Rahmen des Eingabefelds im Claude-Code-Fenste
 
 ## Codex neben Claude Code
 
-`install.sh` richtet standardmäßig **Codex** (OpenAIs Coding-Agent) neben Claude Code ein. `--no-codex` lässt es weg,
+`install.sh` richtet standardmäßig **Codex** (OpenAIs Coding-Agent) neben Claude Code ein. `--no-codex` lässt es nur für
+diesen Aufruf weg. Ein späterer Aufruf ohne diesen Zusatz richtet Codex, Termux-Kurzbefehl, Widget und mit Claude Code
+den Review-Hook wieder ein, auch wenn `TOOL_CODEX=off` gespeichert war.
 `--no-claude` gibt dir Codex allein: kein Claude Code, keine Managed Settings, keine Hooks, kein Plugin (Guard, Plugin und
-Pre-Commit-Review leben alle in Claude Code); eines der beiden Programme bleibt immer. Die Wahl steht in der Termux-Konfig
-(`TOOL_CLAUDE` / `TOOL_CODEX`) und gilt für jede spätere Installation; mit `--claude` / `--codex` schaltest du ein Programm
-wieder an.
+Pre-Commit-Review leben alle in Claude Code); eines der beiden Programme bleibt immer. Die Claude-Wahl bleibt für spätere
+Installationen gespeichert (`TOOL_CLAUDE`, wieder an mit `--claude`). `TOOL_CODEX` hält die aktuelle Auswahl für die Starter
+fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash install.sh --codex`, danach in Termux
+`source ~/.bashrc` oder ein neues Fenster öffnen.
 
 * **Installation.** Im Gast: `git`, `bubblewrap` (`bwrap`) und mit beiden Programmen `nodejs` per `apt` (das Plugin braucht
   Node.js 18.18 oder neuer), Codex mit dem offiziellen Standalone-Installer (`chatgpt.com/codex/install.sh`, nicht

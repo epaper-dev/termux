@@ -35,8 +35,9 @@
 #   one starts with the update of the other (rootbridge-update), because the two review each other: the Codex plugin
 #   of Claude Code and a pre-commit review hook (Codex checks every `git commit` Claude Code makes; the strict loop,
 #   fail-closed, emergency switch `rootbridge codex-off`). Without Claude Code there is no plugin and no hook.
-#   Your choice is stored in the Termux config (TOOL_CLAUDE / TOOL_CODEX) and reused by every later install;
-#   --claude / --codex turn a tool on again. --codex-update sets how often `codex update` runs at the start of a
+#   The Claude choice is stored and reused by later installs; --claude turns it on again. Codex is included on
+#   every run unless --no-codex is given on that run, including after an earlier --no-codex. TOOL_CODEX records
+#   the current selection for the launchers. --codex-update sets how often `codex update` runs at the start of a
 #   session (6h default, like --claude-update; stored as CODEX_UPDATE). Still manual: the Codex login,
 #   `rootbridge codex-login`.
 #
@@ -437,19 +438,17 @@ cfg_set() {
     if grep -q "^$1=" "$tmp"; then sed -i "s|^$1=.*|$1=$2|" "$tmp"; else printf '%s=%s\n' "$1" "$2" >> "$tmp"; fi
     if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  $3"; fi
 }
-# the tools: an option wins (and is stored, so a reinstall keeps the choice), without one the stored value counts.
+# Claude keeps the stored choice without an option. Codex defaults to yes on every installer run:
+# an earlier --no-codex must not silently suppress its CLI, widget and review hook on the next installation.
 # Both choices are settled and checked BEFORE either is stored: a refused combination leaves the config as it was.
 if [ "$USE_CLAUDE_SET" != 1 ] && [ "$(cfg_get TOOL_CLAUDE)" = off ]; then
     USE_CLAUDE=no; say "  Claude Code: abgewählt (aus der Konfig; wieder an mit --claude)"
-fi
-if [ "$USE_CODEX_SET" != 1 ] && [ "$(cfg_get TOOL_CODEX)" = off ]; then
-    USE_CODEX=no; say "  Codex: abgewählt (aus der Konfig; wieder an mit --codex)"
 fi
 if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then die "$BOTH_OFF_MSG (die Konfig hat eines abgewählt: --claude oder --codex)"; fi
 if [ "$USE_CLAUDE_SET" = 1 ]; then
     cfg_set TOOL_CLAUDE "$([ "$USE_CLAUDE" = yes ] && echo on || echo off)" "Claude Code: $USE_CLAUDE"
 fi
-if [ "$USE_CODEX_SET" = 1 ]; then
+if [ "$USE_CODEX_SET" = 1 ] || [ "$(cfg_get TOOL_CODEX)" = off ]; then
     cfg_set TOOL_CODEX "$([ "$USE_CODEX" = yes ] && echo on || echo off)" "Codex: $USE_CODEX"
 fi
 # voice and side key: same idea (an option wins and is stored; without one the stored value counts)
