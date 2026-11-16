@@ -304,11 +304,13 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
 
 **Triggers without root** (the Termux app of this repository, `app/`, shows "Termux push to talk" to Android; each one runs `ptt toggle`: one
 event, the first starts talking, the next stops):
-* **Long press on Home**: Settings, Apps, Default apps, Digital assistant app, "Termux push to talk" (the phone lists it in the settings of the
-  buttons too, where it has them).
-* **A key that can open an app**, for example the side key of the E-Ink phones in the accessibility settings of the E-Ink app: choose the app
-  "Termux push to talk".
-* **The icon "Termux push to talk"** in the launcher, also as a button on the home screen.
+* **Long press on Home**: Settings, Apps, Default apps, Digital assistant app, "Termux push to talk". Some phones do not show that choice (the
+  Hisense A9 does not); the app is a valid assistant all the same, and with root you set it yourself:
+  `su -c 'cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux'` (undo with `remove-role-holder`).
+* **The icon "Termux push to talk"** in the launcher, also as a button on the home screen, and for settings that let a key open an app.
+
+The accessibility settings of the A9 offer only fixed actions for its side key (clear screen, music, home, menu, backlight, nothing), no app: for the
+side key use `--sidekey` below.
 
 **Side key of the Hisense A9** (`--sidekey`, off by default, stored as `SIDEKEY`): hold the side key to record, let go to stop. The installer puts
 `sidekey-ptt` into `$PREFIX/bin`; it keeps a root `cat` on `/dev/input/event2` (the key, scan code 766) and calls `ptt start` / `ptt stop`.

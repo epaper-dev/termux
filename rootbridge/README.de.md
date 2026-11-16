@@ -331,11 +331,13 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
 
 **Auslöser ohne Root** (die Termux-App dieses Repositorys, `app/`, zeigt Android „Termux push to talk“ an; jeder führt `ptt toggle` aus: ein
 Ereignis, das erste startet das Sprechen, das nächste stoppt es):
-* **Langer Druck auf Home**: Einstellungen, Apps, Standard-Apps, Digitaler Assistent, „Termux push to talk“ (das Telefon listet ihn auch in
-  den Einstellungen der Tasten, wo es sie hat).
-* **Eine Taste, die eine App öffnen kann**, zum Beispiel die Seitentaste der E-Ink-Telefone in den Bedienungshilfen der E-Ink-App: die App
-  „Termux push to talk“ wählen.
-* **Das Symbol „Termux push to talk“** im Launcher, auch als Knopf auf dem Homescreen.
+* **Langer Druck auf Home**: Einstellungen, Apps, Standard-Apps, Digitaler Assistent, „Termux push to talk“. Manche Telefone zeigen diese Auswahl
+  nicht (das Hisense A9 nicht); die App ist trotzdem ein gültiger Assistent, und mit Root setzt du ihn selbst:
+  `su -c 'cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux'` (zurück mit `remove-role-holder`).
+* **Das Symbol „Termux push to talk“** im Launcher, auch als Knopf auf dem Homescreen und für Einstellungen, die einer Taste eine App zuweisen.
+
+Die Bedienungshilfen des A9 bieten für die Seitentaste nur feste Aktionen (Bildschirm leeren, Musik, Home, Menü, Hintergrundlicht, nichts), keine
+App: Für die Seitentaste nimm `--sidekey` (unten).
 
 **Seitentaste des Hisense A9** (`--sidekey`, standardmäßig aus, gespeichert als `SIDEKEY`): Seitentaste halten = aufnehmen, loslassen = stoppen. Der Installer legt
 `sidekey-ptt` nach `$PREFIX/bin`; es hält ein root-`cat` auf `/dev/input/event2` (die Taste, Scancode 766) und ruft `ptt start` / `ptt stop`.

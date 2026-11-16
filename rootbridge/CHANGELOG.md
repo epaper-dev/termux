@@ -36,10 +36,11 @@ The Termux daemon asks you itself, in an Android dialog, for every root request 
   `CODEX_BYPASS`). Under proot Codex' bubblewrap sandbox fails on every command (`unsupported host mount`), so the installer
   sets `CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox"` (other `CODEX_ARGS` stay). Android root stays behind the
   dialog. Tests: section 1 of `tests/test_codex.sh`.
-* **Push to talk without root, chosen in the settings of Android** (the Termux app of this repository, `app/`): "Termux push to talk" runs
-  `ptt toggle` and is offered as the digital assistant (a long press on Home), as an app a key can be assigned to (the accessibility settings of
-  the E-Ink phones for the side key) and as a launcher icon. One event toggles, so it fits any button. `--sidekey` stays for hold-to-record on
-  the A9 (root).
+* **Push to talk without a special key** (the Termux app of this repository, `app/`): "Termux push to talk" runs `ptt toggle` and is offered as the
+  digital assistant (a long press on Home) and as a launcher icon (also a home-screen button, and for settings that assign an app to a key). One
+  event toggles, so it fits any button. The Hisense A9 does not list the assistant in its settings: set it with root (`cmd role add-role-holder
+  --user 0 android.app.role.ASSISTANT com.termux`, see the README). The accessibility settings of the A9 offer only fixed actions for the side key,
+  no app: `--sidekey` (root) stays for hold-to-record there.
 * **The guest installer counts only what the guest has itself.** `setup-guest.sh` looks for `python3`, `curl`, `git`, `node` and `rec` as
   programs of the guest, not as Termux programs on the PATH (an isolated session does not see those).
 

@@ -308,11 +308,13 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
 
 **Disparadores sin root** (la app Termux de este repositorio, `app/`, muestra «Termux push to talk» a Android; cada uno ejecuta `ptt toggle`: un
 solo evento, el primero empieza a hablar y el siguiente lo detiene):
-* **Pulsación larga de Inicio**: Ajustes, Apps, Apps predeterminadas, Asistente digital, «Termux push to talk» (el teléfono también lo lista en
-  los ajustes de los botones, donde los tiene).
-* **Una tecla que puede abrir una app**, por ejemplo la tecla lateral de los teléfonos E-Ink en los ajustes de accesibilidad de la app E-Ink:
-  elegir la app «Termux push to talk».
-* **El icono «Termux push to talk»** en el lanzador, también como botón en la pantalla de inicio.
+* **Pulsación larga de Inicio**: Ajustes, Apps, Apps predeterminadas, Asistente digital, «Termux push to talk». Algunos teléfonos no muestran esa
+  opción (el Hisense A9 no); la app es un asistente válido de todos modos, y con root lo configuras tú mismo:
+  `su -c 'cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux'` (se deshace con `remove-role-holder`).
+* **El icono «Termux push to talk»** en el lanzador, también como botón en la pantalla de inicio y para ajustes que asignan una app a una tecla.
+
+Los ajustes de accesibilidad del A9 solo ofrecen acciones fijas para su tecla lateral (borrar pantalla, música, inicio, menú, luz de fondo,
+nada), ninguna app: para la tecla lateral usa `--sidekey` (abajo).
 
 **Tecla lateral del Hisense A9** (`--sidekey`, desactivada por defecto, se guarda como `SIDEKEY`): mantener la tecla lateral = grabar, soltar = parar. El instalador coloca
 `sidekey-ptt` en `$PREFIX/bin`; mantiene un `cat` de root sobre `/dev/input/event2` (la tecla, código 766) y llama a `ptt start` / `ptt stop`.
