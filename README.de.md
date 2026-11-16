@@ -123,13 +123,13 @@ in `master` und tragen auf `main` unsere Änderungen.
 
 | Verzeichnis | Upstream | Was es ist |
 |---|---|---|
-| <img src="termux-app/art/ic_launcher.svg" width="16" alt=""> [`termux-app/`](termux-app) | [termux/termux-app](https://github.com/termux/termux-app) | Die Terminal-App (Terminal-Emulator, termux-shared). Die meisten E-Paper-Änderungen liegen hier. |
-| [`termux-api/`](termux-api) | [termux/termux-api](https://github.com/termux/termux-api) | Android-Schnittstellen für die Shell (Paket `termux-api`). |
-| [`termux-boot/`](termux-boot) | [termux/termux-boot](https://github.com/termux/termux-boot) | Führt Skripte beim Gerätestart aus (für den Autostart von rootbridge). |
-| [`termux-widget/`](termux-widget) | [termux/termux-widget](https://github.com/termux/termux-widget) | Verknüpfungen auf dem Startbildschirm (die Widgets **Claude** und **Ubuntu** von rootbridge). |
-| [`termux-styling/`](termux-styling) | [termux/termux-styling](https://github.com/termux/termux-styling) | Farbschemata und Schriften. |
-| [`termux-float/`](termux-float) | [termux/termux-float](https://github.com/termux/termux-float) | Terminal in einem schwebenden Fenster, mit denselben Farben und derselben Schrift wie die App. |
-| [`termux-tasker/`](termux-tasker) | [termux/termux-tasker](https://github.com/termux/termux-tasker) | Tasker-Plugin. |
+| <img src="app/art/ic_launcher.svg" width="16" alt=""> [`app/`](app) | [termux/termux-app](https://github.com/termux/termux-app) | Die Terminal-App (Terminal-Emulator, termux-shared). Die meisten E-Paper-Änderungen liegen hier. |
+| [`api/`](api) | [termux/termux-api](https://github.com/termux/termux-api) | Android-Schnittstellen für die Shell (Paket `termux-api`). |
+| [`boot/`](boot) | [termux/termux-boot](https://github.com/termux/termux-boot) | Führt Skripte beim Gerätestart aus (für den Autostart von rootbridge). |
+| [`widget/`](widget) | [termux/termux-widget](https://github.com/termux/termux-widget) | Verknüpfungen auf dem Startbildschirm (die Widgets **Claude** und **Ubuntu** von rootbridge). |
+| [`styling/`](styling) | [termux/termux-styling](https://github.com/termux/termux-styling) | Farbschemata und Schriften. |
+| [`float/`](float) | [termux/termux-float](https://github.com/termux/termux-float) | Terminal in einem schwebenden Fenster, mit denselben Farben und derselben Schrift wie die App. |
+| [`tasker/`](tasker) | [termux/termux-tasker](https://github.com/termux/termux-tasker) | Tasker-Plugin. |
 | <img src="rootbridge/termux/shortcuts/icons/widget.png" width="16" alt=""> [`rootbridge/`](rootbridge/README.de.md) | – (eigenes Projekt, nur auf `main`) | Claude Code auf Android: Installer, Root-Bridge, Widgets, Theme **Auto epaper**. Hierher umgezogen aus `hisense-a9/termux-root-bridge` (archiviert). |
 
 Die Upstream-Repositorys bringen eigene `.github`-Ordner mit. Unterhalb eines Subtrees sind sie wirkungslos, denn
@@ -148,7 +148,7 @@ GitHub liest nur die Workflows im Wurzelverzeichnis.
 |---|---|
 | `Sync upstream` | Alle 6 Stunden: übernimmt neue Upstream-Commits nach `master`, merged `master` nach `main` und startet dann `Release set` (Release-Schlüssel, veröffentlichen). Ohne neue Upstream-Commits passiert nichts. Bei einem Merge-Konflikt öffnet er ein Issue mit den Schritten zur Lösung; `master` bleibt aktuell, `main` unverändert. Mit der Repository-Variable `RELEASE_AFTER_SYNC` = `false` entfällt das Release. |
 | `Release set` | Baut die App und die sechs Plugins, signiert alle mit **einem** Schlüssel und prüft, dass sie zusammengehören (gleiches Zertifikat, `sharedUserId` `com.termux`). Mit `publish` und dem Release-Schlüssel erscheinen die APKs als einzelne Dateien unter **Releases**. `ephemeral-key` (Wegwerf-Schlüssel) testet die Pipeline und veröffentlicht nichts. |
-| `Termux app unit tests` | Führt `./gradlew test` in `termux-app/` aus (Terminal-Emulator, termux-shared, App), wenn sich dort etwas ändert. |
+| `Termux app unit tests` | Führt `./gradlew test` in `app/` aus (Terminal-Emulator, termux-shared, App), wenn sich dort etwas ändert. |
 | `Rootbridge tests` | Führt die Tests und ShellCheck von `rootbridge/` aus, wenn sich dort etwas ändert. |
 | `Rootbridge release archive` | Hängt `rootbridge.tar.gz` und die Prüfsumme aus dem Release-Tag an. Wird von `Release set` aufgerufen und läuft auch für manuell veröffentlichte Releases; mit einem vorhandenen Tag lassen sich Archive nachträglich ergänzen oder ersetzen. Pull Requests prüfen das Packen ohne Upload. |
 
@@ -207,9 +207,9 @@ installieren.
 
 | Teil | Lizenz |
 |---|---|
-| `termux-app/`, `termux-api/`, `termux-boot/`, `termux-widget/`, `termux-styling/`, `termux-float/`, `termux-tasker/` und unsere Änderungen daran | GPLv3 wie im Upstream (siehe `LICENSE.md` oder `README.md` im jeweiligen Verzeichnis; einzelne Upstream-Dateien haben andere Lizenzen, dort aufgeführt) |
+| `app/`, `api/`, `boot/`, `widget/`, `styling/`, `float/`, `tasker/` und unsere Änderungen daran | GPLv3 wie im Upstream (siehe `LICENSE.md` oder `README.md` im jeweiligen Verzeichnis; einzelne Upstream-Dateien haben andere Lizenzen, dort aufgeführt) |
 | `rootbridge/` | MIT ([`rootbridge/LICENSE`](rootbridge/LICENSE)) |
-| JetBrains Mono (eingebaute Schrift) | SIL Open Font License 1.1 ([`JetBrainsMono-OFL.txt`](termux-app/app/src/main/assets/fonts/JetBrainsMono-OFL.txt)) |
+| JetBrains Mono (eingebaute Schrift) | SIL Open Font License 1.1 ([`JetBrainsMono-OFL.txt`](app/app/src/main/assets/fonts/JetBrainsMono-OFL.txt)) |
 
 Termux ist ein Projekt der [Termux-Entwickler](https://github.com/termux). Dies ist ein unabhängiger Build für
 E-Ink-Telefone und kein offizielles Termux-Release.

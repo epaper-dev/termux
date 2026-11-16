@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # build_release_set.sh - build the Termux app and the Termux plugin apps of this repository (the subtrees
-# termux-app/, termux-api/, termux-boot/, termux-widget/, termux-styling/, termux-float/, termux-tasker/),
+# app/, api/, boot/, widget/, styling/, float/, tasker/; upstream: termux/termux-app, termux/termux-api, ...),
 # sign them ALL with ONE key and check that they belong together. Used by .github/workflows/release_set.yml.
 # Run it from anywhere: it finds the repository root from its own location.
 #
@@ -15,8 +15,8 @@
 #               ephemeral-key release builds, signed with a throwaway key made in this run (tests the whole
 #                             pipeline; the APKs are valid but must not be distributed)
 #               release-key   release builds, signed with the real key from the secrets below
-#   COMPONENTS  comma separated: app, termux-api, termux-boot, termux-widget, termux-styling, termux-float,
-#               termux-tasker (default: all of them)
+#   COMPONENTS  comma separated: app, api, boot, widget, styling, float, tasker (the directory names;
+#               default: all of them)
 #   OUT_DIR     result directory (default: ./set-out)
 #   GH_TOKEN    used by `gh api` to look up the termux-app commit a plugin names (see use_local_shared)
 #   SIGNING_KEYSTORE_BASE64, SIGNING_KEYSTORE_PASSWORD, SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD   (release-key)
@@ -24,11 +24,11 @@
 set -euo pipefail
 
 SIGNING="${SIGNING:-ephemeral-key}"
-COMPONENTS="${COMPONENTS:-app,termux-api,termux-boot,termux-widget,termux-styling,termux-float,termux-tasker}"
+COMPONENTS="${COMPONENTS:-app,api,boot,widget,styling,float,tasker}"
 OUT_DIR="${OUT_DIR:-$PWD/set-out}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"   # repository root; the components are its subdirectories
-APP_DIR="$ROOT/termux-app"
-PLUGINS="termux-api termux-boot termux-widget termux-styling termux-float termux-tasker"
+APP_DIR="$ROOT/app"
+PLUGINS="api boot widget styling float tasker"
 WORK="${RUNNER_TEMP:-/tmp}/release-set-work"
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 

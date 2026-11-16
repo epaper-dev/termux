@@ -73,7 +73,7 @@ cd rootbridge
 bash install.sh
 ```
 
-`epaper-dev/termux` también incluye las apps de Termux (`termux-app/`, `termux-float/` y otras, unos 110 MB). La descarga «sparse» solo descarga `rootbridge/` (unos 1,5 MB); el instalador no necesita nada más. Para actualizar más adelante, ejecuta de nuevo `git pull` en `~/termux` y luego `bash install.sh`. También puedes usar un simple `git clone --depth 1 https://github.com/epaper-dev/termux`, que descargará todo el repositorio.
+`epaper-dev/termux` también incluye las apps de Termux (`app/`, `float/` y otras, unos 110 MB). La descarga «sparse» solo descarga `rootbridge/` (unos 1,5 MB); el instalador no necesita nada más. Para actualizar más adelante, ejecuta de nuevo `git pull` en `~/termux` y luego `bash install.sh`. También puedes usar un simple `git clone --depth 1 https://github.com/epaper-dev/termux`, que descargará todo el repositorio.
 
 El instalador prepara por sí solo y sin preguntar lo que falte: los paquetes de Termux (`pkg install`), el invitado Ubuntu
 (`proot-distro install`, una descarga de unos cientos de MB), `python3`, `curl` y los certificados en el invitado, y Claude Code

@@ -1,14 +1,14 @@
 name: Termux app unit tests
 
 # The workflows of the subtrees are not run by GitHub (only the root .github/workflows is), so the
-# unit tests of termux-app (terminal-emulator, termux-shared, app) run here.
+# unit tests of the Termux app in app/ (terminal-emulator, termux-shared, app) run here.
 on:
   push:
     branches: [main]
-    paths: ['termux-app/**', '.github/workflows/termux_app_tests.yml']
+    paths: ['app/**', '.github/workflows/termux_app_tests.yml']
   pull_request:
     branches: [main]
-    paths: ['termux-app/**', '.github/workflows/termux_app_tests.yml']
+    paths: ['app/**', '.github/workflows/termux_app_tests.yml']
   workflow_dispatch:
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: termux-app
+        working-directory: app
     steps:
       - name: Clone repository
         uses: actions/checkout@v6
