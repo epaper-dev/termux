@@ -68,11 +68,11 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 # phase 1: wait for ack or result; phase 2: wait for the result without limit
-waited=0
+tenths=0      # tenths of a second waited: every round sleeps 0.3 s
 until [ -e "$res" ] || [ -e "$ack" ]; do
     sleep 0.3
-    waited=$(( waited + 3 ))
-    if [ "$waited" -ge $(( ACK_TIMEOUT * 10 )) ]; then
+    tenths=$(( tenths + 3 ))
+    if [ "$tenths" -ge $(( ACK_TIMEOUT * 10 )) ]; then
         echo "androidsu: keine Antwort vom Root-Bridge-Daemon (läuft er? In Termux: rootbridge status)" >&2
         exit 124
     fi

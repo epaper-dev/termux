@@ -221,31 +221,26 @@ check "uninstall: 'Claude Code' (unseres) ist weg"     nein "$(has "$H8/.shortcu
 check "uninstall: Standard-Icon der >_-Generation weg" nein "$(has "$H8/.shortcuts/icons/Ubuntu >_.png")"
 
 # ----------------------------------------------------------------------------- 7. the icons
-for n in widget legacy/claude legacy/ubuntu legacy/widget-colour; do
-    info="$(python3 -I - "$ICONS/$n.png" <<'PY'
+png_info() {   # png_info <file>: "<PNG signature and IHDR ok> <width> <height> <bit depth> <colour type> <ends with IEND>"
+    python3 -I - "$1" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read()
 ok = d[:8] == b"\x89PNG\r\n\x1a\n" and d[12:16] == b"IHDR"
 w, h, depth, ctype = struct.unpack(">IIBB", d[16:26])
 print(ok, w, h, depth, ctype, d.endswith(b"IEND\xaeB`\x82"))
 PY
-)"
+}
+for n in widget legacy/claude legacy/ubuntu legacy/widget-colour; do
+    info="$(png_info "$ICONS/$n.png")"
     check "Icon $n.png: gültiges PNG, 192x192, 8 Bit RGBA" "True 192 192 8 6 True" "$info"
 done
 check "Das neue Icon unterscheidet sich von den früheren" 0 "$(cmp -s "$ICONS/widget.png" "$ICONS/legacy/claude.png" && echo 1 || echo 0)"
 check "Das neue Icon unterscheidet sich vom bunten Vorgänger" 0 "$(cmp -s "$ICONS/widget.png" "$ICONS/legacy/widget-colour.png" && echo 1 || echo 0)"
 # logo.png is the original (source of widget.png, made with tools/make-widget-icon.py); only widget.png gets installed
-info="$(python3 -I - "$ICONS/logo.png" <<'PY'
-import struct, sys
-d = open(sys.argv[1], "rb").read()
-ok = d[:8] == b"\x89PNG\r\n\x1a\n" and d[12:16] == b"IHDR"
-w, h, depth, ctype = struct.unpack(">IIBB", d[16:26])
-print(ok, w, h, depth, ctype, d.endswith(b"IEND\xaeB`\x82"))
-PY
-)"
+info="$(png_info "$ICONS/logo.png")"
 check "Logo logo.png: gültiges PNG, 1024x1024, 8 Bit RGBA" "True 1024 1024 8 6 True" "$info"
 
-check "Test hat nie das echte rootbridge/tmux/pkill gestartet" 0 "$(grep -c '^tmux\|^pkill' "$STUB_LOG")"
+check "install.sh/uninstall.sh haben weder tmux noch pkill aufgerufen (Stub-Log)" 0 "$(grep -c '^tmux\|^pkill' "$STUB_LOG")"
 
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"

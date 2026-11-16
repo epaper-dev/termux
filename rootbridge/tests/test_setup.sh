@@ -166,7 +166,7 @@ SHIM="$T/shim"; mkdir -p "$SHIM"
 # HIDE="stat timeout" in the environment of the call takes those commands out of this device's PATH.
 newenv() {
     E="$T/$1"; shift
-    rm -rf "$E"; mkdir -p "$E/bin" "$E/home" "$E/prefix/bin"
+    rm -rf "$E"; mkdir -p "$E/bin" "$E/home" "$E/prefix/bin" "$E/tmp"
     SHIMDIR="$SHIM"
     if [ -n "${HIDE:-}" ]; then
         SHIMDIR="$E/shim"; cp -a "$SHIM" "$SHIMDIR"
@@ -186,7 +186,7 @@ newenv() {
 }
 # envrun <args...>: runs the command with the environment of the current fake device
 envrun() {
-    env -i HOME="$E/home" PREFIX="$E/prefix" PATH="$E/bin:$SHIMDIR" STUB_LOG="$LOG" STUB_PREFIX="$E/prefix" \
+    env -i HOME="$E/home" PREFIX="$E/prefix" PATH="$E/bin:$SHIMDIR" TMPDIR="$E/tmp" STUB_LOG="$LOG" STUB_PREFIX="$E/prefix" \
         STUB_AV="$AV" STUB_BIN="$E/bin" STUB_REAL_PYTHON="$REAL_PYTHON" STUB_REAL_SETSID="$REAL_SETSID" STUB_ORIG_PATH="$ORIG_PATH" \
         BRIDGE_DIR="$E/home/.rootbridge" ROOTBRIDGE_ALLOW_GUEST=1 \
         ROOTBRIDGE_CA_BUNDLE="$E/ca/ca-certificates.crt" ROOTBRIDGE_GUEST_HOME="${ROOTBRIDGE_GUEST_HOME:-$E/ghome}" \
@@ -419,7 +419,7 @@ check "D1 bwrap ist verfügbar"                                ja "$([ -x "$E/bi
 a="$(lineno "$LOG" '^apt-get install')"; b="$(lineno "$LOG" '^installer: ran')"; c="$(lineno "$LOG" '^codex-installer: ran')"
 check "D1 Reihenfolge: apt < Claude Code < Codex"               ja "$([ "$a" -lt "$b" ] && [ "$b" -lt "$c" ] && echo ja || echo "nein ($a $b $c)")"
 check "D1 Meldungen"                                            "1 1" "$(count "$E/out.log" '== Gast: Codex$') $(count "$E/out.log" 'codex installiert:')"
-dl="$(ls "${TMPDIR:-/tmp}"/tmp.*/codex-install.sh 2>/dev/null | head -n 1)"
+dl="$(ls "$E"/tmp/tmp.*/codex-install.sh 2>/dev/null | head -n 1)"
 check "D1 Installer-Dateien werden aufgeräumt"                  "" "$dl"
 
 : > "$LOG"

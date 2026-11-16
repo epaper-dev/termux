@@ -128,7 +128,7 @@ check "install.sh (Lock ohne pid, v1-Rest): Lock weg"  nein "$([ -e "$BR/.lock" 
 
 inst
 check "install.sh (kein Lock): Exit 0"                 0 "$?"
-check "install.sh: kein pkill/pgrep/tmux nötig"        0 "$(grep -c '^pkill\|^tmux' "$STUB_LOG")"
+check "install.sh: kein pkill/tmux nötig"               0 "$(grep -c '^pkill\|^tmux' "$STUB_LOG")"
 
 echo
 echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"

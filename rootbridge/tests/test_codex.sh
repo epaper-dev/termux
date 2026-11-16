@@ -461,7 +461,7 @@ check "codex-off: andere Zeilen bleiben"                   2 "$(grep -c '^WORKDI
 check "codex-off: Dateirechte bleiben"                     644 "$(stat -c '%a' "$G/etc/termux-rootbridge.conf")"
 rb bash "$T/bin/rootbridge" codex-off
 check "codex-off zweimal: weiter genau eine Zeile"         1 "$(grep -c '^CODEX_PRECOMMIT=' "$G/etc/termux-rootbridge.conf")"
-check "codex-off: im Audit-Log"                            1 "$(grep -c 'CODEX-PRECOMMIT-off' "$T/bridge/audit.log" | head -n 1 | sed 's/^2$/1/')"
+check "codex-off zweimal: zwei Einträge im Audit-Log"      2 "$(grep -c 'CODEX-PRECOMMIT-off' "$T/bridge/audit.log")"
 rb bash "$T/bin/rootbridge" codex-on
 check "codex-on: Zeile weg"                                0 "$(grep -c '^CODEX_PRECOMMIT=' "$G/etc/termux-rootbridge.conf")"
 check "codex-on: andere Zeilen bleiben"                    2 "$(grep -c '^WORKDIR=\|^TICKET_TTL=' "$G/etc/termux-rootbridge.conf")"

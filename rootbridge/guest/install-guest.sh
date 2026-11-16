@@ -115,26 +115,17 @@ if [ "$MODEL_SET" = 1 ] && ! [[ "$MODEL" =~ $MODEL_RE ]]; then
     exit 2
 fi
 
-if [ "$APT_MODE_SET" = 1 ]; then
-    [[ "$APT_MODE" =~ ^(always|off|daily|[1-9][0-9]{0,2}h)$ ]] || {
-        echo "--apt-upgrade: ungültiger Wert '$APT_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
+# check_mode <option> <value> <set 0|1>: exit 2 unless the value is 6h (1-999 hours), daily, always or off
+check_mode() {
+    [ "$3" = 1 ] || return 0
+    [[ "$2" =~ ^(always|off|daily|[1-9][0-9]{0,2}h)$ ]] || {
+        echo "--$1: ungültiger Wert '$2' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
         exit 2
     }
-fi
-
-if [ "$CLAUDE_UPD_SET" = 1 ]; then
-    [[ "$CLAUDE_UPD_MODE" =~ ^(always|off|daily|[1-9][0-9]{0,2}h)$ ]] || {
-        echo "--claude-update: ungültiger Wert '$CLAUDE_UPD_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
-        exit 2
-    }
-fi
-
-if [ "$CODEX_UPD_SET" = 1 ]; then
-    [[ "$CODEX_UPD_MODE" =~ ^(always|off|daily|[1-9][0-9]{0,2}h)$ ]] || {
-        echo "--codex-update: ungültiger Wert '$CODEX_UPD_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
-        exit 2
-    }
-fi
+}
+check_mode apt-upgrade "$APT_MODE" "$APT_MODE_SET"
+check_mode claude-update "$CLAUDE_UPD_MODE" "$CLAUDE_UPD_SET"
+check_mode codex-update "$CODEX_UPD_MODE" "$CODEX_UPD_SET"
 
 case "$AUTONOMOUS" in
     yes|no|ask) ;;
@@ -189,6 +180,18 @@ commit_file() {
     mkdir -p "$(dirname "$2")"
     mv -f "$1" "$2"
 }
+
+# conf_set <KEY> <VALUE> [message]: set KEY=VALUE in the guest config (the line is replaced; a backup only on a change)
+conf_set() {
+    local tmp="$ROOT$CONF.new.$$"
+    cp "$ROOT$CONF" "$tmp"
+    sed -i "s|^$1=.*|$1=$2|" "$tmp"
+    commit_file "$tmp" "$ROOT$CONF"
+    [ -z "${3:-}" ] || say "  $3"
+}
+
+# onoff <yes|no>: the config spelling of a choice
+onoff() { if [ "$1" = yes ]; then echo on; else echo off; fi; }
 
 # strip_block <file>: remove our marked block
 strip_block() {
@@ -361,8 +364,7 @@ for key, owned in (("enabledPlugins", "codex@openai-codex"), ("extraKnownMarketp
         if not cur[key]:
             del cur[key]
 ask = [r for r in cur.get("permissions", {}).get("ask", [])
-       if "androidsu" not in r and "termux-rootbridge" not in r
-       and "/etc/claude-code" not in r and "rootbridge" not in r
+       if "androidsu" not in r and "/etc/claude-code" not in r and "rootbridge" not in r
        and "/usr/local/bin/xdg-open" not in r]
 if "permissions" in cur:
     cur["permissions"]["ask"] = ask
@@ -451,54 +453,25 @@ for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/work" \
           "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" "TTY_CONFIRM=1" \
           "APT_UPGRADE=6h" "APT_TIMEOUT=1800" "CLAUDE_UPDATE=6h" "CODEX_UPDATE=6h" "NOFILE_LIMIT=2048" \
           "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" \
-          "TOOL_CLAUDE=$([ "$CLAUDE_ON" = yes ] && echo on || echo off)" \
-          "TOOL_CODEX=$([ "$CODEX_ON" = yes ] && echo on || echo off)"; do
+          "TOOL_CLAUDE=$(onoff "$CLAUDE_ON")" \
+          "TOOL_CODEX=$(onoff "$CODEX_ON")"; do
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"
 done
 # Raise the previous 10-minute default for slow first upgrades under proot.
 # Other timeout values remain as configured.
 if grep -qx 'APT_TIMEOUT=600' "$ROOT$CONF"; then
-    tmp="$ROOT$CONF.new.$$"
-    sed 's/^APT_TIMEOUT=600$/APT_TIMEOUT=1800/' "$ROOT$CONF" > "$tmp"
-    commit_file "$tmp" "$ROOT$CONF"
-    say "  APT_TIMEOUT: 600 -> 1800 Sekunden"
+    conf_set APT_TIMEOUT 1800 "APT_TIMEOUT: 600 -> 1800 Sekunden"
 fi
-# APT_UPGRADE from --apt-upgrade: replace the line (an existing value stays without the option)
-if [ "$APT_MODE_SET" = 1 ]; then
-    tmp="$ROOT$CONF.new.$$"
-    cp "$ROOT$CONF" "$tmp"
-    sed -i "s|^APT_UPGRADE=.*|APT_UPGRADE=$APT_MODE|" "$tmp"
-    commit_file "$tmp" "$ROOT$CONF"
-    say "  APT_UPGRADE=$APT_MODE"
-fi
-# CLAUDE_UPDATE from --claude-update: same (an existing value stays without the option)
-if [ "$CLAUDE_UPD_SET" = 1 ]; then
-    tmp="$ROOT$CONF.new.$$"
-    cp "$ROOT$CONF" "$tmp"
-    sed -i "s|^CLAUDE_UPDATE=.*|CLAUDE_UPDATE=$CLAUDE_UPD_MODE|" "$tmp"
-    commit_file "$tmp" "$ROOT$CONF"
-    say "  CLAUDE_UPDATE=$CLAUDE_UPD_MODE"
-fi
-# CODEX_UPDATE from --codex-update: same (an existing value stays without the option)
-if [ "$CODEX_UPD_SET" = 1 ]; then
-    tmp="$ROOT$CONF.new.$$"
-    cp "$ROOT$CONF" "$tmp"
-    sed -i "s|^CODEX_UPDATE=.*|CODEX_UPDATE=$CODEX_UPD_MODE|" "$tmp"
-    commit_file "$tmp" "$ROOT$CONF"
-    say "  CODEX_UPDATE=$CODEX_UPD_MODE"
-fi
+# APT_UPGRADE / CLAUDE_UPDATE / CODEX_UPDATE from the options: replace the line (an existing value stays without the option)
+if [ "$APT_MODE_SET" = 1 ]; then conf_set APT_UPGRADE "$APT_MODE" "APT_UPGRADE=$APT_MODE"; fi
+if [ "$CLAUDE_UPD_SET" = 1 ]; then conf_set CLAUDE_UPDATE "$CLAUDE_UPD_MODE" "CLAUDE_UPDATE=$CLAUDE_UPD_MODE"; fi
+if [ "$CODEX_UPD_SET" = 1 ]; then conf_set CODEX_UPDATE "$CODEX_UPD_MODE" "CODEX_UPDATE=$CODEX_UPD_MODE"; fi
 # TOOL_CLAUDE / TOOL_CODEX (which tools this installation has; read by rootbridge-update and later installs) were
 # added above if missing; a changed choice (--claude no, --codex yes, ...) replaces the stored value
-for kv in "TOOL_CLAUDE=$([ "$CLAUDE_ON" = yes ] && echo on || echo off)" "TOOL_CODEX=$([ "$CODEX_ON" = yes ] && echo on || echo off)"; do
+for kv in "TOOL_CLAUDE=$(onoff "$CLAUDE_ON")" "TOOL_CODEX=$(onoff "$CODEX_ON")"; do
     key="${kv%%=*}"
-    if [ "$(sed -n "s/^$key=//p" "$ROOT$CONF" | tail -n 1)" != "${kv#*=}" ]; then
-        tmp="$ROOT$CONF.new.$$"
-        cp "$ROOT$CONF" "$tmp"
-        sed -i "s|^$key=.*|$kv|" "$tmp"
-        commit_file "$tmp" "$ROOT$CONF"
-        say "  $kv"
-    fi
+    if [ "$(sed -n "s/^$key=//p" "$ROOT$CONF" | tail -n 1)" != "${kv#*=}" ]; then conf_set "$key" "${kv#*=}" "$kv"; fi
 done
 # Remote Control name -> CLAUDE_ARGS (other arguments stay; a new line also gets --continue,
 # because the name belongs to the session and --continue keeps that session).
@@ -547,10 +520,7 @@ fi
 # The old default WORKDIR=/root/workspace was never created. If the folder is not there nobody uses it:
 # move to the new default /root/work (an existing /root/workspace and any other value stay).
 if grep -qx 'WORKDIR=/root/workspace' "$ROOT$CONF" && [ ! -e "$ROOT/root/workspace" ]; then
-    cp "$ROOT$CONF" "$ROOT$CONF.new.$$"
-    sed -i 's|^WORKDIR=/root/workspace$|WORKDIR=/root/work|' "$ROOT$CONF.new.$$"
-    commit_file "$ROOT$CONF.new.$$" "$ROOT$CONF"
-    say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
+    conf_set WORKDIR /root/work "WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
 fi
 chmod 644 "$ROOT$CONF"
 say "  Konfiguration: $CONF"

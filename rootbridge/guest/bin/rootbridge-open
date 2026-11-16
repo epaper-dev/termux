@@ -38,11 +38,11 @@ if [ -d "$BRIDGE_DIR" ] && [ -e "$alive" ] \
     if [ "$copy_only" = 1 ]; then printf 'COPY %s\n' "$url"; else printf '%s\n' "$url"; fi \
         > "$BRIDGE_DIR/open-$id.url"
     res="$BRIDGE_DIR/open-res-$id"
-    n=0
+    tenths=0      # tenths of a second waited: every round sleeps 0.3 s
     until [ -e "$res" ]; do
         sleep 0.3
-        n=$(( n + 3 ))
-        if [ "$n" -ge $(( WAIT * 10 )) ]; then
+        tenths=$(( tenths + 3 ))
+        if [ "$tenths" -ge $(( WAIT * 10 )) ]; then
             rm -f "$BRIDGE_DIR/open-$id.url"
             fail "keine Antwort vom Daemon"
         fi

@@ -66,7 +66,7 @@ export STUB_LOG="$T/stub.log" ROOTBRIDGE_STATE_DIR="$STATE"
 CONFFILE="$T/test.conf"
 mkconf() { printf '%s\n' "$@" > "$CONFFILE"; }
 reset_state() { rm -rf "$STATE"; : > "$STUB_LOG"; unset STUB_UPDATE_RC; }
-calls() { grep -c '^claude update' "$STUB_LOG" || true; }
+calls() { grep -c '^claude update' "$STUB_LOG" || true; }   # 1 = claude update ran, 0 = skipped
 stamp_exists() { [ -s "$STAMPF" ] && echo ja || echo nein; }
 out_has() { printf '%s\n' "$OUT" | grep -c -- "$1" || true; }
 run_update() {   # sets OUT (stdout+stderr incl. rc=N); conf comes from $CONFFILE
@@ -134,45 +134,44 @@ CONFFILE="$T/test.conf"
 
 # --- interval: 6h is the default, <N>h sets the distance, daily = 24 h
 H=3600
-ran() { calls; }   # 1 = claude update ran, 0 = skipped
 reset_state; mkconf "CLAUDE_UPDATE=6h"
 set_stamp "$((now - 5 * H))"; : > "$STUB_LOG"; run_update
-check "6h, Stempel 5 h alt: übersprungen"             0 "$(ran)"
+check "6h, Stempel 5 h alt: übersprungen"             0 "$(calls)"
 check "6h, Stempel 5 h alt: Hinweis nennt 6h"         1 "$(out_has 'übersprungen (CLAUDE_UPDATE=6h)')"
 check "6h, Stempel 5 h alt: 'vor 5 h'"                1 "$(out_has 'vor 5 h erfolgreich')"
 set_stamp "$((now - 7 * H))"; : > "$STUB_LOG"; run_update
-check "6h, Stempel 7 h alt: läuft"                    1 "$(ran)"
+check "6h, Stempel 7 h alt: läuft"                    1 "$(calls)"
 check "6h, Stempel 7 h alt: neuer Stempel"            1 "$([ "$(cat "$STAMPF")" -ge "$now" ] && echo 1 || echo 0)"
 mkconf "WORKDIR=/x"
 set_stamp "$((now - 5 * H))"; : > "$STUB_LOG"; run_update
-check "Standard ohne Zeile = 6h: Stempel 5 h alt übersprungen" 0 "$(ran)"
+check "Standard ohne Zeile = 6h: Stempel 5 h alt übersprungen" 0 "$(calls)"
 set_stamp "$((now - 7 * H))"; : > "$STUB_LOG"; run_update
-check "Standard ohne Zeile = 6h: Stempel 7 h alt läuft" 1 "$(ran)"
+check "Standard ohne Zeile = 6h: Stempel 7 h alt läuft" 1 "$(calls)"
 mkconf "CLAUDE_UPDATE=daily"
 set_stamp "$((now - 23 * H))"; : > "$STUB_LOG"; run_update
-check "daily, Stempel 23 h alt: übersprungen"         0 "$(ran)"
+check "daily, Stempel 23 h alt: übersprungen"         0 "$(calls)"
 set_stamp "$((now - 25 * H))"; : > "$STUB_LOG"; run_update
-check "daily, Stempel 25 h alt: läuft"                1 "$(ran)"
+check "daily, Stempel 25 h alt: läuft"                1 "$(calls)"
 mkconf "CLAUDE_UPDATE=12h"
 set_stamp "$((now - 11 * H))"; : > "$STUB_LOG"; run_update
-check "12h, Stempel 11 h alt: übersprungen"           0 "$(ran)"
+check "12h, Stempel 11 h alt: übersprungen"           0 "$(calls)"
 set_stamp "$((now - 13 * H))"; : > "$STUB_LOG"; run_update
-check "12h, Stempel 13 h alt: läuft"                  1 "$(ran)"
+check "12h, Stempel 13 h alt: läuft"                  1 "$(calls)"
 mkconf "CLAUDE_UPDATE=1h"
 set_stamp "$((now - 1800))"; : > "$STUB_LOG"; run_update
-check "1h, Stempel 30 min alt: übersprungen"          0 "$(ran)"
+check "1h, Stempel 30 min alt: übersprungen"          0 "$(calls)"
 set_stamp "$((now - 2 * H))"; : > "$STUB_LOG"; run_update
-check "1h, Stempel 2 h alt: läuft"                    1 "$(ran)"
+check "1h, Stempel 2 h alt: läuft"                    1 "$(calls)"
 mkconf "CLAUDE_UPDATE=6h"
 set_stamp "$((now + 99999))"; : > "$STUB_LOG"; run_update
-check "6h, Stempel in der Zukunft: läuft"             1 "$(ran)"
+check "6h, Stempel in der Zukunft: läuft"             1 "$(calls)"
 set_stamp "abc"; : > "$STUB_LOG"; run_update
-check "6h, kaputter Stempel: läuft"                   1 "$(ran)"
+check "6h, kaputter Stempel: läuft"                   1 "$(calls)"
 reset_state; run_update
-check "6h, ohne Stempel: läuft"                       1 "$(ran)"
+check "6h, ohne Stempel: läuft"                       1 "$(calls)"
 for bad in 0h 6 h 1000h 6H 06h "6 h" -6h; do
     reset_state; mkconf "CLAUDE_UPDATE=$bad"; run_update
-    check "ungültig '$bad': kein claude update, kein Stempel" "0 nein" "$(ran) $(stamp_exists)"
+    check "ungültig '$bad': kein claude update, kein Stempel" "0 nein" "$(calls) $(stamp_exists)"
     check "ungültig '$bad': Warnung"                  1 "$(out_has 'unbekannter Wert CLAUDE_UPDATE=')"
     check "ungültig '$bad': Exit 0"                   "rc=0" "$(printf '%s\n' "$OUT" | tail -n 1)"
 done

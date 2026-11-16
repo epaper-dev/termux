@@ -107,9 +107,13 @@ collect() {   # collect <component> <dir with the build output>: copy every APK 
     say "$name: $n APK(s)"
 }
 
+version_name() {   # version_name <build.gradle>: the versionName of an app module
+    grep -m 1 -E '^\s+versionName "' "$1" | sed -r 's/^\s+versionName "([^"]+)".*/\1/'
+}
+
 build_app() {
     local ver sha
-    ver="$(grep -m 1 -E '^\s+versionName "' "$APP_DIR/app/build.gradle" | sed -r 's/^\s+versionName "([^"]+)".*/\1/')"
+    ver="$(version_name "$APP_DIR/app/build.gradle")"
     sha="$(git -C "$ROOT" rev-parse --short=7 HEAD)"
     say "app: version $ver+$sha, variant apt-android-7, task $TASK"
     # app/build.gradle hooks the bootstrap download onto the Java compile task, but the native build of a release
@@ -170,7 +174,7 @@ build_plugin() {
     local name="$1" src dir dep ver
     src="$ROOT/$name"
     [ -f "$src/gradlew" ] && [ -f "$src/app/build.gradle" ] || die "$name: no Gradle project in $src (is the subtree there?)"
-    ver="$(grep -m 1 -E '^\s+versionName "' "$src/app/build.gradle" | sed -r 's/^\s+versionName "([^"]+)".*/\1/')"
+    ver="$(version_name "$src/app/build.gradle")"
     say "$name: version ${ver:-?} from the subtree $name/, task $TASK"
     SOURCE_NOTES="${SOURCE_NOTES}$name ${ver:-?} from subtree \`$name/\`; "
     # build a copy: use_local_shared below edits build.gradle, the checkout stays as it is
@@ -249,6 +253,6 @@ done
 } >> "$OUT_DIR/REPORT.md"
 
 ( cd "$OUT_DIR/apks" && sha256sum ./*.apk | sed 's|\./||' > "$OUT_DIR/sha256sums.txt" )
-cat "$OUT_DIR/REPORT.md" | tee -a "$SUMMARY"
+tee -a "$SUMMARY" < "$OUT_DIR/REPORT.md"
 [ "$problems" -eq 0 ] || die "the set has $problems problem(s)"
 say "done: $(find "$OUT_DIR/apks" -name '*.apk' | wc -l) APK(s) in $OUT_DIR/apks"

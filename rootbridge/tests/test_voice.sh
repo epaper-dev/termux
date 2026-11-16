@@ -253,7 +253,6 @@ check "install.sh: eigene default.pa: Meldung"             1 "$(count "$T/instal
 rm -f "$PA"
 
 # --no-voice: stored, nothing of voice is set up, the guest hears it
-rm -f "$PA"
 irun --no-voice
 check "--no-voice: läuft, VOICE=off gespeichert"           "0 off" "$IRC $(iget VOICE)"
 check "--no-voice: keine default.pa"                       nein "$(has "$PA")"

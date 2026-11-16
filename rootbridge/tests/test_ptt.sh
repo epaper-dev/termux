@@ -90,7 +90,7 @@ sleep 3.2
 check "hold: PTT_MAX beendet den Wiederholer, status idle" idle "$(runptt status)"
 n3="$(presses)"; sleep 0.4
 check "hold: danach keine Wiederholung"                   "$n3" "$(presses)"
-check "hold: PTT_MAX 1 s ergibt nur wenige Tasten"        ja "$([ "$n3" -le 150 ] && echo ja || echo nein)"
+check "hold: PTT_MAX 1 s ergibt nur wenige Tasten"        ja "$([ "$n3" -le 60 ] && echo ja || echo nein)"
 
 # a stale file (repeater killed) is not "talking" forever
 reset; mkdir -p "$T/state"; echo old > "$T/state/hold.pid"; touch -d '10 minutes ago' "$T/state/hold.pid"
