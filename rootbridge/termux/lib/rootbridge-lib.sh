@@ -154,15 +154,13 @@ rb_ask_texts() {
 # a tap on Yes or No answers. The stock Termux:API ignores the extras: English buttons, no countdown (the deadline stands in
 # the text), and a dismissed dialog (a tap outside, the keyboard, another app) shows again until ASK_TIMEOUT; a Yes within
 # RB_ASK_MIN_MS of the dialog appearing is a slip while typing and is asked again.
-# One dialog at a time: the lock lives in the private tmp directory of Termux, not in the bridge directory.
+# One dialog at a time: flock on a file in the private tmp directory of Termux (not in the bridge directory). The lock
+# goes away with the process, also when it is killed; a mkdir lock is not atomic everywhere (not under proot). A lock that
+# cannot be opened or taken (no flock, no writable tmp directory) means no dialog: result 3, the request is refused.
 rb_ask() {
-    local who="$1" cmd="$2" lock out rc start deadline left ms hint result=3
-    lock="${TMPDIR:-/tmp}/rootbridge-ask.lock"
-    until mkdir "$lock" 2>/dev/null; do
-        # a lock left behind by a killed daemon
-        if [ -n "$(find "$lock" -maxdepth 0 -mmin +$(( ASK_TIMEOUT / 60 + 2 )) 2>/dev/null)" ]; then rm -rf "$lock"; fi
-        sleep 0.5
-    done
+    local who="$1" cmd="$2" out rc start deadline left ms hint result=3
+    { exec 9>"${TMPDIR:-/tmp}/rootbridge-ask.flock"; } 2>/dev/null || return 3     # no lock, no dialog
+    if ! flock 9 2>/dev/null; then exec 9>&-; return 3; fi
     rb_ask_texts
     deadline=$(( $(date +%s) + ASK_TIMEOUT ))
     hint="$cmd"$'\n\n'"$RB_T_UNTIL $(date -d "@$deadline" +%T 2>/dev/null)"
@@ -174,7 +172,7 @@ rb_ask() {
                   --es input_title "Android-Root: ${who:-Shell}" --es input_hint "$hint" \
                   --es input_yes "$RB_T_YES" --es input_no "$RB_T_NO" \
                   --ei input_timeout "$left" --es input_timeout_text "$RB_T_LEFT" --ez input_modal true \
-                  2>/dev/null < /dev/null)"
+                  2>/dev/null < /dev/null 9>&-)"
         rc=$?
         ms=$(( ($(date +%s%N) - start) / 1000000 ))
         if [ "$rc" -eq 124 ]; then result=2; break; fi
@@ -188,7 +186,7 @@ rb_ask() {
         esac
         sleep 1                    # dismissed or slipped: show it again
     done
-    rmdir "$lock" 2>/dev/null
+    exec 9>&-
     return "$result"
 }
 

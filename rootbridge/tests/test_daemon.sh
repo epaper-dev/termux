@@ -137,7 +137,7 @@ run_client 'echo hi'
 check "Keine Antwort in ASK_TIMEOUT: 99" 99 "$CODE"
 contains "Keine Antwort: Grund" "Keine Antwort auf die Rückfrage" "$OUT"
 check "Keine Antwort: su nicht aufgerufen" 1 "$(su_runs)"
-check "Dialog-Sperre wieder frei" nein "$([ -d "$T/tmp/rootbridge-ask.lock" ] && echo ja || echo nein)"
+check "Dialog-Sperre wieder frei" ja "$(flock -n "$T/tmp/rootbridge-ask.flock" true && echo ja || echo nein)"
 
 echo "== Dialog: Sprache des Telefons, Countdown, nicht wegdrückbar"
 answer yes
@@ -157,6 +157,15 @@ RB_LANG=es-ES run_client 'echo hi'
 contains "Spanisch (es-ES): Sí und No" "yes=Sí no=No" "$(cat "$T/ask.extras")"
 RB_LANG=fr run_client 'echo hi'
 contains "Unbekannte Sprache: Englisch" "yes=Yes no=No" "$(cat "$T/ask.extras")"
+
+echo "== Sperre nicht nutzbar: kein Dialog, abgelehnt"
+rm -f "$T/tmp/rootbridge-ask.flock"; mkdir "$T/tmp/rootbridge-ask.flock"   # a directory where the lock file should be
+answer yes
+n="$(asks)"; r="$(su_runs)"
+run_client 'echo ohne-sperre'
+check "Sperre nicht zu öffnen: 99, kein Dialog, su nicht aufgerufen" "99 $n $r" "$CODE $(asks) $(su_runs)"
+contains "Sperre nicht zu öffnen: Grund" "ließ sich nicht anzeigen" "$OUT"
+rmdir "$T/tmp/rootbridge-ask.flock"
 
 echo "== weggedrückt oder zu schnell: der Dialog kommt wieder"
 answer seq:dismiss,yes
