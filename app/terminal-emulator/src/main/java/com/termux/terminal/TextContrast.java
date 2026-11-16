@@ -85,7 +85,10 @@ public final class TextContrast {
             blue + ceilDiv((255 - blue) * missing, room));
     }
 
-    /** Keep built-in message greys readable when used as text on the default background.
+    /**
+     * Keep built-in message greys readable when used as text on the default background. The two greys are color7 of
+     * colors_light_default.properties and color8 of colors_dark_default.properties (termux-shared), which Claude Code's
+     * ANSI themes use as the background of messages; BuiltInColorSchemesTest checks that they still match.
      * Other palette values, truecolor and background colours remain unchanged. Call before dimming.
      */
     public static int schemeForeground(int index, int color, int background) {

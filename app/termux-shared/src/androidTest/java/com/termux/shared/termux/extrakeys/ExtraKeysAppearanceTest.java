@@ -23,7 +23,7 @@ public class ExtraKeysAppearanceTest {
             ExtraKeysConstants.CONTROL_CHARS_ALIASES);
         InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
             // Fresh views model cold starts; reloads model terminal colour changes.
-            for (int start = 0; start < 2; start++) {
+            for (int coldStart = 0; coldStart < 2; coldStart++) {
                 ExtraKeysView view = new ExtraKeysView(new ContextThemeWrapper(
                     InstrumentationRegistry.getInstrumentation().getTargetContext(),
                     R.style.Theme_BaseActivity_Light_NoActionBar), null);

@@ -9,7 +9,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.view.ContextMenu;
@@ -26,6 +29,7 @@ import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
 
+import com.google.android.material.button.MaterialButton;
 import com.termux.R;
 import com.termux.app.api.file.FileReceiverActivity;
 import com.termux.app.terminal.TermuxActivityRootView;
@@ -53,6 +57,7 @@ import com.termux.shared.termux.TermuxUtils;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.shared.theme.NightMode;
+import com.termux.shared.theme.ThemeUtils;
 import com.termux.shared.view.ViewUtils;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
@@ -470,16 +475,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void configureDrawerAppearance() {
         // Use one resolved activity theme for the drawer background, labels and session titles.
-        int textColor = com.termux.shared.theme.ThemeUtils.getSystemAttrColor(
+        int textColor = ThemeUtils.getSystemAttrColor(
             this, R.attr.termuxActivityDrawerImageTint);
         for (int id : new int[]{R.id.toggle_keyboard_button, R.id.new_session_button}) {
-            com.google.android.material.button.MaterialButton button = findViewById(id);
+            MaterialButton button = findViewById(id);
             button.setBackgroundTintList(null);
-            button.setBackground(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            button.setBackground(new ColorDrawable(Color.TRANSPARENT));
             button.setTextColor(textColor);
         }
         // This activity supplies matching light/dark colours itself, including custom terminal colours.
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
             findViewById(R.id.activity_termux_root_view).setForceDarkAllowed(false);
     }
 
@@ -880,7 +885,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     public void updateTerminalToolbarColors(int textColor, int backgroundColor) {
         ViewPager toolbar = getTerminalToolbarViewPager();
         toolbar.setBackgroundColor(backgroundColor);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
             toolbar.setForceDarkAllowed(false);
         if (mTerminalToolbarTextColor == textColor) return;
         mTerminalToolbarTextColor = textColor;

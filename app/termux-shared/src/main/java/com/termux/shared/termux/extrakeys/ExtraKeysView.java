@@ -2,6 +2,7 @@ package com.termux.shared.termux.extrakeys;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -658,7 +659,7 @@ public final class ExtraKeysView extends GridLayout {
     private MaterialButton createExtraKeyButton() {
         MaterialButton button = new MaterialButton(getContext(), null, androidx.appcompat.R.attr.buttonBarButtonStyle);
         button.setBackgroundTintList(null);
-        button.setBackground(new android.graphics.drawable.ColorDrawable(mButtonBackgroundColor));
+        button.setBackground(new ColorDrawable(mButtonBackgroundColor));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
             button.setForceDarkAllowed(false);
         return button;

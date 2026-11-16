@@ -208,11 +208,11 @@ public final class TerminalRenderer {
 
         // Truecolor and the 256 colour palette are the program's choice, the 16 scheme colours are the scheme's: only
         // the former get their colour guarded against hollow text (see TextContrast).
-        boolean foreFromProgram = TextContrast.isProgramColor(foreColor);
-        boolean backFromProgram = TextContrast.isProgramColor(backColor);
+        final boolean foreFromProgram = TextContrast.isProgramColor(foreColor);
+        final boolean backFromProgram = TextContrast.isProgramColor(backColor);
 
         int foreIndex = foreColor;
-        int backIndex = backColor;
+        final int backIndex = backColor;
         if ((foreColor & 0xff000000) != 0xff000000) {
             // Let bold have bright colors if applicable (one of the first 8):
             if (bold && foreColor >= 0 && foreColor < 8) foreColor += 8;
@@ -230,13 +230,11 @@ public final class TerminalRenderer {
             int tmp = foreColor;
             foreColor = backColor;
             backColor = tmp;
-            int tmpIndex = foreIndex;
-            foreIndex = backIndex;
-            backIndex = tmpIndex;
-            boolean tmpFromProgram = foreFromProgram;
-            foreFromProgram = backFromProgram;
-            backFromProgram = tmpFromProgram;
         }
+        // The text is drawn in what was the background colour when the colours are swapped: take its palette index and
+        // origin (the program's own colour or the scheme's) from the same side.
+        final int textIndex = reverseVideoHere ? backIndex : foreIndex;
+        final boolean textFromProgram = reverseVideoHere ? backFromProgram : foreFromProgram;
 
         float left = startColumn * mFontWidth;
         float right = left + runWidthColumns * mFontWidth;
@@ -267,7 +265,7 @@ public final class TerminalRenderer {
 
         if ((effect & TextStyle.CHARACTER_ATTRIBUTE_INVISIBLE) == 0) {
             if (backColor == defaultBackground) {
-                foreColor = TextContrast.schemeForeground(foreIndex, foreColor, backColor);
+                foreColor = TextContrast.schemeForeground(textIndex, foreColor, backColor);
             }
             if (dim) {
                 int red = (0xFF & (foreColor >> 16));
@@ -284,7 +282,7 @@ public final class TerminalRenderer {
             // While "High contrast text" is on, text on the default background in a colour of the program (after
             // dimming) is drawn hollow if it is on the wrong side of the middle. Text on a background of its own, like
             // a selection or the message backgrounds of Claude Code, keeps its colours.
-            if (mTextContrastGuard && foreFromProgram && backColor == defaultBackground) {
+            if (mTextContrastGuard && textFromProgram && backColor == defaultBackground) {
                 foreColor = TextContrast.guard(foreColor, backColor);
             }
 

@@ -1,6 +1,7 @@
 package com.termux.shared.termux.theme;
 
 import com.termux.terminal.TerminalColorScheme;
+import com.termux.terminal.TextContrast;
 import com.termux.terminal.TextStyle;
 
 import org.junit.Assert;
@@ -31,10 +32,6 @@ public class BuiltInColorSchemesTest {
         return props;
     }
 
-    private static int channelSum(int color) {
-        return ((color >> 16) & 0xFF) + ((color >> 8) & 0xFF) + (color & 0xFF);
-    }
-
     private static TerminalColorScheme scheme(File file) throws IOException {
         TerminalColorScheme scheme = new TerminalColorScheme();
         // throws IllegalArgumentException for an unknown key or an invalid color
@@ -50,9 +47,14 @@ public class BuiltInColorSchemesTest {
         Assert.assertEquals(0xFF000000, scheme.mDefaultColors[TextStyle.COLOR_INDEX_CURSOR]);
         // color15 (white) is the background color of the palette; color7 a light grey for backgrounds (Claude Code's
         // light-ansi theme puts your messages on it, in black)
-        for (int i = 0; i < 15; i++)
-            if (i != 7) Assert.assertTrue("color" + i + " dark enough", channelSum(scheme.mDefaultColors[i]) < 384);
-        Assert.assertTrue("color7 light background grey", channelSum(scheme.mDefaultColors[7]) >= 576);
+        for (int i = 0; i < 15; i++) {
+            if (i == 7) continue;
+            int sum = TextContrast.channelSum(scheme.mDefaultColors[i]);
+            Assert.assertTrue("color" + i + " dark enough", sum < TextContrast.THRESHOLD);
+        }
+        Assert.assertTrue("color7 light background grey", TextContrast.channelSum(scheme.mDefaultColors[7]) >= 576);
+        // TextContrast.schemeForeground() recognises exactly this grey: change both together
+        Assert.assertEquals(0xFFE4E4E4, scheme.mDefaultColors[7]);
     }
 
     @Test
@@ -63,9 +65,14 @@ public class BuiltInColorSchemesTest {
         Assert.assertEquals(0xFFFFFFFF, scheme.mDefaultColors[TextStyle.COLOR_INDEX_CURSOR]);
         // color0 (black) is the background color of the palette; color8 a dark grey for backgrounds (Claude Code's
         // dark-ansi theme puts your messages on it, in white); dimmed text has 2/3 of the color
-        for (int i = 1; i < 16; i++)
-            if (i != 8) Assert.assertTrue("color" + i + " light enough, also dimmed", channelSum(scheme.mDefaultColors[i]) * 2 / 3 >= 384);
-        Assert.assertTrue("color8 dark background grey", channelSum(scheme.mDefaultColors[8]) < 256);
+        for (int i = 1; i < 16; i++) {
+            if (i == 8) continue;
+            int dimmedSum = TextContrast.channelSum(scheme.mDefaultColors[i]) * 2 / 3;
+            Assert.assertTrue("color" + i + " light enough, also dimmed", dimmedSum >= TextContrast.THRESHOLD);
+        }
+        Assert.assertTrue("color8 dark background grey", TextContrast.channelSum(scheme.mDefaultColors[8]) < 256);
+        // TextContrast.schemeForeground() recognises exactly this grey: change both together
+        Assert.assertEquals(0xFF404040, scheme.mDefaultColors[8]);
     }
 
     @Test
