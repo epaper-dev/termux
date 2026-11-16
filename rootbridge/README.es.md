@@ -40,6 +40,11 @@ rootbridge-hook.py (PostToolUse, UserPromptSubmit)
   ◀── la nota del daemon: "el usuario rechazó `id`, sin rodeos"
 ```
 
+<p align="center"><img src="docs/images/android-root-dialog.png" width="300" alt="El diálogo de Android: Android-Root: Claude Code, el comando y el plazo, con los botones NO y YES"></p>
+
+El diálogo del daemon para una solicitud: quién pregunta, el comando, el plazo. (Los botones están en inglés aquí: la Termux:API estándar.
+La Termux:API de este repositorio, `api/`, los muestra en el idioma del teléfono y cuenta el plazo atrás.)
+
 * **Sin confirmación, no hay root.** El daemon de Termux muestra un diálogo de Android (`termux-dialog`, paquete `termux-api` y
   la app Termux:API) por cada solicitud de `androidsu`, con el comando y el agente que lo pide. La respuesta es la salida del
   propio diálogo, nunca un archivo que el invitado pueda escribir: ni Claude Code ni Codex pueden aprobar nada. Sin respuesta en
