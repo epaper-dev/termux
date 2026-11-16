@@ -2,32 +2,29 @@
 # Test: when Claude Code ends cleanly (/exit = 0, Ctrl+C = 130), guest/bin/rootbridge-claude ends too, so
 # the tmux window/session and the widget's Termux window close. After an error exit the guest shell
 # stays open (the message stays readable).
-#   Nothing real is started: from rootbridge-claude only conf_get, limit_nofile and after_claude are cut
-#   out, plus the two launch lines (Claude start + `after_claude "$?"`), run against a stub `claude`
+#   Nothing real is started: conf_get, limit_nofile and after_tool come from guest/lib/rootbridge-guest-lib.sh,
+#   from rootbridge-claude only the argument builder is cut out, plus the two launch lines (Claude start +
+#   `after_tool "Claude Code" claude "$?"`), run against a stub `claude`
 #   and a stub `bash` (the shell `exec bash -l` would start).
 #   bash tests/test_session_exit.sh
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 SCRIPT="$ROOT/guest/bin/rootbridge-claude"
 REAL_BASH="$(command -v bash)"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 bash -n "$SCRIPT" 2>/dev/null
 check "rootbridge-claude: Syntax in Ordnung" 0 "$?"
 
 # ------------------------------------------------ cut out the parts
-FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^after_claude() {/,/^}/p;/^prepare_claude_args() {/,/^}/p;/^has_claude_conversation() {/,/^}/p' "$SCRIPT")"
+FUNCS="$(cat "$ROOTBRIDGE_GUEST_LIB"; sed -n '/^prepare_claude_args() {/,/^}/p;/^has_claude_conversation() {/,/^}/p' "$SCRIPT")"
 export FUNCS
-for fn in conf_get limit_nofile after_claude; do
+for fn in conf_get limit_nofile after_tool prepare_claude_args; do
     case "$FUNCS" in
         *"$fn() {"*) ;;
         *) echo "ABBRUCH: $fn() nicht in $SCRIPT gefunden." >&2; exit 1 ;;
@@ -40,8 +37,8 @@ if [ "$(printf '%s\n' "$LAUNCH" | wc -l | tr -d ' ')" != 2 ]; then
 fi
 
 # ------------------------------------------------ static checks
-check "Auf den Claude-Start folgt direkt: after_claude \"\$?\"" 'after_claude "$?"' "$(printf '%s\n' "$LAUNCH" | sed -n 2p)"
-check "Letzte Skriptzeile ist after_claude \"\$?\" (kein unbedingtes exec bash -l)" 'after_claude "$?"' \
+check "Auf den Claude-Start folgt direkt: after_tool" 'after_tool "Claude Code" claude "$?"' "$(printf '%s\n' "$LAUNCH" | sed -n 2p)"
+check "Letzte Skriptzeile ist after_tool (kein unbedingtes exec bash -l)" 'after_tool "Claude Code" claude "$?"' \
     "$(grep -v '^[[:space:]]*$' "$SCRIPT" | tail -n 1)"
 check "Kein exec bash -l auf oberster Ebene"            0 "$(grep -c '^exec bash -l' "$SCRIPT")"
 check "claude nicht gefunden: Shell bleibt (Nachinstallieren)" 1 \
@@ -94,7 +91,7 @@ export ROOTBRIDGE_CONVERSATION_CHECK="$ROOT/guest/claude/claude-conversation.py"
 export CLAUDE_CONFIG_DIR="$T/claude-config"
 printf '%s\n' 'CLAUDE_ARGS="--remote-control android --continue -c --model sonnet"' > "$T/test.conf"
 args_for() {
-    FUNCS="$FUNCS" "$REAL_BASH" -c 'CONF="$1"; shift; eval "$FUNCS"; prepare_claude_args "$@"; printf "%s\n" "${extra[@]}"' _ "$T/test.conf" "$@"
+    FUNCS="$FUNCS" "$REAL_BASH" -c 'eval "$FUNCS"; CONF="$1"; shift; prepare_claude_args "$@"; printf "%s\n" "${extra[@]}"' _ "$T/test.conf" "$@"
 }
 check "Erster Start: ohne --continue" '--remote-control android --model sonnet' "$(args_for | paste -sd' ')"
 check "Explizit --continue ohne Unterhaltung: neuer Start" '--remote-control android --model sonnet' "$(args_for --continue | paste -sd' ')"
@@ -114,5 +111,4 @@ check "Explizites Resume bleibt unangetastet" '--resume explicit-id --model sonn
 check "--new übersteuert auch explizites Resume" '--model sonnet' "$(args_for --new | paste -sd' ')"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

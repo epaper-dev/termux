@@ -16,6 +16,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 GUEST="$ROOT/guest/install-guest.sh"
 UPDATE="$ROOT/guest/bin/rootbridge-update"
 CODEXBIN="$ROOT/guest/bin/rootbridge-codex"
@@ -33,11 +35,6 @@ cleanup() {
 trap cleanup EXIT
 export ROOTBRIDGE_GUEST_HOME=/home/tester
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 count() { local n; n="$(grep -c -- "$2" "$1" 2>/dev/null)"; echo "${n:-0}"; }   # count <file> <text>: lines containing it (0 if the file is gone)
 has() { [ -e "$1" ] && echo ja || echo nein; }
 
@@ -207,7 +204,7 @@ USTATE="$T/ustate"; UCONF="$T/u.conf"; ULOG="$T/u.log"
 mkdir -p "$T/update-home"
 ureset() { rm -rf "$USTATE"; : > "$ULOG"; printf '%s\n' "$@" > "$UCONF"; }
 urun() {   # urun [VAR=value ...]: one run of the real rootbridge-update with the stubs; output in $T/u.out
-    env -i HOME="$T/update-home" PATH="$UB" ROOTBRIDGE_UPDATE_KEEP_PATH=1 ROOTBRIDGE_CONF="$UCONF" ROOTBRIDGE_STATE_DIR="$USTATE" \
+    env -i HOME="$T/update-home" PATH="$UB" ROOTBRIDGE_UPDATE_KEEP_PATH=1 ROOTBRIDGE_CONF="$UCONF" ROOTBRIDGE_GUEST_LIB="$ROOTBRIDGE_GUEST_LIB" ROOTBRIDGE_STATE_DIR="$USTATE" \
         ROOTBRIDGE_CLAUDE_BIN="$UB/claude" ROOTBRIDGE_CODEX_BIN="$UB/codex" STUB_LOG="$ULOG" "$@" \
         "$(command -v bash)" "$UPDATE" > "$T/u.out" 2>&1
     URC=$?
@@ -289,7 +286,7 @@ mv "$UB/claude.off" "$UB/claude"
 ureset ""
 ( urun STUB_SLEEP=2 ) & p1=$!
 sleep 0.5
-URC2=0; env -i PATH="$UB" ROOTBRIDGE_UPDATE_KEEP_PATH=1 ROOTBRIDGE_CONF="$UCONF" ROOTBRIDGE_STATE_DIR="$USTATE" \
+URC2=0; env -i PATH="$UB" ROOTBRIDGE_UPDATE_KEEP_PATH=1 ROOTBRIDGE_CONF="$UCONF" ROOTBRIDGE_GUEST_LIB="$ROOTBRIDGE_GUEST_LIB" ROOTBRIDGE_STATE_DIR="$USTATE" \
     ROOTBRIDGE_CLAUDE_BIN="$UB/claude" ROOTBRIDGE_CODEX_BIN="$UB/codex" STUB_LOG="$ULOG" \
     "$(command -v bash)" "$UPDATE" > "$T/u2.out" 2>&1 || URC2=$?
 wait "$p1"
@@ -326,7 +323,7 @@ mkdir -p "$T/cpath"; ln -sf "$CB/bashstub" "$T/cpath/bash"
 CLOG="$T/c.log"; CCONF="$T/c.conf"
 crun() {   # crun [VAR=value ...]
     : > "$CLOG"
-    env -i PATH="$T/cpath:$CB" ROOTBRIDGE_CODEX_KEEP_PATH=1 ROOTBRIDGE_CONF="$CCONF" ROOTBRIDGE_CODEX_BIN="$CB/codex" STUB_LOG="$CLOG" "$@" \
+    env -i PATH="$T/cpath:$CB" ROOTBRIDGE_CODEX_KEEP_PATH=1 ROOTBRIDGE_CONF="$CCONF" ROOTBRIDGE_GUEST_LIB="$ROOTBRIDGE_GUEST_LIB" ROOTBRIDGE_CODEX_BIN="$CB/codex" STUB_LOG="$CLOG" "$@" \
         "$(command -v bash)" "$CODEXBIN" > "$T/c.out" 2>&1
     CRC=$?
 }
@@ -353,21 +350,22 @@ check "rootbridge-codex ohne codex: Hinweis und Shell"     "1 1" "$(count "$T/c.
 mv "$CB/codex.off" "$CB/codex"
 
 # =========================================================================== 4. rootbridge-claude
-check "rootbridge-claude ruft rootbridge-update (nach apt)" 1 "$(count "$CLAUDEBIN" '^    rootbridge-update || true$')"
-ra="$(grep -n 'rootbridge-apt ||' "$CLAUDEBIN" | head -n 1 | cut -d: -f1)"; ru="$(grep -n 'rootbridge-update ||' "$CLAUDEBIN" | head -n 1 | cut -d: -f1)"
+check "run_maintenance ruft rootbridge-update (nach apt)" 1 "$(count "$ROOTBRIDGE_GUEST_LIB" '^    if command -v rootbridge-update .*rootbridge-update || true; fi$')"
+ra="$(grep -n 'rootbridge-apt ||' "$ROOTBRIDGE_GUEST_LIB" | head -n 1 | cut -d: -f1)"; ru="$(grep -n 'rootbridge-update ||' "$ROOTBRIDGE_GUEST_LIB" | head -n 1 | cut -d: -f1)"
+rm_="$(grep -n '^run_maintenance$' "$CLAUDEBIN" | head -n 1 | cut -d: -f1)"
 rl="$(grep -n 'exec "\$claude_bin" --allow-dangerously-skip-permissions' "$CLAUDEBIN" | head -n 1 | cut -d: -f1)"
-check "rootbridge-claude: apt < update < Start von Claude" ja "$([ -n "$ra" ] && [ -n "$ru" ] && [ -n "$rl" ] && [ "$ra" -lt "$ru" ] && [ "$ru" -lt "$rl" ] && echo ja || echo nein)"
+check "rootbridge-claude: apt < update (run_maintenance) < Start von Claude" ja "$([ -n "$ra" ] && [ -n "$ru" ] && [ -n "$rm_" ] && [ -n "$rl" ] && [ "$ra" -lt "$ru" ] && [ "$rm_" -lt "$rl" ] && echo ja || echo nein)"
 check "rootbridge-claude: update_claude steckt nicht mehr darin" 0 "$(count "$CLAUDEBIN" '^update_claude')"
-FUNCS="$(sed -n '/^conf_get() {/,/^}/p' "$CLAUDEBIN")"; EXPORT_LINE="$(grep 'export CODEX_PRECOMMIT=off' "$CLAUDEBIN")"
+FUNCS="$(cat "$ROOTBRIDGE_GUEST_LIB")"; EXPORT_LINE="$(grep 'export CODEX_PRECOMMIT=off' "$CLAUDEBIN")"
 printf 'CODEX_PRECOMMIT=off\n' > "$T/cl.conf"
 check "rootbridge-claude: CODEX_PRECOMMIT=off aus der Konfig kommt im Hook an" off \
-      "$(env -u CODEX_PRECOMMIT bash -c 'CONF="$1"; eval "$2"; eval "$3"; echo "${CODEX_PRECOMMIT:-leer}"' _ "$T/cl.conf" "$FUNCS" "$EXPORT_LINE")"
+      "$(env -u CODEX_PRECOMMIT bash -c 'eval "$2"; CONF="$1"; eval "$3"; echo "${CODEX_PRECOMMIT:-leer}"' _ "$T/cl.conf" "$FUNCS" "$EXPORT_LINE")"
 printf 'CODEX_PRECOMMIT=on\n' > "$T/cl.conf"
 check "rootbridge-claude: ein anderer Wert wird nicht weitergegeben" leer \
-      "$(env -u CODEX_PRECOMMIT bash -c 'CONF="$1"; eval "$2"; eval "$3"; echo "${CODEX_PRECOMMIT:-leer}"' _ "$T/cl.conf" "$FUNCS" "$EXPORT_LINE")"
+      "$(env -u CODEX_PRECOMMIT bash -c 'eval "$2"; CONF="$1"; eval "$3"; echo "${CODEX_PRECOMMIT:-leer}"' _ "$T/cl.conf" "$FUNCS" "$EXPORT_LINE")"
 : > "$T/cl.conf"
 check "rootbridge-claude: ohne Eintrag bleibt die Variable leer" leer \
-      "$(env -u CODEX_PRECOMMIT bash -c 'CONF="$1"; eval "$2"; eval "$3"; echo "${CODEX_PRECOMMIT:-leer}"' _ "$T/cl.conf" "$FUNCS" "$EXPORT_LINE")"
+      "$(env -u CODEX_PRECOMMIT bash -c 'eval "$2"; CONF="$1"; eval "$3"; echo "${CODEX_PRECOMMIT:-leer}"' _ "$T/cl.conf" "$FUNCS" "$EXPORT_LINE")"
 
 # =========================================================================== 5. the rootbridge command
 mkdir -p "$T/bin" "$T/lib/termux-rootbridge" "$T/stubs" "$T/home/.config/termux-rootbridge" "$T/prefix/bin"
@@ -496,21 +494,7 @@ check "help: nennt codex-login, codex-off und attach [claude|codex]" 3 "$(grep -
 # =========================================================================== 6. install.sh
 H="$T/ih"; P="$T/ip"; GROOT="$P/var/lib/proot-distro/containers/ubuntu/rootfs"
 mkdir -p "$H" "$P/bin" "$GROOT/var/tmp" "$T/istubs"
-cat > "$T/istubs/proot-distro" <<'EOF'
-#!/bin/bash
-# logs the call and runs the guest scripts against a staging root, like test_autonomous.sh
-echo "proot-distro $*" >> "$STUB_LOG"
-[ "$1" = login ] || exit 0
-shift 3; shift
-script="$STUB_GROOT$1"; shift
-case "$script" in *setup-guest.sh) exit 0 ;; esac
-args=()
-while [ $# -gt 0 ]; do
-    case "$1" in /var/tmp/*) args+=("$STUB_GROOT$1") ;; *) args+=("$1") ;; esac
-    shift
-done
-exec bash "$script" --root "$STUB_GUEST_ROOT" "${args[@]}" < /dev/null
-EOF
+cp "$ROOT/tests/stubs/proot-distro-guest-scripts" "$T/istubs/proot-distro"
 printf '#!/bin/bash\nexit 0\n' > "$T/istubs/termux-reload-settings"
 printf '#!/bin/bash\necho "rootbridge $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs/rootbridge"
 chmod +x "$T/istubs"/*
@@ -651,5 +635,4 @@ check "uninstall: läuft"                                   0 "$?"
 check "uninstall: Codex-Widget und sein Standard-Icon weg" "nein nein" "$(has "$H/.shortcuts/Codex") $(has "$H/.shortcuts/icons/Codex.png")"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

@@ -5,6 +5,11 @@
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
 
 ### Changed
+* The guest scripts (`androidsu`, `rootbridge-claude`, `rootbridge-codex`, `rootbridge-update`, `rootbridge-apt`,
+  `rootbridge-open`) share one library, `/usr/local/lib/termux-rootbridge/rootbridge-guest-lib.sh` (config reader,
+  update intervals, session start and end), instead of a copy of each helper per script. `install.sh` installs it with
+  the scripts; a script that cannot find it stops with a message (run `install.sh` again). The installers edit their marked
+  blocks with one helper, `guest/lib/rbfile.py`, instead of five copies of the same code.
 * The Codex pre-commit review hook is hardened and tunable per device. Every `git` call has a time limit and a size cap
   (a hanging `git` or an oversized diff blocks, never passes), the time budget counts from the start of the hook, the
   log is private (0600), rotated and free of command arguments, and what goes to Claude is cleaned of escape sequences and

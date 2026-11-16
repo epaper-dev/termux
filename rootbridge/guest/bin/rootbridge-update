@@ -17,55 +17,24 @@
 #
 # Nothing here updates nodejs and git: they are apt packages and come with rootbridge-apt (apt-get upgrade).
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
-
-conf_get() {
-    [ -r "$CONF" ] || return 1
-    local v
-    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    [ -n "$v" ] && printf '%s' "$v"
-}
-
-# Claude Code closes every file descriptor up to RLIMIT_NOFILE after each fork. Under proot every
-# close() is a trapped syscall (~80 us), so Android's limit of 32768 costs 2.5-4 s per started process.
-# Same function as in rootbridge-claude: only ever lowered, NOFILE_LIMIT=0 in the config switches it off.
-limit_nofile() {
-    local n cur
-    n="$(conf_get NOFILE_LIMIT || echo 2048)"
-    case "$n" in ''|0|*[!0-9]*) return 0 ;; esac
-    cur="$(ulimit -Hn)"
-    case "$cur" in
-        unlimited) ;;
-        ''|*[!0-9]*) return 0 ;;
-        *) [ "$cur" -gt "$n" ] || return 0 ;;
-    esac
-    ulimit -n "$n" 2>/dev/null || true
-}
+# shellcheck source=../lib/rootbridge-guest-lib.sh
+. "${ROOTBRIDGE_GUEST_LIB:-/usr/local/lib/termux-rootbridge/rootbridge-guest-lib.sh}" 2>/dev/null \
+    || { echo "rootbridge-update: rootbridge-guest-lib.sh nicht gefunden (install.sh erneut ausführen)" >&2; exit 1; }
 
 # update_due <label> <config key> <stamp file>: succeeds if the step is due now. Otherwise it says why not
 # (switched off silently) and fails. The key holds 6h (default) | <N>h | daily | always | off.
 update_due() {
-    local label="$1" key="$2" stamp="$3" mode now last interval=0
+    local label="$1" key="$2" stamp="$3" mode interval age
     mode="$(conf_get "$key" || echo 6h)"
-    case "$mode" in
-        off) return 1 ;;
-        always) ;;
-        daily) interval=86400 ;;
-        *) if [[ "$mode" =~ ^[1-9][0-9]{0,2}h$ ]]; then
-               interval=$(( ${mode%h} * 3600 ))
-           else
-               echo "$label: unbekannter Wert $key=$mode (erlaubt: 6h (Stunden, 1-999), daily, always, off) - übersprungen" >&2
-               return 1
-           fi ;;
+    interval="$(update_interval "$mode")"
+    case $? in
+        1) return 1 ;;
+        2) echo "$label: unbekannter Wert $key=$mode (erlaubt: 6h (Stunden, 1-999), daily, always, off) - übersprungen" >&2
+           return 1 ;;
     esac
-    now="$(date +%s)"
-    if [ "$interval" -gt 0 ] && [ -r "$stamp" ]; then
-        last="$(head -n 1 "$stamp" 2>/dev/null)"
-        if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt "$interval" ]; then
-            echo "$label: vor $(( (now - last) / 3600 )) h erfolgreich - übersprungen ($key=$mode)"
-            return 1
-        fi
+    if [ "$interval" -gt 0 ] && age="$(stamp_age "$stamp")" && [ "$age" -lt "$interval" ]; then
+        echo "$label: vor $(( age / 3600 )) h erfolgreich - übersprungen ($key=$mode)"
+        return 1
     fi
     return 0
 }

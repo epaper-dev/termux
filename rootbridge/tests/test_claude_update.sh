@@ -10,20 +10,16 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 SCRIPT="$ROOT/guest/bin/rootbridge-update"
 CLAUDEBIN="$ROOT/guest/bin/rootbridge-claude"
 GUEST="$ROOT/guest/install-guest.sh"
 INSTALL="$ROOT/install.sh"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 export ROOTBRIDGE_GUEST_HOME=/home/tester
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 bash -n "$SCRIPT" 2>/dev/null
 check "rootbridge-update: Syntax in Ordnung" 0 "$?"
@@ -31,7 +27,7 @@ bash -n "$CLAUDEBIN" 2>/dev/null
 check "rootbridge-claude: Syntax in Ordnung" 0 "$?"
 
 # ------------------------------------------------ 1. update_claude() with a stub claude
-FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p;/^update_due() {/,/^}/p;/^stamp_success() {/,/^}/p;/^state_dir() /p;/^update_claude() {/,/^}/p' "$SCRIPT")"
+FUNCS="$(cat "$ROOTBRIDGE_GUEST_LIB"; sed -n '/^update_due() {/,/^}/p;/^stamp_success() {/,/^}/p;/^state_dir() /p;/^update_claude() {/,/^}/p' "$SCRIPT")"
 export FUNCS
 for fn in conf_get limit_nofile update_due stamp_success state_dir update_claude; do
     case "$FUNCS" in
@@ -70,7 +66,7 @@ calls() { grep -c '^claude update' "$STUB_LOG" || true; }   # 1 = claude update 
 stamp_exists() { [ -s "$STAMPF" ] && echo ja || echo nein; }
 out_has() { printf '%s\n' "$OUT" | grep -c -- "$1" || true; }
 run_update() {   # sets OUT (stdout+stderr incl. rc=N); conf comes from $CONFFILE
-    OUT="$(bash -c 'ulimit -n '"$START"'; CONF="$1"; claude_bin="$2"; eval "$FUNCS"; update_claude; echo "rc=$?"' _ "$CONFFILE" "$T/claude-stub" 2>&1)"
+    OUT="$(bash -c 'ulimit -n '"$START"'; eval "$FUNCS"; CONF="$1"; claude_bin="$2"; update_claude; echo "rc=$?"' _ "$CONFFILE" "$T/claude-stub" 2>&1)"
 }
 set_stamp() { mkdir -p "$STATE"; printf '%s\n' "$1" > "$STAMPF"; }
 now="$(date +%s)"
@@ -210,9 +206,9 @@ check "claude update mit NOFILE_LIMIT=1024"           1 "$(grep -c "hard=$(w 102
 # --- how the script uses it
 check "genau eine Kopfzeile 'claude update'"          1 "$(grep -c '^    echo "== claude update"$' "$SCRIPT")"
 check "update_claude wird genau einmal aufgerufen"    1 "$(grep -c '&& update_claude$' "$SCRIPT")"
-rc_apt="$(grep -n 'rootbridge-apt ||' "$CLAUDEBIN" | head -n 1 | cut -d: -f1)"
-rc_upd="$(grep -n 'rootbridge-update ||' "$CLAUDEBIN" | head -n 1 | cut -d: -f1)"
-check "apt läuft vor claude update (rootbridge-claude)" 1 "$([ -n "$rc_apt" ] && [ -n "$rc_upd" ] && [ "$rc_apt" -lt "$rc_upd" ] && echo 1 || echo 0)"
+rc_apt="$(grep -n 'rootbridge-apt ||' "$ROOTBRIDGE_GUEST_LIB" | head -n 1 | cut -d: -f1)"
+rc_upd="$(grep -n 'rootbridge-update ||' "$ROOTBRIDGE_GUEST_LIB" | head -n 1 | cut -d: -f1)"
+check "apt läuft vor claude update (run_maintenance)" 1 "$([ -n "$rc_apt" ] && [ -n "$rc_upd" ] && [ "$rc_apt" -lt "$rc_upd" ] && echo 1 || echo 0)"
 check "kein ungeschützter claude update-Aufruf mehr"  1 "$(grep -c '"\$claude_bin" update ); then' "$SCRIPT")"
 
 # ------------------------------------------------------ 2. guest installer
@@ -231,7 +227,7 @@ check "Gast ohne Option: Installer läuft"             0 "$?"
 check "Gast: CLAUDE_UPDATE=6h als Standard"           "CLAUDE_UPDATE=6h" "$(gval "$S" CLAUDE_UPDATE)"
 check "Gast: genau eine Zeile"                        1 "$(gcount "$S" CLAUDE_UPDATE)"
 check "Gast: rootbridge-update installiert"           ja "$([ -x "$S/usr/local/bin/rootbridge-update" ] && echo ja || echo nein)"
-check "Gast: rootbridge-claude ruft rootbridge-update" 1 "$(grep -c 'rootbridge-update || true' "$S/usr/local/bin/rootbridge-claude")"
+check "Gast: rootbridge-claude ruft run_maintenance" 1 "$(grep -c '^run_maintenance$' "$S/usr/local/bin/rootbridge-claude")"
 
 before="$(cksum < "$(gconf "$S")")"; b0="$(cbak "$S")"
 ginstall "$S"
@@ -293,21 +289,7 @@ check "Deinstallation: rootbridge-claude entfernt"    nein "$([ -e "$S/usr/local
 H="$T/home"; P="$T/prefix"; GROOT="$T/groot"; GUEST_ROOT="$T/guestroot"
 mkdir -p "$H" "$P/bin" "$GROOT/var/tmp" "$P/var/lib/proot-distro/containers/ubuntu" "$T/stubs"
 ln -s "$GROOT" "$P/var/lib/proot-distro/containers/ubuntu/rootfs"
-cat > "$T/stubs/proot-distro" <<'EOF'
-#!/bin/bash
-# fake proot-distro: logs the call and runs the guest installer against a staging root
-echo "$*" >> "$PROOT_LOG"
-[ "$1" = login ] || exit 0
-shift 3                                   # login DISTRO --
-shift                                     # bash
-script="$STUB_GROOT$1"; shift
-args=()
-while [ $# -gt 0 ]; do
-    case "$1" in /var/tmp/*) args+=("$STUB_GROOT$1") ;; *) args+=("$1") ;; esac
-    shift
-done
-exec bash "$script" --root "$STUB_GUEST_ROOT" "${args[@]}"
-EOF
+cp "$ROOT/tests/stubs/proot-distro-guest-installer" "$T/stubs/proot-distro"
 printf '#!/bin/bash\nexit 0\n' > "$T/stubs/termux-reload-settings"
 chmod +x "$T/stubs/proot-distro" "$T/stubs/termux-reload-settings"
 export PROOT_LOG="$T/proot.log" STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$GUEST_ROOT"
@@ -396,5 +378,4 @@ check "--help zeigt den ganzen Kopf (Schritt 5)"      1 "$(printf '%s\n' "$help_
 check "--help läuft nicht in den Code hinein"         0 "$(printf '%s\n' "$help_out" | grep -c '^set -eu')"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

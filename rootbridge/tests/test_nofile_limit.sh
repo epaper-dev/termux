@@ -4,25 +4,21 @@
 # Why: Claude Code closes every fd up to RLIMIT_NOFILE after each fork. Under proot every close() is a
 # trapped syscall, so Android's limit of 32768 costs 2.5-4 s per started process (hooks, Bash tool, ...).
 #
-# Nothing real is started: from guest/bin/rootbridge-claude only the functions conf_get/limit_nofile are
-# cut out (the script itself never runs - it would start `claude update` and rootbridge-apt), and the
+# Nothing real is started: the functions conf_get/limit_nofile come from guest/lib/rootbridge-guest-lib.sh (the
+# guest scripts themselves never run - they would start `claude update` and rootbridge-apt), and the
 # claude() function of the generated .bashrc gets a stubbed `command`.
 #   bash tests/test_nofile_limit.sh
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 SCRIPT="$ROOT/guest/bin/rootbridge-claude"
 UPDATER="$ROOT/guest/bin/rootbridge-update"
 INSTALLER="$ROOT/guest/install-guest.sh"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 # The tests start from a limit they can lower from: 8192, or the machine's hard limit if that is lower
 # (a session started by rootbridge-claude already runs with NOFILE_LIMIT, and a hard limit cannot be
@@ -50,16 +46,16 @@ conf() { printf '%s\n' "$@" > "$T/test.conf"; export ROOTBRIDGE_CONF="$T/test.co
 bash -n "$SCRIPT" 2>/dev/null
 check "rootbridge-claude: Syntax in Ordnung" 0 "$?"
 
-FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^limit_nofile() {/,/^}/p' "$SCRIPT")"
+FUNCS="$(cat "$ROOTBRIDGE_GUEST_LIB")"
 export FUNCS
 case "$FUNCS" in
     *"limit_nofile()"*"conf_get()"*|*"conf_get()"*"limit_nofile()"*) ;;
-    *) echo "ABBRUCH: conf_get/limit_nofile nicht in $SCRIPT gefunden." >&2; exit 1 ;;
+    *) echo "ABBRUCH: conf_get/limit_nofile nicht in $ROOTBRIDGE_GUEST_LIB gefunden." >&2; exit 1 ;;
 esac
 
 # lim: <soft>/<hard> inside the subshell that limit_nofile runs in, and in the parent shell afterwards
 lim() {
-    bash -c 'ulimit -n '"$START"'; CONF="$1"; eval "$FUNCS"
+    bash -c 'ulimit -n '"$START"'; eval "$FUNCS"; CONF="$1"
              sub="$( limit_nofile; echo "$(ulimit -Sn)/$(ulimit -Hn)" )"
              echo "$sub parent=$(ulimit -Sn)/$(ulimit -Hn)"' _ "$1"
 }
@@ -149,5 +145,4 @@ check "zweiter Lauf behält den eigenen Wert"         1 "$(grep -c '^NOFILE_LIMI
 check "zweiter Lauf: NOFILE_LIMIT nur einmal"        1 "$(grep -c '^NOFILE_LIMIT=' "$STAGED_CONF")"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

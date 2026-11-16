@@ -17,12 +17,13 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 INSTALL="$ROOT/install.sh"
 SETUP_GUEST_REAL="$ROOT/guest/setup-guest.sh"
 GUEST="$ROOT/guest/install-guest.sh"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 # These cases test the base setup (python3, curl, certificates, Claude Code, Codex, plugin): the voice part (sox) has its own test
 # (test_voice.sh). The wrapper puts --voice no in front; a machine that has sox itself must not change the result either.
 SETUP_GUEST="$T/setup-guest-novoice.sh"
@@ -30,11 +31,6 @@ printf '#!/bin/bash\nexec bash "%s" --voice no "$@"\n' "$SETUP_GUEST_REAL" > "$S
 chmod +x "$SETUP_GUEST"
 ORIG_PATH="$PATH"
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 count() { grep -c -- "$2" "$1" 2>/dev/null || true; }          # count <file> <fixed text>
 lineno() { grep -n -m1 -- "$2" "$1" 2>/dev/null | cut -d: -f1; }   # first line number of a text
 
@@ -523,5 +519,4 @@ ROOTBRIDGE_GUEST_HOME=/home/tester bash "$GUEST" --root "$GS" --autonomous no > 
 check "C1 zweiter Lauf: weiter genau eine PATH-Zeile"           1 "$(count "$RC" 'export PATH="$HOME/.local/bin:$PATH"')"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

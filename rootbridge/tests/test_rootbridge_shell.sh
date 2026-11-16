@@ -8,6 +8,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 
 T="$(mktemp -d)"
 # the stub daemon sleeps: stop exactly that process (by pid, never by name) and clean up
@@ -19,11 +21,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 mkdir -p "$T/bin" "$T/lib/termux-rootbridge" "$T/stubs" "$T/home" "$T/prefix/bin"
 # like install.sh: point the shebang at the real bash (`#!/usr/bin/env bash` does not work everywhere,
@@ -113,5 +110,4 @@ check "Codex --new: kein neues Fenster" 0 "$(calls '^tmux new-')"
 
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

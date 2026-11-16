@@ -123,6 +123,8 @@ rb_consume_ticket() {
 
 # --- URLs -------------------------------------------------------------------
 # Only plain https URLs, no whitespace/control/quote characters, <= 8 KiB.
+# The same URL rule as the regex in guest/bin/rootbridge-open and VALID_RE in guest/claude/auth-url-hook.py (the guest
+# checks, and this daemon checks again): change all three together.
 RB_URL_RE='^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?([/?#][^[:space:][:cntrl:]"'"'"'<>`\\]*)?$'
 rb_valid_url() {
     [ "${#1}" -le 8192 ] && [[ "$1" =~ $RB_URL_RE ]]

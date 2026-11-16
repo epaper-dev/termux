@@ -13,20 +13,16 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 INSTALL="$ROOT/install.sh"
 UNINSTALL="$ROOT/uninstall.sh"
 SNIP="$ROOT/termux/extra-keys.snippet"
 BEGIN='# >>> termux-rootbridge >>>'
 END='# <<< termux-rootbridge <<<'
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 P="$T/prefix"; mkdir -p "$P/bin" "$T/stubs"
 for s in rootbridge tmux pkill pgrep; do
@@ -280,5 +276,4 @@ check "--help läuft nicht in den Code hinein"         0 "$(printf '%s\n' "$help
 check "Test hat nie das echte rootbridge/tmux/pkill gestartet" 0 "$(grep -vc '^rootbridge stop' "$STUB_LOG")"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

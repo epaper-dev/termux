@@ -11,6 +11,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 DAEMON="$ROOT/termux/bin/rootbridge-daemon"
 INSTALL="$ROOT/install.sh"
 
@@ -18,11 +20,6 @@ T="$(mktemp -d)"
 PIDS=()
 trap 'for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$T"' EXIT
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 # a zombie still answers `kill -0`: look at the process state instead
 alive() { local s; s="$(ps -o stat= -p "$1" 2>/dev/null)"; [ -n "$s" ] && [ "${s#Z}" = "$s" ]; }
@@ -131,5 +128,4 @@ check "install.sh (kein Lock): Exit 0"                 0 "$?"
 check "install.sh: kein pkill/tmux nötig"               0 "$(grep -c '^pkill\|^tmux' "$STUB_LOG")"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

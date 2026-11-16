@@ -8,14 +8,10 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
+make_tmp
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 mkdir -p "$T/bin" "$T/lib/termux-rootbridge" "$T/stubs" "$T/home/.config/termux-rootbridge"
 sed "1s|^#!.*|#!$(command -v bash)|" "$ROOT/termux/bin/rootbridge" > "$T/bin/rootbridge"
@@ -112,11 +108,10 @@ check "tmux: Statusleiste in Terminalfarben" 1 "$(grep -c '^set -g status-style 
 check "tmux: aktives Fenster fett"          1 "$(grep -c '^set -g window-status-current-style bold$' "$ROOT/termux/tmux.conf.snippet")"
 
 # Exercise the argument builder used by the theme-restart path.
-FUNCS="$(sed -n '/^conf_get() {/,/^}/p;/^prepare_claude_args() {/,/^}/p' "$ROOT/guest/bin/rootbridge-claude")"
+FUNCS="$(cat "$ROOTBRIDGE_GUEST_LIB"; sed -n '/^prepare_claude_args() {/,/^}/p' "$ROOT/guest/bin/rootbridge-claude")"
 export FUNCS
 continued="$(bash -c 'eval "$FUNCS"; has_claude_conversation() { return 0; }; CONF=/dev/null; prepare_claude_args --continue; printf "%s" "${extra[*]}"')"
 check "rootbridge-claude: --continue" --continue "$continued"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" = 0 ]
+finish

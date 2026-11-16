@@ -12,17 +12,14 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 PTT="$ROOT/termux/bin/ptt"
 LIB="$ROOT/termux/lib/rootbridge-lib.sh"
 
 T="$(mktemp -d)"
 trap 'rm -rf "$T"; pkill -f "$T" 2>/dev/null; true' EXIT
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 LOG="$T/tmux.log"
 cat > "$T/tmux" <<'EOF'
@@ -144,5 +141,4 @@ check "ptt hat den Termux-Shebang-Platz (env bash)"       "#!/usr/bin/env bash" 
 check "install.sh installiert ptt"                        1 "$(grep -c 'inst "\$REPO/termux/bin/ptt"' "$ROOT/install.sh")"
 check "uninstall.sh entfernt ptt"                         1 "$(grep -c 'PREFIX/bin/ptt' "$ROOT/uninstall.sh")"
 
-printf '\nErgebnis: %d bestanden, %d fehlgeschlagen\n' "$PASS" "$FAIL"
-[ "$FAIL" -eq 0 ]
+finish

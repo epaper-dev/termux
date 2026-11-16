@@ -15,18 +15,14 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 INSTALL="$ROOT/install.sh"
 UNINSTALL="$ROOT/uninstall.sh"
 ICONS="$ROOT/termux/shortcuts/icons"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 has() { [ -e "$1" ] && echo ja || echo nein; }
 files() { ( cd "$1" && find .shortcuts .termux .rootbridge -type f 2>/dev/null | sort ); }
 
@@ -243,5 +239,4 @@ check "Logo logo.png: gültiges PNG, 1024x1024, 8 Bit RGBA" "True 1024 1024 8 6 
 check "install.sh/uninstall.sh haben weder tmux noch pkill aufgerufen (Stub-Log)" 0 "$(grep -c '^tmux\|^pkill' "$STUB_LOG")"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

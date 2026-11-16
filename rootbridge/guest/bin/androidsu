@@ -12,14 +12,9 @@
 #              ROOTBRIDGE_TTY_CONFIRM=0   disable the terminal question
 #              ROOTBRIDGE_ACK_TIMEOUT     seconds to wait for the daemon (70)
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
-conf_get() {
-    [ -r "$CONF" ] || return 1
-    local v
-    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    [ -n "$v" ] && printf '%s' "$v"
-}
+# shellcheck source=../lib/rootbridge-guest-lib.sh
+. "${ROOTBRIDGE_GUEST_LIB:-/usr/local/lib/termux-rootbridge/rootbridge-guest-lib.sh}" 2>/dev/null \
+    || { echo "androidsu: rootbridge-guest-lib.sh nicht gefunden (install.sh erneut ausführen)" >&2; exit 1; }
 
 BRIDGE_DIR="${ROOTBRIDGE_DIR:-$(conf_get BRIDGE_DIR || true)}"
 BRIDGE_DIR="${BRIDGE_DIR:-/data/data/com.termux/files/home/.rootbridge}"

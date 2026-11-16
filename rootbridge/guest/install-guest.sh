@@ -14,7 +14,7 @@
 #                     settings (an existing value in the config stays without the option)
 #   --codex-update M  CODEX_UPDATE in /etc/termux-rootbridge.conf: `codex update` at the
 #                     start of a session (rootbridge-update). Same values and rules as --claude-update.
-#   --src DIR         directory that contains bin/ and claude/ (default: next to this script)
+#   --src DIR         directory that contains bin/, lib/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
 #   --voice yes|no    voice dictation for Claude Code (default yes; needs Claude Code): ~/.claude/keybindings.json gets
 #                     meta+k = voice:pushToTalk (Chat context; an existing binding for that action stays), and
@@ -196,22 +196,7 @@ onoff() { if [ "$1" = yes ]; then echo on; else echo off; fi; }
 # strip_block <file>: remove our marked block
 strip_block() {
     [ -f "$1" ] || return 0
-    python3 -I - "$1" "$BEGIN" "$END" <<'PY'
-import sys
-path, begin, end = sys.argv[1:4]
-lines = open(path, encoding="utf-8").read().split("\n")
-out, skip = [], False
-for line in lines:
-    if line.strip() == begin:
-        skip = True
-        continue
-    if skip:
-        if line.strip() == end:
-            skip = False
-        continue
-    out.append(line)
-open(path, "w", encoding="utf-8").write("\n".join(out).rstrip("\n") + "\n")
-PY
+    python3 -I "$SRC/lib/rbfile.py" drop "$1" "$BEGIN" "$END"
 }
 
 merge_managed() {   # merge_managed <current> <out> <python> <libdir> <template>...
@@ -413,6 +398,7 @@ say "  Programme: Claude Code $CLAUDE_ON, Codex $CODEX_ON"
 
 PYTHON="$(command -v python3)"
 
+put "$SRC/lib/rootbridge-guest-lib.sh" "$LIBDIR/rootbridge-guest-lib.sh" 644   # sourced by the scripts below
 put "$SRC/bin/androidsu"         "$BINDIR/androidsu"
 put "$SRC/bin/rootbridge-open"   "$BINDIR/rootbridge-open"
 put "$SRC/bin/rootbridge-apt"    "$BINDIR/rootbridge-apt"

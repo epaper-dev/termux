@@ -272,25 +272,7 @@ set_block() {
     local file="$1" content="$2" tmp
     touch "$file"
     tmp="$file.new.$$"
-    python3 -I - "$file" "$tmp" "$BEGIN" "$END" "$content" <<'PYEOF'
-import sys
-src, out, begin, end, content = sys.argv[1:6]
-lines = open(src, encoding="utf-8").read().split("\n")
-res, skip = [], False
-for line in lines:
-    if line.strip() == begin:
-        skip = True
-        continue
-    if skip:
-        if line.strip() == end:
-            skip = False
-        continue
-    res.append(line)
-body = "\n".join(res).rstrip("\n")
-block = open(content, encoding="utf-8").read().rstrip("\n")
-open(out, "w", encoding="utf-8").write(
-    (body + "\n\n" if body else "") + begin + "\n" + block + "\n" + end + "\n")
-PYEOF
+    python3 -I "$REPO/guest/lib/rbfile.py" set "$file" "$tmp" "$BEGIN" "$END" "$content"
     if cmp -s "$tmp" "$file"; then rm -f "$tmp"; else backup "$file"; mv -f "$tmp" "$file"; say "  aktualisiert: $file"; fi
 }
 
@@ -298,22 +280,7 @@ PYEOF
 # own. Our block is appended at the end and a later duplicate key wins, so it would silently replace it.
 own_extra_keys() {
     [ -f "$1" ] || return 1
-    python3 -I - "$1" "$BEGIN" "$END" <<'PYEOF'
-import re, sys
-path, begin, end = sys.argv[1:4]
-skip = False
-for line in open(path, encoding="utf-8").read().split("\n"):
-    if line.strip() == begin:
-        skip = True
-        continue
-    if skip:
-        if line.strip() == end:
-            skip = False
-        continue
-    if re.match(r"\s*extra-keys\s*[=:]", line):
-        sys.exit(0)
-sys.exit(1)
-PYEOF
+    python3 -I "$REPO/guest/lib/rbfile.py" other "$1" "$BEGIN" "$END" '\s*extra-keys\s*[=:]'
 }
 
 command -v python3 >/dev/null 2>&1 || die "python3 fehlt (pkg install python)"
@@ -664,22 +631,24 @@ else
     say "  übersprungen"
 fi
 
+# find_guest_root <distro>: the root directory of the guest as seen from Termux; fails if it is not installed
+find_guest_root() {
+    local c
+    for c in "$PREFIX/var/lib/proot-distro/containers/$1/rootfs" "$PREFIX/var/lib/proot-distro/installed-rootfs/$1"; do
+        if [ -d "$c" ]; then printf '%s' "$c"; return 0; fi
+    done
+    return 1
+}
+
 say "== 5/5 Gast ($(cfg_get DISTRO))"
 if [ "$DO_GUEST" = 1 ]; then
     DISTRO="$(cfg_get DISTRO)"; DISTRO="${DISTRO:-ubuntu}"
-    GROOT=""
-    for c in "$PREFIX/var/lib/proot-distro/containers/$DISTRO/rootfs" \
-             "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
-        [ -d "$c" ] && GROOT="$c" && break
-    done
+    GROOT="$(find_guest_root "$DISTRO" || true)"
     if [ -z "$GROOT" ] && [ "$DO_SETUP" = 1 ]; then
         say "  Gast '$DISTRO' fehlt: proot-distro install $DISTRO (Download, das dauert)"
         proot-distro install "$DISTRO" || die "proot-distro install $DISTRO ist fehlgeschlagen (Netz? Speicherplatz?). Erneut starten: bash install.sh"
         SETUP_DID=1
-        for c in "$PREFIX/var/lib/proot-distro/containers/$DISTRO/rootfs" \
-                 "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
-            [ -d "$c" ] && GROOT="$c" && break
-        done
+        GROOT="$(find_guest_root "$DISTRO" || true)"
     fi
     [ -n "$GROOT" ] || die "Gast '$DISTRO' nicht gefunden (proot-distro list). Ohne --no-setup legt install.sh ihn an; oder mit --no-guest überspringen."
     STAGE="$GROOT/var/tmp/termux-rootbridge-install"

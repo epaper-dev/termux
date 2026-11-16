@@ -9,18 +9,14 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 GUEST="$ROOT/guest/install-guest.sh"
 INSTALL="$ROOT/install.sh"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 export ROOTBRIDGE_GUEST_HOME=/home/tester
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 ginstall() { local s="$1"; shift; bash "$GUEST" --root "$s" "$@" < /dev/null > "$T/guest.log" 2>&1; }
 sget() {   # sget <stage> <dotted.key>: value from the staged settings.json, "-" when it is not there
     python3 -I -c '
@@ -210,5 +206,4 @@ check "install.sh --model ungültig: Code 2"               2 "$?"
 check "install.sh --model ungültig: Gast nicht angefasst" 0 "$(wc -c < "$STUB_LOG" | tr -d ' ')"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

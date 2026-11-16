@@ -14,34 +14,11 @@
 
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
-conf_get() {
-    [ -r "$CONF" ] || return 1
-    local v
-    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    [ -n "$v" ] && printf '%s' "$v"
-}
+# shellcheck source=../lib/rootbridge-guest-lib.sh
+. "${ROOTBRIDGE_GUEST_LIB:-/usr/local/lib/termux-rootbridge/rootbridge-guest-lib.sh}" 2>/dev/null \
+    || { echo "rootbridge-claude: rootbridge-guest-lib.sh nicht gefunden (install.sh erneut ausführen)" >&2; exit 1; }
 
-# Claude Code closes every file descriptor up to RLIMIT_NOFILE after each fork. Under proot every
-# close() is a trapped syscall (~80 us), so Android's limit of 32768 costs 2.5-4 s per started process
-# (hooks, Bash tool, rg, ...). Bun raises the soft limit back to the hard one, so both go down. Only
-# ever lowered, and only for Claude (callers run this in a subshell); NOFILE_LIMIT=0 switches it off.
-limit_nofile() {
-    local n cur
-    n="$(conf_get NOFILE_LIMIT || echo 2048)"
-    case "$n" in ''|0|*[!0-9]*) return 0 ;; esac
-    cur="$(ulimit -Hn)"
-    case "$cur" in
-        unlimited) ;;
-        ''|*[!0-9]*) return 0 ;;
-        *) [ "$cur" -gt "$n" ] || return 0 ;;
-    esac
-    ulimit -n "$n" 2>/dev/null || true
-}
-
-workdir="$(conf_get WORKDIR || echo /root/work)"
-cd "$workdir" 2>/dev/null || cd /root || exit 1
+enter_workdir
 
 export BROWSER=/usr/local/bin/rootbridge-open
 export IS_SANDBOX=1          # Claude Code refuses bypass mode as root otherwise
@@ -56,29 +33,14 @@ if [ -z "$claude_bin" ]; then
     exec bash -l
 fi
 
-if command -v rootbridge-apt >/dev/null 2>&1; then
-    rootbridge-apt || true
-fi
-
-# claude update, codex update (CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
-if command -v rootbridge-update >/dev/null 2>&1; then
-    rootbridge-update || true
-fi
+# apt-get update + upgrade, claude update, codex update (APT_UPGRADE / CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
+run_maintenance
 
 # Emergency switch of the Codex pre-commit review hook: `rootbridge codex-off` (in Termux) puts
 # CODEX_PRECOMMIT=off into the config, and the hook (a child of Claude Code) reads it from the environment.
 # Only the value "off" is handed on.
 [ "$(conf_get CODEX_PRECOMMIT || true)" = off ] && export CODEX_PRECOMMIT=off
 
-
-# After Claude Code: a clean end (/exit = 0, Ctrl+C = 130) ends the script, so the tmux window and
-# session close and the widget's Termux window closes too. On an error the shell stays open.
-after_claude() {
-    case "$1" in 0|130) exit 0 ;; esac
-    echo
-    echo "Claude Code wurde mit Code $1 beendet. Neu starten mit: claude   (Shell bleibt offen)"
-    exec bash -l
-}
 
 has_claude_conversation() {
     python3 -I "${ROOTBRIDGE_CONVERSATION_CHECK:-/usr/local/lib/termux-rootbridge/claude-conversation.py}" \
@@ -125,4 +87,4 @@ prepare_claude_args() {
 }
 prepare_claude_args "${1:-}" || exit $?
 ( limit_nofile; exec "$claude_bin" --allow-dangerously-skip-permissions "${extra[@]}" )
-after_claude "$?"
+after_tool "Claude Code" claude "$?"

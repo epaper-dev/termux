@@ -12,20 +12,16 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 GUEST="$ROOT/guest/install-guest.sh"
 INSTALL="$ROOT/install.sh"
 FORMER="$ROOT/tests/fixtures/former-colors.properties"            # colors.properties of versions up to PR #4
 FORMER_LIGHT="$ROOT/tests/fixtures/former-colors-light.properties" # colors-light.properties of PR #5
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 export ROOTBRIDGE_GUEST_HOME=/home/tester
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 jget() {   # jget <file> <key>: value of a top-level key ("-" if missing / unreadable)
     python3 -I - "$1" "$2" <<'PY'
@@ -143,21 +139,7 @@ check "Kaputte settings.json: keine Sicherung"        0 "$(baks "$S")"
 H="$T/home"; P="$T/prefix"; GROOT="$T/groot"; GUEST_ROOT="$T/guestroot"
 mkdir -p "$H" "$P/bin" "$GROOT/var/tmp" "$T/stubs" "$P/var/lib/proot-distro/containers/ubuntu"
 ln -s "$GROOT" "$P/var/lib/proot-distro/containers/ubuntu/rootfs"
-cat > "$T/stubs/proot-distro" <<'EOF'
-#!/bin/bash
-# fake proot-distro: logs the call and runs the guest installer against a staging root
-echo "$*" >> "$STUB_LOG"
-[ "$1" = login ] || exit 0
-shift 3                                   # login DISTRO --
-shift                                     # bash
-script="$STUB_GROOT$1"; shift
-args=()
-while [ $# -gt 0 ]; do
-    case "$1" in /var/tmp/*) args+=("$STUB_GROOT$1") ;; *) args+=("$1") ;; esac
-    shift
-done
-exec bash "$script" --root "$STUB_GUEST_ROOT" "${args[@]}"
-EOF
+cp "$ROOT/tests/stubs/proot-distro-guest-installer" "$T/stubs/proot-distro"
 cat > "$T/stubs/termux-reload-settings" <<'EOF'
 #!/bin/bash
 echo reload >> "$RB_LOG"
@@ -333,5 +315,4 @@ for w in "claude:rootbridge attach" "ubuntu:rootbridge shell"; do
 done
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish
