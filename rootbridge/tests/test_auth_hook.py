@@ -29,10 +29,9 @@ class TestFindUrls(unittest.TestCase):
         resp = [{"type": "text", "text": "Authorize here: " + LONG}]
         self.assertEqual(authhook.find_urls(resp), [LONG])
 
-    def test_nested_dict_and_json_string(self):
-        resp = {"content": [{"type": "text",
-                             "text": json.dumps({"authorization_url": LONG})}]}
-        # json.dumps escapes nothing here, but make sure we still find it
+    def test_nested_dict_and_json_string_with_escaped_slashes(self):
+        text = json.dumps({"authorization_url": LONG}).replace("/", "\\/")      # some JSON writers escape slashes
+        resp = {"content": [{"type": "text", "text": text}]}
         self.assertIn(LONG, authhook.find_urls(resp))
 
     def test_escaped_json(self):

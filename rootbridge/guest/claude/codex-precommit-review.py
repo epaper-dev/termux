@@ -49,9 +49,7 @@ import time
 # Start des Hooks: Das Gesamtbudget (TIMEOUT_S) gilt ab hier, also auch für git und die Vorbereitung.
 START = time.monotonic()
 
-# Gesamtbudget (alle Versuche, ab Hook-Start) in Sekunden, Standard 1500. Muss unter dem Hook-Timeout in
-# ~/.claude/settings.json liegen (dort 1560 s), sonst bricht Claude Code den Hook ab, bevor er blockieren kann; ein
-# solcher Abbruch lässt den Commit UNGEPRÜFT durch. Gemessen: Ein Review mit xhigh brauchte 14 min 7 s (847 s) ab Hook-Start.
+
 def _env_int(name, default, low, high):
     """Zahl aus der Umgebung, auf [low, high] begrenzt; ungültig oder leer -> default."""
     try:
@@ -61,6 +59,9 @@ def _env_int(name, default, low, high):
     return min(max(value, low), high)
 
 
+# Gesamtbudget (alle Versuche, ab Hook-Start) in Sekunden, Standard 1500. Muss unter dem Hook-Timeout in
+# ~/.claude/settings.json liegen (dort 1560 s), sonst bricht Claude Code den Hook ab, bevor er blockieren kann; ein
+# solcher Abbruch lässt den Commit UNGEPRÜFT durch. Gemessen: Ein Review mit xhigh brauchte 14 min 7 s (847 s) ab Hook-Start.
 TIMEOUT_S = _env_int("CODEX_PRECOMMIT_TIMEOUT_S", 1500, 60, 3000)
 ATTEMPTS = _env_int("CODEX_PRECOMMIT_ATTEMPTS", 2, 1, 5)
 # Zeitlimit und Größe je git-Aufruf (Diff und Dateiliste); darüber lässt sich der Stand nicht prüfen -> Block.
@@ -274,9 +275,10 @@ def _skip_heredocs(text, i, pending):
 
 
 def _heredoc_head(text, i):
-    """text[i:i+2] ist '<<': (Begrenzer, strip_tabs, Index hinter dem Begrenzer)."""
+    """text[i:i+2] ist '<<': (Begrenzer, strip_tabs, zitiert, Index hinter dem Begrenzer). Ein zitierter Begrenzer
+    ('EOF', "EOF", \\EOF) heißt: der Inhalt wird nicht ausgewertet."""
     n = len(text)
-    j, strip_tabs = i + 2, False
+    j, strip_tabs, quoted = i + 2, False, False
     if text[j:j + 1] == "-":
         strip_tabs = True
         j += 1
@@ -289,15 +291,17 @@ def _heredoc_head(text, i):
             k = text.find(ch, j + 1)
             if k < 0:
                 raise ParseError("offenes Anführungszeichen im Heredoc")
+            quoted = True
             delim.append(text[j + 1:k])
             j = k + 1
         elif ch == "\\":
+            quoted = True
             delim.append(text[j + 1:j + 2])
             j += 2
         else:
             delim.append(ch)
             j += 1
-    return "".join(delim), strip_tabs, j
+    return "".join(delim), strip_tabs, quoted, j
 
 
 def _scan_paren(text, i):
@@ -313,7 +317,7 @@ def _scan_paren(text, i):
             i = _skip_heredocs(text, i, pending)
             continue
         if text.startswith("<<", i) and not text.startswith("<<<", i):
-            delim, strip_tabs, i = _heredoc_head(text, i)
+            delim, strip_tabs, _, i = _heredoc_head(text, i)
             pending.append((delim, strip_tabs))
             continue
         if c == "'":
@@ -374,6 +378,8 @@ def _collect_subs(text, subs):
             i += 1
 
 
+# Ein zweiter, anders gebauter Tokenizer steht in android-root-guard.py (er liefert Wortpositionen für die Tickets).
+# Beide Dateien sind absichtlich eigenständig; eine Korrektur der Anführungs-/Substitutionsregeln kann in beiden nötig sein.
 def tokenize(text):
     """-> (commands, subs, grouped). commands: eine Wortliste je einfachem Befehl (Anführungszeichen entfernt);
     subs: Texte von $(...) und `...`; grouped: unquotierte Klammern, deren Shell-Kontext nicht aufgelöst wird.
@@ -455,31 +461,8 @@ def tokenize(text):
             i = j + 1
         elif text.startswith("<<", i) and not text.startswith("<<<", i):
             end_word()
-            j, strip_tabs = i + 2, False
-            if text[j:j + 1] == "-":
-                strip_tabs = True
-                j += 1
-            while text[j:j + 1] in (" ", "\t"):
-                j += 1
-            delim, quoted = [], False
-            while j < n and text[j] not in " \t\n;&|()<>":
-                ch = text[j]
-                if ch in "'\"":
-                    k = text.find(ch, j + 1)
-                    if k < 0:
-                        raise ParseError("offenes Anführungszeichen im Heredoc")
-                    quoted = True
-                    delim.append(text[j + 1:k])
-                    j = k + 1
-                elif ch == "\\":
-                    quoted = True
-                    delim.append(text[j + 1:j + 2])
-                    j += 2
-                else:
-                    delim.append(ch)
-                    j += 1
-            pending.append(("".join(delim), strip_tabs, quoted))
-            i = j
+            delim, strip_tabs, quoted, i = _heredoc_head(text, i)
+            pending.append((delim, strip_tabs, quoted))
         elif c in ";&|()":
             end_command()
             if c in "()":
@@ -576,6 +559,9 @@ def classify(words):
     return None
 
 
+UNCLEAR_CONTEXT = "Shell-Kontext mit Klammern nicht eindeutig; git commit separat ausführen."
+
+
 def analyze(command, cwd, depth=0, adds=False):
     """None, wenn der Befehl kein `git commit` ausführt, sonst (Ordner, adds): der Ordner, in dem es (zuerst) läuft
     (folgt `cd` in vorangehenden Befehlen und `git -C`), und ob ein `git add` / `git stage` davor in demselben Befehl
@@ -583,6 +569,13 @@ def analyze(command, cwd, depth=0, adds=False):
     if depth > 5:
         raise ParseError("zu tief verschachtelt")
     commands, subs, grouped = tokenize(command)
+
+    def commit_found(result):
+        """Ein Commit wurde gefunden; mit unquotierten Klammern ist sein Shell-Kontext unklar: blockieren."""
+        if grouped:
+            raise UncertainContext(UNCLEAR_CONTEXT)
+        return result
+
     cur = cwd
     for words in commands:
         info = classify(words)
@@ -593,23 +586,17 @@ def analyze(command, cwd, depth=0, adds=False):
         elif info[0] == "add":
             adds = True
         elif info[0] == "git":
-            if grouped:
-                raise UncertainContext("Shell-Kontext mit Klammern nicht eindeutig; git commit separat ausführen.")
             for d in info[1]:
                 cur = _step(cur, d)
-            return cur, adds
+            return commit_found((cur, adds))
         else:
             found = analyze(info[1], cur, depth + 1, adds)
             if found is not None:
-                if grouped:
-                    raise UncertainContext("Shell-Kontext mit Klammern nicht eindeutig; git commit separat ausführen.")
-                return found
+                return commit_found(found)
     for text in subs:
         found = analyze(text, cur, depth + 1, adds)
         if found is not None:
-            if grouped:
-                raise UncertainContext("Shell-Kontext mit Klammern nicht eindeutig; git commit separat ausführen.")
-            return found
+            return commit_found(found)
     return None
 
 
@@ -738,8 +725,9 @@ def main():
     private_state_dir()
     state_file = os.path.join(STATE_DIR, key)
     try:
-        if open(state_file).read().strip() == digest:
-            return 0
+        with open(state_file) as fh:
+            if fh.read().strip() == digest:
+                return 0
     except OSError:
         pass
 

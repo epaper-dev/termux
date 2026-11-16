@@ -77,7 +77,7 @@ class HookTest(unittest.TestCase):
             fh.write(content)
         subprocess.run([tool("git"), "add", name], cwd=repo, check=True)
 
-    def run_hook(self, command="git commit -m x", cwd=None, reply="ALLOW: ok", with_node=True, path=None, **extra):
+    def hook_env(self, reply="ALLOW: ok", with_node=True, path=None, **extra):
         env = {
             "HOME": self.home,
             "PATH": path or (self.bin + os.pathsep if with_node else "") + self.bare,
@@ -86,6 +86,10 @@ class HookTest(unittest.TestCase):
             "FAKE_REPLY": reply,
         }
         env.update(extra)
+        return env
+
+    def run_hook(self, command="git commit -m x", cwd=None, reply="ALLOW: ok", with_node=True, path=None, **extra):
+        env = self.hook_env(reply, with_node, path, **extra)
         data = {"tool_input": {"command": command}, "cwd": cwd or self.repo}
         return subprocess.run([sys.executable, "-I", SCRIPT], input=json.dumps(data), env=env,
                               capture_output=True, text=True, timeout=120)
@@ -409,15 +413,14 @@ class DetectionTest(unittest.TestCase):
                 self.assertEqual(self.find(command), expected)
 
     def test_a_git_add_before_the_commit_is_noticed(self):
-        for command, adds in (
+        for command, adds, *where in (                  # where: the folder of the commit, if it is not CWD
             ("git commit -m x", False), ("git commit -a -m x", False), ("git add -A && git commit -m x", True),
             ("git add f; git commit", True), ("git stage f && git commit", True),
             ("bash -c 'git add . && git commit -m x'", True), ("git commit -m x && git add y", False),
-            ("cd d && git -C e add . && git commit", True), ("echo add && git commit", False),
+            ("cd d && git -C e add . && git commit", True, "/work/repo/d"), ("echo add && git commit", False),
         ):
             with self.subTest(command=command):
-                self.assertEqual(self.hook.analyze(command, self.CWD), (self.CWD, adds) if "cd d" not in command
-                                 else ("/work/repo/d", adds))
+                self.assertEqual(self.hook.analyze(command, self.CWD), (where[0] if where else self.CWD, adds))
 
     def test_a_commit_hidden_behind_broken_quoting_is_an_error_not_a_pass(self):
         for command in ('git commit -m "oops', "git commit -m 'oops", "echo $(git commit"):

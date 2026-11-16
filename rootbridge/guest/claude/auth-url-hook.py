@@ -26,14 +26,16 @@ import sys
 CONF_PATH = os.environ.get("ROOTBRIDGE_CONF", "/etc/termux-rootbridge.conf")
 TOOL_RE = re.compile(r"^mcp__.+__(authenticate|complete_authentication)$")
 URL_RE = re.compile(r"https://[^\s\"'<>`\\]+")
+# The same URL rule as RB_URL_RE in rootbridge-lib.sh and the regex in rootbridge-open: change all three together.
 VALID_RE = re.compile(
     r"^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?"
-    r"([/?#][^\s\x00-\x1f\"'<>`\\]*)?$")
+    r"([/?#][^\s\x00-\x1f\x7f\"'<>`\\]*)?$")
 HINTS = ("oauth", "authorize", "auth", "login", "signin", "sign-in",
          "client_id", "redirect_uri", "state=", "code_challenge")
 MAX_URL = 8192
 
 
+# same file format as load_conf() in android-root-guard.py (both hooks are standalone files)
 def load_conf(path=None):
     conf = {}
     try:
@@ -94,7 +96,7 @@ def pick_url(urls):
 
 def host_of(url):
     host = url[len("https://"):]
-    host = re.split(r"[/?#]", host, 1)[0]
+    host = re.split(r"[/?#]", host, maxsplit=1)[0]
     return host.split(":")[0]
 
 

@@ -52,7 +52,7 @@ ROOT_ALWAYS = {"su", "magisk", "magiskboot", "magiskpolicy", "resetprop",
                "setprop", "ksud", "apd", "supolicy"}
 ADB_SAFE = {"devices", "version", "help", "get-state", "get-serialno",
             "get-devpath", "start-server", "kill-server"}
-FASTBOOT_SAFE = {"devices", "help"}
+FASTBOOT_SAFE = {"devices", "help", "--version", "-h", "--help"}
 BRIDGE_CLI = {"rootbridge", "rootbridge-daemon"}
 BRIDGE_CLI_SAFE = {"status", "help", "--help", "-h", "login", "attach",
                    "start", "shell", "version", "--version"}
@@ -117,6 +117,8 @@ def protected_paths(conf):
 
 # --------------------------------------------------------------------------
 # shell tokenizer (quote aware, no execution)
+# A second, differently shaped tokenizer lives in codex-precommit-review.py (it skips heredoc bodies and follows `cd`).
+# Both are standalone files on purpose; a fix to the quoting or substitution rules may be needed in both.
 # --------------------------------------------------------------------------
 class Word:
     __slots__ = ("text", "lit", "start", "end")
@@ -472,12 +474,7 @@ def _scan_file(path, ctx):
 
 
 def _mentions_protected(text, ctx):
-    if ".rootbridge" in text:
-        return True
-    for p in ctx.protected:
-        if p in text:
-            return True
-    return False
+    return ".rootbridge" in text or any(p in text for p in ctx.protected)
 
 
 def _path_protected(path, ctx):
@@ -490,7 +487,7 @@ def _path_protected(path, ctx):
         for p in ctx.protected:
             if c == p or c.startswith(p.rstrip("/") + "/"):
                 return True
-        if "/.rootbridge" in c or c.endswith("/.rootbridge"):
+        if "/.rootbridge" in c:
             return True
     return False
 
@@ -578,9 +575,7 @@ def _simple(sc, text, base, ctx):
                 " ".join(w.text for w in args))))
     elif cmd == "fastboot":
         first = args[0].text if args else None
-        if first is not None and first not in FASTBOOT_SAFE and not (
-                first.startswith("-") and first in ("--version", "-h",
-                                                    "--help")):
+        if first is not None and first not in FASTBOOT_SAFE:
             ctx.asks.append("fastboot: " + _short(
                 " ".join(w.text for w in args)))
     elif cmd in BRIDGE_CLI:
@@ -629,7 +624,7 @@ def _tamper(sc, ctx, cmd=None, args=()):
 # --------------------------------------------------------------------------
 # tickets
 # --------------------------------------------------------------------------
-def make_ticket(conf, cmdstr, display):
+def make_ticket(conf, cmdstr):
     tdir = os.path.join(conf["BRIDGE_DIR"], "tickets")
     os.makedirs(tdir, mode=0o700, exist_ok=True)
     now = int(time.time())
@@ -649,7 +644,7 @@ def make_ticket(conf, cmdstr, display):
     expires = now + int(conf["TICKET_TTL"])
     tmp = os.path.join(tdir, ".%s.tmp" % tid)
     with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write("%d\n%s\n%s\n" % (expires, digest, display.replace("\n", " ")))
+        fh.write("%d\n%s\n%s\n" % (expires, digest, cmdstr.replace("\n", " ")))
     os.chmod(tmp, 0o600)
     os.replace(tmp, os.path.join(tdir, tid))
     return tid
@@ -687,7 +682,7 @@ def decide(data, conf=None, issue_tickets=True):
             try:
                 new, shift = command, 0
                 for off, cmdstr in sorted(ctx.tickets):
-                    tid = make_ticket(conf, cmdstr, cmdstr)
+                    tid = make_ticket(conf, cmdstr)
                     ins = "ROOTBRIDGE_TICKET=%s " % tid
                     new = new[:off + shift] + ins + new[off + shift:]
                     shift += len(ins)

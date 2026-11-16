@@ -168,6 +168,13 @@ class TestAndroidsu(GuardCase):
         self.assertAsk("cat <<EOF | bash\nandroidsu id\nEOF")
         self.assertFree("cat > notes.txt <<EOF\nhello\nEOF")
 
+    def test_heredoc_inside_a_substitution_does_not_hide_a_root_call(self):
+        # A quote or parenthesis inside the heredoc text makes the tokenizer give up or split early; the root call after
+        # the substitution must still be asked for, and an ordinary command after it stays free.
+        self.assertAsk("echo $(cat <<EOF\n'\nEOF\n); androidsu 'id'")
+        self.assertAsk("echo $(cat <<EOF\n)\nEOF\n); androidsu 'id'")
+        self.assertFree("echo $(cat <<EOF\n'\nEOF\n); echo done")
+
     def test_same_command_twice_needs_two_tickets(self):
         res = self.assertAsk("androidsu 'id'; androidsu 'id'")
         new = res["hookSpecificOutput"]["updatedInput"]["command"]
