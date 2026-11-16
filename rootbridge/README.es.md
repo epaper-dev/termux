@@ -306,6 +306,14 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   el aviso. `rootbridge voice grant` lo concede en cualquier momento, `rootbridge voice status` muestra PulseAudio y el micrófono,
   `rootbridge voice start|stop` controlan el servidor de audio a mano.
 
+**Disparadores sin root** (la app Termux de este repositorio, `app/`, muestra «Termux push to talk» a Android; cada uno ejecuta `ptt toggle`: un
+solo evento, el primero empieza a hablar y el siguiente lo detiene):
+* **Pulsación larga de Inicio**: Ajustes, Apps, Apps predeterminadas, Asistente digital, «Termux push to talk» (el teléfono también lo lista en
+  los ajustes de los botones, donde los tiene).
+* **Una tecla que puede abrir una app**, por ejemplo la tecla lateral de los teléfonos E-Ink en los ajustes de accesibilidad de la app E-Ink:
+  elegir la app «Termux push to talk».
+* **El icono «Termux push to talk»** en el lanzador, también como botón en la pantalla de inicio.
+
 **Tecla lateral del Hisense A9** (`--sidekey`, desactivada por defecto, se guarda como `SIDEKEY`): mantener la tecla lateral = grabar, soltar = parar. El instalador coloca
 `sidekey-ptt` en `$PREFIX/bin`; mantiene un `cat` de root sobre `/dev/input/event2` (la tecla, código 766) y llama a `ptt start` / `ptt stop`.
 La pulsación corta y la doble siguen con la app E-Ink; ajusta su pulsación larga a «Nothing». `rootbridge start|attach` arrancan el lector (una instancia),
