@@ -1,7 +1,7 @@
 name: Release set
 
-# Builds the Termux app and the Termux plugin apps of this repository (the subtrees termux-app/, termux-api/,
-# termux-boot/, termux-widget/, termux-styling/, termux-float/ and termux-tasker/) and signs them all with ONE key.
+# Builds the Termux app and the Termux plugin apps of this repository (the subtrees app/, api/, boot/, widget/,
+# styling/, float/ and tasker/) and signs them all with ONE key.
 # Script: .github/scripts/build_release_set.sh. The signing key is made by .github/scripts/make_signing_key.sh.
 #
 # The app and its plugins share the user id `com.termux`, so Android installs them side by side only when
@@ -25,9 +25,9 @@ on:
           - release-key
         default: ephemeral-key
       components:
-        description: 'Comma separated: app, termux-api, termux-boot, termux-widget, termux-styling, termux-float, termux-tasker'
+        description: 'Comma separated: app, api, boot, widget, styling, float, tasker'
         required: false
-        default: 'app,termux-api,termux-boot,termux-widget,termux-styling,termux-float,termux-tasker'
+        default: 'app,api,boot,widget,styling,float,tasker'
       publish:
         description: 'Create a GitHub release with the APKs as single files (only with release-key)'
         type: boolean

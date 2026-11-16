@@ -293,8 +293,13 @@ cmd_status() {
         [ -x "$root$GUEST_BIN/androidsu" ] && echo "  androidsu:           ok" || echo "  androidsu:           FEHLT"
         if [ "$TOOL_CLAUDE" = on ]; then
             guest_has "$root/root/.local/bin/claude" && echo "  Claude Code:         ok" || echo "  Claude Code:         FEHLT"
-            [ -f "$root/etc/claude-code/managed-settings.json" ] && echo "  Managed Settings:    aktiv" \
-                || { [ -f "$root/etc/claude-code/managed-settings.json.off" ] && echo "  Managed Settings:    AUSGESCHALTET (guard-off)" || echo "  Managed Settings:    FEHLT"; }
+            if [ -f "$root/etc/claude-code/managed-settings.json" ]; then
+                echo "  Managed Settings:    aktiv"
+            elif [ -f "$root/etc/claude-code/managed-settings.json.off" ]; then
+                echo "  Managed Settings:    AUSGESCHALTET (guard-off)"
+            else
+                echo "  Managed Settings:    FEHLT"
+            fi
         else
             echo "  Claude Code:         nicht Teil der Installation (--no-claude)"
         fi

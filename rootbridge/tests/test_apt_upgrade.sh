@@ -8,19 +8,15 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 APT="$ROOT/guest/bin/rootbridge-apt"
 GUEST="$ROOT/guest/install-guest.sh"
 INSTALL="$ROOT/install.sh"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 export ROOTBRIDGE_GUEST_HOME=/home/tester
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 # ------------------------------------------------ 1. rootbridge-apt with stubs
 mkdir -p "$T/stubs" "$T/state"
@@ -286,11 +282,11 @@ if [ "$(id -u)" -ne 0 ]; then
     check "ohne root: Hinweis"                        1 "$(out_has 'braucht root')"
 fi
 
-# --- rootbridge-claude calls it before `claude update`, and never lets it stop the start
-rc_apt="$(grep -n 'rootbridge-apt ||' "$ROOT/guest/bin/rootbridge-claude" | head -n 1 | cut -d: -f1)"
-rc_upd="$(grep -n 'rootbridge-update ||' "$ROOT/guest/bin/rootbridge-claude" | head -n 1 | cut -d: -f1)"
-check "rootbridge-claude: apt vor claude update"      1 "$([ -n "$rc_apt" ] && [ -n "$rc_upd" ] && [ "$rc_apt" -lt "$rc_upd" ] && echo 1 || echo 0)"
-check "rootbridge-claude: Fehler von apt egal (|| true)" 1 "$(grep -c 'rootbridge-apt || true' "$ROOT/guest/bin/rootbridge-claude")"
+# --- rootbridge-claude calls run_maintenance, which runs it before `claude update`, and never lets it stop the start
+rc_apt="$(grep -n 'rootbridge-apt ||' "$ROOTBRIDGE_GUEST_LIB" | head -n 1 | cut -d: -f1)"
+rc_upd="$(grep -n 'rootbridge-update ||' "$ROOTBRIDGE_GUEST_LIB" | head -n 1 | cut -d: -f1)"
+check "run_maintenance: apt vor claude update"      1 "$([ -n "$rc_apt" ] && [ -n "$rc_upd" ] && [ "$rc_apt" -lt "$rc_upd" ] && echo 1 || echo 0)"
+check "run_maintenance: Fehler von apt egal (|| true)" 1 "$(grep -c 'rootbridge-apt || true' "$ROOTBRIDGE_GUEST_LIB")"
 
 # ------------------------------------------------------ 2. guest installer
 gconf() { printf '%s' "$1/etc/termux-rootbridge.conf"; }
@@ -310,7 +306,7 @@ check "Gast: APT_TIMEOUT=1800"                         "APT_TIMEOUT=1800" "$(gva
 check "Gast: APT_HOLD mit den coreutils-Paketen"      "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" "$(gval "$S" APT_HOLD)"
 check "Gast: rootbridge-apt installiert"              ja "$([ -x "$S/usr/local/bin/rootbridge-apt" ] && echo ja || echo nein)"
 check "Gast: rootbridge-apt hat Gast-Shebang"         "#!/bin/bash" "$(head -n 1 "$S/usr/local/bin/rootbridge-apt")"
-check "Gast: rootbridge-claude hat den apt-Aufruf"    1 "$(grep -c 'rootbridge-apt || true' "$S/usr/local/bin/rootbridge-claude")"
+check "Gast: rootbridge-claude ruft run_maintenance"  1 "$(grep -c '^run_maintenance$' "$S/usr/local/bin/rootbridge-claude")"
 
 before="$(cksum < "$(gconf "$S")")"; b0="$(cbak "$S")"
 ginstall "$S"
@@ -371,21 +367,7 @@ check "Deinstallation: Stempel-Ordner entfernt"       nein "$([ -e "$S/var/lib/t
 H="$T/home"; P="$T/prefix"; GROOT="$T/groot"; GUEST_ROOT="$T/guestroot"
 mkdir -p "$H" "$P/bin" "$GROOT/var/tmp" "$P/var/lib/proot-distro/containers/ubuntu"
 ln -s "$GROOT" "$P/var/lib/proot-distro/containers/ubuntu/rootfs"
-cat > "$T/stubs/proot-distro" <<'EOF'
-#!/bin/bash
-# fake proot-distro: logs the call and runs the guest installer against a staging root
-echo "$*" >> "$PROOT_LOG"
-[ "$1" = login ] || exit 0
-shift 3                                   # login DISTRO --
-shift                                     # bash
-script="$STUB_GROOT$1"; shift
-args=()
-while [ $# -gt 0 ]; do
-    case "$1" in /var/tmp/*) args+=("$STUB_GROOT$1") ;; *) args+=("$1") ;; esac
-    shift
-done
-exec bash "$script" --root "$STUB_GUEST_ROOT" "${args[@]}"
-EOF
+cp "$ROOT/tests/stubs/proot-distro-guest-installer" "$T/stubs/proot-distro"
 printf '#!/bin/bash\nexit 0\n' > "$T/stubs/termux-reload-settings"
 chmod +x "$T/stubs/proot-distro" "$T/stubs/termux-reload-settings"
 export PROOT_LOG="$T/proot.log" STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$GUEST_ROOT"
@@ -463,5 +445,4 @@ help_out="$(bash "$INSTALL" --help 2>&1)"
 check "--help nennt --no-apt-upgrade"                 1 "$(printf '%s\n' "$help_out" | grep -c -- '--no-apt-upgrade\]')"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

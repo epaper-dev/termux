@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # build_release_set.sh - build the Termux app and the Termux plugin apps of this repository (the subtrees
-# termux-app/, termux-api/, termux-boot/, termux-widget/, termux-styling/, termux-float/, termux-tasker/),
+# app/, api/, boot/, widget/, styling/, float/, tasker/; upstream: termux/termux-app, termux/termux-api, ...),
 # sign them ALL with ONE key and check that they belong together. Used by .github/workflows/release_set.yml.
 # Run it from anywhere: it finds the repository root from its own location.
 #
@@ -15,8 +15,8 @@
 #               ephemeral-key release builds, signed with a throwaway key made in this run (tests the whole
 #                             pipeline; the APKs are valid but must not be distributed)
 #               release-key   release builds, signed with the real key from the secrets below
-#   COMPONENTS  comma separated: app, termux-api, termux-boot, termux-widget, termux-styling, termux-float,
-#               termux-tasker (default: all of them)
+#   COMPONENTS  comma separated: app, api, boot, widget, styling, float, tasker (the directory names;
+#               default: all of them)
 #   OUT_DIR     result directory (default: ./set-out)
 #   GH_TOKEN    used by `gh api` to look up the termux-app commit a plugin names (see use_local_shared)
 #   SIGNING_KEYSTORE_BASE64, SIGNING_KEYSTORE_PASSWORD, SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD   (release-key)
@@ -24,11 +24,11 @@
 set -euo pipefail
 
 SIGNING="${SIGNING:-ephemeral-key}"
-COMPONENTS="${COMPONENTS:-app,termux-api,termux-boot,termux-widget,termux-styling,termux-float,termux-tasker}"
+COMPONENTS="${COMPONENTS:-app,api,boot,widget,styling,float,tasker}"
 OUT_DIR="${OUT_DIR:-$PWD/set-out}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"   # repository root; the components are its subdirectories
-APP_DIR="$ROOT/termux-app"
-PLUGINS="termux-api termux-boot termux-widget termux-styling termux-float termux-tasker"
+APP_DIR="$ROOT/app"
+PLUGINS="api boot widget styling float tasker"
 WORK="${RUNNER_TEMP:-/tmp}/release-set-work"
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
@@ -107,9 +107,13 @@ collect() {   # collect <component> <dir with the build output>: copy every APK 
     say "$name: $n APK(s)"
 }
 
+version_name() {   # version_name <build.gradle>: the versionName of an app module
+    grep -m 1 -E '^\s+versionName "' "$1" | sed -r 's/^\s+versionName "([^"]+)".*/\1/'
+}
+
 build_app() {
     local ver sha
-    ver="$(grep -m 1 -E '^\s+versionName "' "$APP_DIR/app/build.gradle" | sed -r 's/^\s+versionName "([^"]+)".*/\1/')"
+    ver="$(version_name "$APP_DIR/app/build.gradle")"
     sha="$(git -C "$ROOT" rev-parse --short=7 HEAD)"
     say "app: version $ver+$sha, variant apt-android-7, task $TASK"
     # app/build.gradle hooks the bootstrap download onto the Java compile task, but the native build of a release
@@ -170,7 +174,7 @@ build_plugin() {
     local name="$1" src dir dep ver
     src="$ROOT/$name"
     [ -f "$src/gradlew" ] && [ -f "$src/app/build.gradle" ] || die "$name: no Gradle project in $src (is the subtree there?)"
-    ver="$(grep -m 1 -E '^\s+versionName "' "$src/app/build.gradle" | sed -r 's/^\s+versionName "([^"]+)".*/\1/')"
+    ver="$(version_name "$src/app/build.gradle")"
     say "$name: version ${ver:-?} from the subtree $name/, task $TASK"
     SOURCE_NOTES="${SOURCE_NOTES}$name ${ver:-?} from subtree \`$name/\`; "
     # build a copy: use_local_shared below edits build.gradle, the checkout stays as it is
@@ -249,6 +253,6 @@ done
 } >> "$OUT_DIR/REPORT.md"
 
 ( cd "$OUT_DIR/apks" && sha256sum ./*.apk | sed 's|\./||' > "$OUT_DIR/sha256sums.txt" )
-cat "$OUT_DIR/REPORT.md" | tee -a "$SUMMARY"
+tee -a "$SUMMARY" < "$OUT_DIR/REPORT.md"
 [ "$problems" -eq 0 ] || die "the set has $problems problem(s)"
 say "done: $(find "$OUT_DIR/apks" -name '*.apk' | wc -l) APK(s) in $OUT_DIR/apks"

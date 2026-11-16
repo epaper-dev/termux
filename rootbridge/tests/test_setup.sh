@@ -17,12 +17,13 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 INSTALL="$ROOT/install.sh"
 SETUP_GUEST_REAL="$ROOT/guest/setup-guest.sh"
 GUEST="$ROOT/guest/install-guest.sh"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 # These cases test the base setup (python3, curl, certificates, Claude Code, Codex, plugin): the voice part (sox) has its own test
 # (test_voice.sh). The wrapper puts --voice no in front; a machine that has sox itself must not change the result either.
 SETUP_GUEST="$T/setup-guest-novoice.sh"
@@ -30,11 +31,6 @@ printf '#!/bin/bash\nexec bash "%s" --voice no "$@"\n' "$SETUP_GUEST_REAL" > "$S
 chmod +x "$SETUP_GUEST"
 ORIG_PATH="$PATH"
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 count() { grep -c -- "$2" "$1" 2>/dev/null || true; }          # count <file> <fixed text>
 lineno() { grep -n -m1 -- "$2" "$1" 2>/dev/null | cut -d: -f1; }   # first line number of a text
 
@@ -166,7 +162,7 @@ SHIM="$T/shim"; mkdir -p "$SHIM"
 # HIDE="stat timeout" in the environment of the call takes those commands out of this device's PATH.
 newenv() {
     E="$T/$1"; shift
-    rm -rf "$E"; mkdir -p "$E/bin" "$E/home" "$E/prefix/bin"
+    rm -rf "$E"; mkdir -p "$E/bin" "$E/home" "$E/prefix/bin" "$E/tmp"
     SHIMDIR="$SHIM"
     if [ -n "${HIDE:-}" ]; then
         SHIMDIR="$E/shim"; cp -a "$SHIM" "$SHIMDIR"
@@ -186,7 +182,7 @@ newenv() {
 }
 # envrun <args...>: runs the command with the environment of the current fake device
 envrun() {
-    env -i HOME="$E/home" PREFIX="$E/prefix" PATH="$E/bin:$SHIMDIR" STUB_LOG="$LOG" STUB_PREFIX="$E/prefix" \
+    env -i HOME="$E/home" PREFIX="$E/prefix" PATH="$E/bin:$SHIMDIR" TMPDIR="$E/tmp" STUB_LOG="$LOG" STUB_PREFIX="$E/prefix" \
         STUB_AV="$AV" STUB_BIN="$E/bin" STUB_REAL_PYTHON="$REAL_PYTHON" STUB_REAL_SETSID="$REAL_SETSID" STUB_ORIG_PATH="$ORIG_PATH" \
         BRIDGE_DIR="$E/home/.rootbridge" ROOTBRIDGE_ALLOW_GUEST=1 \
         ROOTBRIDGE_CA_BUNDLE="$E/ca/ca-certificates.crt" ROOTBRIDGE_GUEST_HOME="${ROOTBRIDGE_GUEST_HOME:-$E/ghome}" \
@@ -419,7 +415,7 @@ check "D1 bwrap ist verfügbar"                                ja "$([ -x "$E/bi
 a="$(lineno "$LOG" '^apt-get install')"; b="$(lineno "$LOG" '^installer: ran')"; c="$(lineno "$LOG" '^codex-installer: ran')"
 check "D1 Reihenfolge: apt < Claude Code < Codex"               ja "$([ "$a" -lt "$b" ] && [ "$b" -lt "$c" ] && echo ja || echo "nein ($a $b $c)")"
 check "D1 Meldungen"                                            "1 1" "$(count "$E/out.log" '== Gast: Codex$') $(count "$E/out.log" 'codex installiert:')"
-dl="$(ls "${TMPDIR:-/tmp}"/tmp.*/codex-install.sh 2>/dev/null | head -n 1)"
+dl="$(ls "$E"/tmp/tmp.*/codex-install.sh 2>/dev/null | head -n 1)"
 check "D1 Installer-Dateien werden aufgeräumt"                  "" "$dl"
 
 : > "$LOG"
@@ -523,5 +519,4 @@ ROOTBRIDGE_GUEST_HOME=/home/tester bash "$GUEST" --root "$GS" --autonomous no > 
 check "C1 zweiter Lauf: weiter genau eine PATH-Zeile"           1 "$(count "$RC" 'export PATH="$HOME/.local/bin:$PATH"')"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

@@ -67,7 +67,7 @@ cd rootbridge
 bash install.sh
 ```
 
-`epaper-dev/termux` enthält auch die Termux-Apps (`termux-app/`, `termux-float/` und weitere, etwa 110 MB). Der
+`epaper-dev/termux` enthält auch die Termux-Apps (`app/`, `float/` und weitere, etwa 110 MB). Der
 Sparse-Checkout holt nur `rootbridge/` (etwa 1,5 MB); mehr braucht der Installer nicht. Zum Aktualisieren später
 `git pull` in `~/termux` und `bash install.sh` noch einmal ausführen. Ein einfaches
 `git clone --depth 1 https://github.com/epaper-dev/termux` geht ebenfalls und lädt das ganze Repository.

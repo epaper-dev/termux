@@ -9,27 +9,14 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 GUEST="$ROOT/guest/install-guest.sh"
 INSTALL="$ROOT/install.sh"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 export ROOTBRIDGE_GUEST_HOME=/home/tester
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
-flag() {   # flag <stage>: value of the key in the staged settings.json, "-" when it is not there
-    python3 -I -c '
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except OSError:
-    print("-"); raise SystemExit
-print(d.get("skipDangerousModePermissionPrompt", "-"))' "$1/home/tester/.claude/settings.json"
-}
 ginstall() { local s="$1"; shift; bash "$GUEST" --root "$s" "$@" < /dev/null > "$T/guest.log" 2>&1; }
 sget() {   # sget <stage> <dotted.key>: value from the staged settings.json, "-" when it is not there
     python3 -I -c '
@@ -50,24 +37,24 @@ isdir() { if [ -d "$1" ]; then echo yes; else echo no; fi; }
 # ------------------------------------------------------------ guest installer
 S="$T/g1"; ginstall "$S"
 check "Gast ohne Option: läuft"                          0 "$?"
-check "Gast ohne Option: Bypass-Schalter gesetzt"        True "$(flag "$S")"
+check "Gast ohne Option: Bypass-Schalter gesetzt"        True "$(sget "$S" skipDangerousModePermissionPrompt)"
 
 S="$T/g2"; ginstall "$S" --autonomous yes
-check "Gast yes: Schalter gesetzt"                       True "$(flag "$S")"
+check "Gast yes: Schalter gesetzt"                       True "$(sget "$S" skipDangerousModePermissionPrompt)"
 
 S="$T/g3"; ginstall "$S" --autonomous no
 check "Gast no: läuft"                                   0 "$?"
-check "Gast no: Schalter nicht gesetzt"                  - "$(flag "$S")"
+check "Gast no: Schalter nicht gesetzt"                  - "$(sget "$S" skipDangerousModePermissionPrompt)"
 
 S="$T/g4"; ginstall "$S" --autonomous ask
-check "Gast ask ohne Terminal: Schalter nicht gesetzt"   - "$(flag "$S")"
+check "Gast ask ohne Terminal: Schalter nicht gesetzt"   - "$(sget "$S" skipDangerousModePermissionPrompt)"
 
 S="$T/g5"; ginstall "$S" --autonomous yes; ginstall "$S" --autonomous no
-check "Gast: no entfernt einen früheren Wert nicht"      True "$(flag "$S")"
+check "Gast: no entfernt einen früheren Wert nicht"      True "$(sget "$S" skipDangerousModePermissionPrompt)"
 
 S="$T/g6"; ginstall "$S" --autonomous maybe
 check "Gast: ungültiger Wert wird abgelehnt (Code 2)"    2 "$?"
-check "Gast: ungültiger Wert: nichts installiert"        - "$(flag "$S")"
+check "Gast: ungültiger Wert: nichts installiert"        - "$(sget "$S" skipDangerousModePermissionPrompt)"
 
 # ------------------------------------------------------------ start mode, model, working directory (guest)
 S="$T/s1"; ginstall "$S"
@@ -171,11 +158,11 @@ rinstall() {
 rinstall
 check "install.sh ohne Option: läuft"                    0 "$?"
 check "install.sh ohne Option: gibt yes an den Gast"     1 "$(grep -c -- '--autonomous yes' "$STUB_LOG")"
-check "install.sh ohne Option: Schalter im Gast"         True "$(flag "$GUEST_ROOT")"
+check "install.sh ohne Option: Schalter im Gast"         True "$(sget "$GUEST_ROOT" skipDangerousModePermissionPrompt)"
 
 rinstall --autonomous no
 check "install.sh no: gibt no an den Gast"               1 "$(grep -c -- '--autonomous no' "$STUB_LOG")"
-check "install.sh no: Schalter nicht gesetzt"            - "$(flag "$GUEST_ROOT")"
+check "install.sh no: Schalter nicht gesetzt"            - "$(sget "$GUEST_ROOT" skipDangerousModePermissionPrompt)"
 
 rm -rf "$GUEST_ROOT"; : > "$STUB_LOG"
 HOME="$H" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H/.rootbridge" \
@@ -219,5 +206,4 @@ check "install.sh --model ungültig: Code 2"               2 "$?"
 check "install.sh --model ungültig: Gast nicht angefasst" 0 "$(wc -c < "$STUB_LOG" | tr -d ' ')"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

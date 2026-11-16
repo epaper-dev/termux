@@ -5,21 +5,25 @@
 # Branch model (the same as the forks had, now for all subtrees together):
 #   master   an UNCHANGED copy of upstream: termux-app/, termux-api/, ... are the master branches of
 #            termux/termux-app, termux/termux-api, ... and nothing else is ever committed there
-#   main     the E-Paper product: master plus our own changes
+#   main     the E-Paper product: upstream plus our own changes. There the directories lost their `termux-` prefix
+#            (app/, api/, boot/, widget/, styling/, float/, tasker/); master keeps the upstream names.
 #
 # What it does:
 #   1. for every component: fetch termux/<component> master; when it has commits that master lacks, merge them into
 #      master below the component's directory (the merge `git subtree pull` does: -X subtree=<component>)
 #   2. push master
-#   3. merge master into main (an ordinary three-way merge, master being the common ancestor of the last sync)
+#   3. for every component: merge the same upstream commits into main below ITS directory there (-X subtree=<dir>).
+#      main does not merge master: its directories have other names, and git's rename detection would turn every
+#      deleted upstream file into a rename/delete conflict and leave new upstream directories under the old name
 #   4. push main
 #
 # Exit code: 0 = done (also when there was nothing to do), 1 = problem (details in the output),
 #            3 = merge conflict between upstream and main (master is updated and pushed, main is left as it was)
 #
 # Environment:
-#   COMPONENTS       space or comma separated (default: termux-app termux-api termux-boot termux-widget termux-styling
-#                    termux-float termux-tasker)
+#   COMPONENTS       space or comma separated; the upstream repository names, which are also the directory names on
+#                    master (default: termux-app termux-api termux-boot termux-widget termux-styling termux-float
+#                    termux-tasker)
 #   UPSTREAM_BASE    where the upstream repositories live (default: https://github.com/termux)
 #   UPSTREAM_BRANCH  branch of each upstream repository (default: master)
 #   MIRROR / PRODUCT branch names (default: master / main)
@@ -69,11 +73,13 @@ if [ "$(git rev-parse --is-shallow-repository)" = true ]; then die "shallow clon
 # --- 1. upstream -> master -----------------------------------------------------------------------------------
 git switch -q -C "$MIRROR" "origin/$MIRROR"
 updated=()
+declare -A tips=()
 for c in $COMPONENTS; do
     [ -d "$c" ] || die "$c/ does not exist on $MIRROR"
     url="$UPSTREAM_BASE/$c.git"
     retry git fetch -q --no-tags "$url" "$UPSTREAM_BRANCH" || die "could not fetch $url $UPSTREAM_BRANCH"
     tip="$(git rev-parse FETCH_HEAD)"
+    tips[$c]="$tip"
     if git merge-base --is-ancestor "$tip" HEAD; then
         say "$c: $MIRROR already has upstream ${tip:0:10}"
         continue
@@ -101,41 +107,56 @@ else
     note "- \`$MIRROR\` already has all upstream commits."
 fi
 
-# --- 2. master -> main ---------------------------------------------------------------------------------------
+# --- 2. upstream -> main -------------------------------------------------------------------------------------
 git switch -q -C "$PRODUCT" "origin/$PRODUCT"
-if git merge-base --is-ancestor "$MIRROR" HEAD; then
-    say "$PRODUCT already contains $MIRROR, nothing to merge"
-    note "- \`$PRODUCT\` already contains \`$MIRROR\`, nothing to merge."
-    exit 0
-fi
+merged=()
+for c in $COMPONENTS; do
+    tip="${tips[$c]}"
+    # the directory of the component on main: the upstream name, or without the `termux-` prefix
+    dir="$c"
+    git cat-file -e "HEAD:$dir" 2>/dev/null || dir="${c#termux-}"
+    git cat-file -e "HEAD:$dir" 2>/dev/null || die "$PRODUCT has neither $c/ nor $dir/"
+    if git merge-base --is-ancestor "$tip" HEAD; then
+        say "$c: $PRODUCT already has upstream ${tip:0:10}"
+        continue
+    fi
+    say "$c: merging upstream ${tip:0:10} into $PRODUCT below $dir/"
+    if ! git merge -q -X "subtree=$dir" --no-edit -m "Merge upstream termux/$c $UPSTREAM_BRANCH ($tip)" "$tip" >/dev/null 2>&1; then
+        files="$(git diff --name-only --diff-filter=U | head -n 20)"
+        git merge --abort 2>/dev/null || true
+        git reset -q --hard "origin/$PRODUCT"    # also drops the components merged earlier in this run
+        out conflict true
+        echo "::error::Merge conflict between upstream $c and $PRODUCT in: $(echo "$files" | tr '\n' ' ')"
+        {
+            echo "### Merge conflict: upstream \`termux/$c\` into \`$PRODUCT\`"
+            echo
+            echo "Upstream changed lines that \`$PRODUCT\` changed as well:"
+            echo
+            echo '```'
+            echo "$files"
+            echo '```'
+            echo
+            echo "\`$MIRROR\` is up to date and pushed, \`$PRODUCT\` is unchanged. Resolve it locally:"
+            echo
+            echo '```sh'
+            echo "git fetch origin && git switch $PRODUCT && git pull --ff-only"
+            echo "git fetch $UPSTREAM_BASE/$c.git $UPSTREAM_BRANCH"
+            echo "git merge -X subtree=$dir FETCH_HEAD"
+            echo "# fix the conflicts, commit, then"
+            echo "git push origin $PRODUCT"
+            echo '```'
+        } >> "$SUMMARY"
+        exit 3
+    fi
+    merged+=("$c")
+done
 
-say "merging $MIRROR into $PRODUCT"
-if ! git merge -q --no-edit -m "Merge upstream $MIRROR into $PRODUCT" "$MIRROR" >/dev/null 2>&1; then
-    files="$(git diff --name-only --diff-filter=U | head -n 20)"
-    git merge --abort 2>/dev/null || git reset -q --hard "origin/$PRODUCT"
-    out conflict true
-    echo "::error::Merge conflict between $MIRROR and $PRODUCT in: $(echo "$files" | tr '\n' ' ')"
-    {
-        echo "### Merge conflict: \`$MIRROR\` into \`$PRODUCT\`"
-        echo
-        echo "Upstream changed lines that \`$PRODUCT\` changed as well:"
-        echo
-        echo '```'
-        echo "$files"
-        echo '```'
-        echo
-        echo "\`$MIRROR\` is up to date and pushed, \`$PRODUCT\` is unchanged. Resolve it locally:"
-        echo
-        echo '```sh'
-        echo "git fetch origin && git switch $PRODUCT && git pull --ff-only"
-        echo "git merge origin/$MIRROR"
-        echo "# fix the conflicts, commit, then"
-        echo "git push origin $PRODUCT"
-        echo '```'
-    } >> "$SUMMARY"
-    exit 3
+if [ "${#merged[@]}" -eq 0 ]; then
+    say "$PRODUCT already has all upstream commits"
+    note "- \`$PRODUCT\` already has all upstream commits."
+    exit 0
 fi
 if [ "$PUSH" = 1 ]; then retry git push -q origin "$PRODUCT" || die "pushing $PRODUCT failed"; fi
 out merged true
-note "- Merged \`$MIRROR\` into \`$PRODUCT\`."
-say "$PRODUCT updated"
+note "- \`$PRODUCT\` took the upstream commits of: ${merged[*]}."
+say "$PRODUCT updated: ${merged[*]}"

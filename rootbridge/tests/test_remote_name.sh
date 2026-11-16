@@ -10,18 +10,14 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 GUEST="$ROOT/guest/install-guest.sh"
 INSTALL="$ROOT/install.sh"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 export ROOTBRIDGE_GUEST_HOME=/home/tester
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 # ------------------------------------------------------------ 1. guest installer
 gconf() { printf '%s' "$1/etc/termux-rootbridge.conf"; }
@@ -106,21 +102,7 @@ H="$T/home"; P="$T/prefix"; GROOT="$T/groot"; GUEST_ROOT="$T/guestroot"
 CFG="$H/.config/termux-rootbridge/config"
 mkdir -p "$H" "$P/bin" "$GROOT/var/tmp" "$T/stubs" "$P/var/lib/proot-distro/containers/ubuntu"
 ln -s "$GROOT" "$P/var/lib/proot-distro/containers/ubuntu/rootfs"
-cat > "$T/stubs/proot-distro" <<'EOF'
-#!/bin/bash
-# fake proot-distro: logs the call and runs the guest installer against a staging root
-echo "$*" >> "$STUB_LOG"
-[ "$1" = login ] || exit 0
-shift 3                                   # login DISTRO --
-shift                                     # bash
-script="$STUB_GROOT$1"; shift
-args=()
-while [ $# -gt 0 ]; do
-    case "$1" in /var/tmp/*) args+=("$STUB_GROOT$1") ;; *) args+=("$1") ;; esac
-    shift
-done
-exec bash "$script" --root "$STUB_GUEST_ROOT" "${args[@]}"
-EOF
+cp "$ROOT/tests/stubs/proot-distro-guest-installer" "$T/stubs/proot-distro"
 # install.sh reloads the Termux settings after writing colors.properties: never the real one
 printf '#!/bin/bash\nexit 0\n' > "$T/stubs/termux-reload-settings"
 chmod +x "$T/stubs/proot-distro" "$T/stubs/termux-reload-settings"
@@ -241,5 +223,4 @@ rinstall_tty '' --no-claude
 check "Codex allein: keine Claude-Namensabfrage" 0 "$(grep -c 'Gerätename \[' "$T/prompt.log")"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

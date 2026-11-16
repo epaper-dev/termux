@@ -1,14 +1,16 @@
 name: Sync upstream
 
 # `master` is an unchanged copy of the seven upstream repositories (termux/termux-app, termux-api, termux-boot,
-# termux-widget, termux-styling, termux-float, termux-tasker), each below its own directory. `main` is the
-# E-Paper product: master plus our own changes. This takes new upstream commits into master, merges master into
-# main and then builds and publishes a release set. Details and the branch model: .github/scripts/sync_upstream.sh
+# termux-widget, termux-styling, termux-float, termux-tasker), each below its own directory (termux-app/, ...).
+# `main` is the E-Paper product: upstream plus our own changes, with the directories renamed to app/, api/, boot/,
+# widget/, styling/, float/ and tasker/. This takes new upstream commits into master, merges the same commits into
+# main (below the renamed directories) and then builds and publishes a release set. Details and the branch model:
+# .github/scripts/sync_upstream.sh
 #
 # Runs every 6 hours. A run without new upstream commits changes nothing and builds nothing.
 #
-# A merge conflict between upstream and main ends the run red, opens an issue with the steps to fix it (merge
-# master into main by hand, push) and leaves main as it was; master is up to date anyway. The issue closes itself
+# A merge conflict between upstream and main ends the run red, opens an issue with the steps to fix it (merge the
+# upstream commits into main by hand, push) and leaves main as it was; master is up to date anyway. The issue closes itself
 # as soon as a run succeeds, and a second failing run does not open a second issue.
 #
 # After a successful merge into main the workflow `Release set` is started with the release key and publishes the
@@ -84,15 +86,16 @@ jobs:
           set +e -u -o pipefail
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           if [ "$CONFLICT" = true ]; then
-            title="Upstream sync: master could not be merged into $PRODUCT"
+            title="Upstream sync: upstream could not be merged into $PRODUCT"
             body="$(printf '%s\n' \
-              "The sync could not merge \`master\` (upstream) into \`$PRODUCT\`: upstream changed lines that the E-Paper changes changed as well. \`master\` is up to date, \`$PRODUCT\` is unchanged." \
+              "The sync could not merge upstream into \`$PRODUCT\`: upstream changed lines that the E-Paper changes changed as well. \`master\` is up to date, \`$PRODUCT\` is unchanged." \
               "" \
-              "Resolve it locally:" \
+              "Resolve it locally (the summary of the run names the component, its upstream repository and its directory on $PRODUCT; app, api, boot, widget, styling, float or tasker):" \
               "" \
               '```sh' \
               "git fetch origin && git switch $PRODUCT && git pull --ff-only" \
-              "git merge origin/master" \
+              "git fetch https://github.com/termux/<component>.git master" \
+              "git merge -X subtree=<directory> FETCH_HEAD" \
               "# fix the conflicts, commit, then" \
               "git push origin $PRODUCT" \
               '```' \
@@ -121,7 +124,7 @@ jobs:
         run: |
           set +e -u -o pipefail
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          for title in "Upstream sync: master could not be merged into $PRODUCT" "Upstream sync: failed"; do
+          for title in "Upstream sync: upstream could not be merged into $PRODUCT" "Upstream sync: failed"; do
             number="$(gh issue list --state open --limit 100 --json number,title | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -n 1)"
             if [ -n "$number" ]; then
               gh issue close "$number" --comment "Fixed: the sync works again. Run: $run_url"

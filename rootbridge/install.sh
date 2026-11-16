@@ -162,20 +162,14 @@ if [ "$REMOTE_NAME_SET" = 1 ] && ! [[ "$REMOTE_NAME" =~ $NAME_RE ]]; then
     exit 2
 fi
 
-if [ "$APT_MODE_SET" = 1 ] && ! [[ "$APT_MODE" =~ $APT_RE ]]; then
-    echo "--apt-upgrade: ungültiger Wert '$APT_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
-    exit 2
-fi
-
-if [ "$CLAUDE_UPD_SET" = 1 ] && ! [[ "$CLAUDE_UPD_MODE" =~ $APT_RE ]]; then
-    echo "--claude-update: ungültiger Wert '$CLAUDE_UPD_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
-    exit 2
-fi
-
-if [ "$CODEX_UPD_SET" = 1 ] && ! [[ "$CODEX_UPD_MODE" =~ $APT_RE ]]; then
-    echo "--codex-update: ungültiger Wert '$CODEX_UPD_MODE' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2
-    exit 2
-fi
+# check_mode <option> <value> <set 0|1>: exit 2 unless the value is 6h (1-999 hours), daily, always or off
+check_mode() {
+    [ "$3" = 1 ] || return 0
+    [[ "$2" =~ $APT_RE ]] || { echo "--$1: ungültiger Wert '$2' (erlaubt: 6h (1-999 Stunden), daily, always, off)" >&2; exit 2; }
+}
+check_mode apt-upgrade "$APT_MODE" "$APT_MODE_SET"
+check_mode claude-update "$CLAUDE_UPD_MODE" "$CLAUDE_UPD_SET"
+check_mode codex-update "$CODEX_UPD_MODE" "$CODEX_UPD_SET"
 
 BOTH_OFF_MSG="Mindestens eines von Claude Code und Codex muss installiert werden (nicht --no-claude und --no-codex zusammen)."
 if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then echo "$BOTH_OFF_MSG" >&2; exit 2; fi
@@ -248,11 +242,11 @@ backup() {
     cp -p "$1" "$dest" && say "  Sicherung: $dest" || true
 }
 
-# inst <src> <dest>: copy with Termux shebang; back up only on change
+# inst <src> <dest> [interpreter]: copy with the Termux shebang (bash, or e.g. python3); back up only on change
 inst() {
     local tmp="$2.new.$$"
     mkdir -p "$(dirname "$2")"
-    sed "1s|^#!.*|#!$PREFIX/bin/bash|" "$1" > "$tmp"
+    sed "1s|^#!.*|#!$PREFIX/bin/${3:-bash}|" "$1" > "$tmp"
     chmod 755 "$tmp"
     if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 0; fi
     backup "$2"
@@ -278,69 +272,15 @@ set_block() {
     local file="$1" content="$2" tmp
     touch "$file"
     tmp="$file.new.$$"
-    python3 -I - "$file" "$tmp" "$BEGIN" "$END" "$content" <<'PYEOF'
-import sys
-src, out, begin, end, content = sys.argv[1:6]
-lines = open(src, encoding="utf-8").read().split("\n")
-res, skip = [], False
-for line in lines:
-    if line.strip() == begin:
-        skip = True
-        continue
-    if skip:
-        if line.strip() == end:
-            skip = False
-        continue
-    res.append(line)
-body = "\n".join(res).rstrip("\n")
-block = open(content, encoding="utf-8").read().rstrip("\n")
-open(out, "w", encoding="utf-8").write(
-    (body + "\n\n" if body else "") + begin + "\n" + block + "\n" + end + "\n")
-PYEOF
+    python3 -I "$REPO/guest/lib/rbfile.py" set "$file" "$tmp" "$BEGIN" "$END" "$content"
     if cmp -s "$tmp" "$file"; then rm -f "$tmp"; else backup "$file"; mv -f "$tmp" "$file"; say "  aktualisiert: $file"; fi
-}
-
-drop_block() {
-    [ -f "$1" ] || return 0
-    local tmp="$1.new.$$"
-    python3 -I - "$1" "$tmp" "$BEGIN" "$END" <<'PYEOF'
-import sys
-src, out, begin, end = sys.argv[1:5]
-res, skip = [], False
-for line in open(src, encoding="utf-8").read().split("\n"):
-    if line.strip() == begin:
-        skip = True
-        continue
-    if skip:
-        if line.strip() == end:
-            skip = False
-        continue
-    res.append(line)
-open(out, "w", encoding="utf-8").write("\n".join(res).rstrip("\n") + "\n")
-PYEOF
-    mv -f "$tmp" "$1"
 }
 
 # own_extra_keys <file>: succeeds if the file sets `extra-keys` OUTSIDE our block, i.e. a row of the user's
 # own. Our block is appended at the end and a later duplicate key wins, so it would silently replace it.
 own_extra_keys() {
     [ -f "$1" ] || return 1
-    python3 -I - "$1" "$BEGIN" "$END" <<'PYEOF'
-import re, sys
-path, begin, end = sys.argv[1:4]
-skip = False
-for line in open(path, encoding="utf-8").read().split("\n"):
-    if line.strip() == begin:
-        skip = True
-        continue
-    if skip:
-        if line.strip() == end:
-            skip = False
-        continue
-    if re.match(r"\s*extra-keys\s*[=:]", line):
-        sys.exit(0)
-sys.exit(1)
-PYEOF
+    python3 -I "$REPO/guest/lib/rbfile.py" other "$1" "$BEGIN" "$END" '\s*extra-keys\s*[=:]'
 }
 
 command -v python3 >/dev/null 2>&1 || die "python3 fehlt (pkg install python)"
@@ -379,50 +319,8 @@ AUTOSTART_DELAY=3
 EOF
     say "  neu: $CFG"
 fi
-# The old default WORKDIR=/root/workspace was never created. If the folder is not in the guest nobody uses it:
-# move to the new default /root/work (an existing /root/workspace and any other value stay).
-if grep -qx 'WORKDIR=/root/workspace' "$CFG"; then
-    d="$(sed -n 's/^DISTRO=//p' "$CFG" | tail -n 1)"; d="${d:-ubuntu}"
-    if [ ! -e "$PREFIX/var/lib/proot-distro/containers/$d/rootfs/root/workspace" ] \
-       && [ ! -e "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root/workspace" ]; then
-        tmp="$CFG.new.$$"
-        sed 's|^WORKDIR=/root/workspace$|WORKDIR=/root/work|' "$CFG" > "$tmp"
-        backup "$CFG"; mv -f "$tmp" "$CFG"
-        say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
-    fi
-fi
-if [ "$APT_MODE_SET" = 1 ]; then
-    # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
-    tmp="$CFG.new.$$"
-    cp "$CFG" "$tmp"
-    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
-    if grep -q '^APT_UPGRADE=' "$tmp"; then
-        sed -i "s|^APT_UPGRADE=.*|APT_UPGRADE=$APT_MODE|" "$tmp"
-    else
-        printf 'APT_UPGRADE=%s\n' "$APT_MODE" >> "$tmp"
-    fi
-    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  apt-Modus gespeichert: $APT_MODE"; fi
-else
-    v="$(sed -n 's/^APT_UPGRADE=//p' "$CFG" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    if [[ "$v" =~ $APT_RE ]]; then APT_MODE="$v"; say "  apt-Modus aus der Konfig: $APT_MODE"; fi
-fi
-if [ "$CLAUDE_UPD_SET" = 1 ]; then
-    # same idea as APT_UPGRADE: the choice survives a reinstall of the guest
-    tmp="$CFG.new.$$"
-    cp "$CFG" "$tmp"
-    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
-    if grep -q '^CLAUDE_UPDATE=' "$tmp"; then
-        sed -i "s|^CLAUDE_UPDATE=.*|CLAUDE_UPDATE=$CLAUDE_UPD_MODE|" "$tmp"
-    else
-        printf 'CLAUDE_UPDATE=%s\n' "$CLAUDE_UPD_MODE" >> "$tmp"
-    fi
-    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  claude-update-Modus gespeichert: $CLAUDE_UPD_MODE"; fi
-else
-    v="$(sed -n 's/^CLAUDE_UPDATE=//p' "$CFG" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    if [[ "$v" =~ $APT_RE ]]; then CLAUDE_UPD_MODE="$v"; say "  claude-update-Modus aus der Konfig: $CLAUDE_UPD_MODE"; fi
-fi
+# onoff <yes|no>: the config spelling of a choice
+onoff() { if [ "$1" = yes ]; then echo on; else echo off; fi; }
 # cfg_get KEY: the value stored in the Termux config (quotes stripped; empty if there is none)
 cfg_get() {
     local v
@@ -438,6 +336,32 @@ cfg_set() {
     if grep -q "^$1=" "$tmp"; then sed -i "s|^$1=.*|$1=$2|" "$tmp"; else printf '%s=%s\n' "$1" "$2" >> "$tmp"; fi
     if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  $3"; fi
 }
+# The old default WORKDIR=/root/workspace was never created. If the folder is not in the guest nobody uses it:
+# move to the new default /root/work (an existing /root/workspace and any other value stay).
+if grep -qx 'WORKDIR=/root/workspace' "$CFG"; then
+    d="$(cfg_get DISTRO)"; d="${d:-ubuntu}"
+    if [ ! -e "$PREFIX/var/lib/proot-distro/containers/$d/rootfs/root/workspace" ] \
+       && [ ! -e "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root/workspace" ]; then
+        tmp="$CFG.new.$$"
+        sed 's|^WORKDIR=/root/workspace$|WORKDIR=/root/work|' "$CFG" > "$tmp"
+        backup "$CFG"; mv -f "$tmp" "$CFG"
+        say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
+    fi
+fi
+if [ "$APT_MODE_SET" = 1 ]; then
+    # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
+    cfg_set APT_UPGRADE "$APT_MODE" "apt-Modus gespeichert: $APT_MODE"
+else
+    v="$(cfg_get APT_UPGRADE)"
+    if [[ "$v" =~ $APT_RE ]]; then APT_MODE="$v"; say "  apt-Modus aus der Konfig: $APT_MODE"; fi
+fi
+if [ "$CLAUDE_UPD_SET" = 1 ]; then
+    # same idea as APT_UPGRADE: the choice survives a reinstall of the guest
+    cfg_set CLAUDE_UPDATE "$CLAUDE_UPD_MODE" "claude-update-Modus gespeichert: $CLAUDE_UPD_MODE"
+else
+    v="$(cfg_get CLAUDE_UPDATE)"
+    if [[ "$v" =~ $APT_RE ]]; then CLAUDE_UPD_MODE="$v"; say "  claude-update-Modus aus der Konfig: $CLAUDE_UPD_MODE"; fi
+fi
 # Claude keeps the stored choice without an option. Codex defaults to yes on every installer run:
 # an earlier --no-codex must not silently suppress its CLI, widget and review hook on the next installation.
 # Both choices are settled and checked BEFORE either is stored: a refused combination leaves the config as it was.
@@ -446,10 +370,10 @@ if [ "$USE_CLAUDE_SET" != 1 ] && [ "$(cfg_get TOOL_CLAUDE)" = off ]; then
 fi
 if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then die "$BOTH_OFF_MSG (die Konfig hat eines abgewählt: --claude oder --codex)"; fi
 if [ "$USE_CLAUDE_SET" = 1 ]; then
-    cfg_set TOOL_CLAUDE "$([ "$USE_CLAUDE" = yes ] && echo on || echo off)" "Claude Code: $USE_CLAUDE"
+    cfg_set TOOL_CLAUDE "$(onoff "$USE_CLAUDE")" "Claude Code: $USE_CLAUDE"
 fi
 if [ "$USE_CODEX_SET" = 1 ] || [ "$(cfg_get TOOL_CODEX)" = off ]; then
-    cfg_set TOOL_CODEX "$([ "$USE_CODEX" = yes ] && echo on || echo off)" "Codex: $USE_CODEX"
+    cfg_set TOOL_CODEX "$(onoff "$USE_CODEX")" "Codex: $USE_CODEX"
 fi
 # voice and side key: same idea (an option wins and is stored; without one the stored value counts)
 if [ "$USE_VOICE_SET" != 1 ] && [ "$(cfg_get VOICE)" = off ]; then
@@ -459,10 +383,10 @@ if [ "$USE_SIDEKEY_SET" != 1 ] && [ "$(cfg_get SIDEKEY)" = on ]; then
     USE_SIDEKEY=yes; say "  Seitentaste: an (aus der Konfig; aus mit --no-sidekey)"
 fi
 if [ "$USE_VOICE_SET" = 1 ]; then
-    cfg_set VOICE "$([ "$USE_VOICE" = yes ] && echo on || echo off)" "Sprache: $USE_VOICE"
+    cfg_set VOICE "$(onoff "$USE_VOICE")" "Sprache: $USE_VOICE"
 fi
 if [ "$USE_SIDEKEY_SET" = 1 ]; then
-    cfg_set SIDEKEY "$([ "$USE_SIDEKEY" = yes ] && echo on || echo off)" "Seitentaste: $USE_SIDEKEY"
+    cfg_set SIDEKEY "$(onoff "$USE_SIDEKEY")" "Seitentaste: $USE_SIDEKEY"
 fi
 # Resolve the device name after the enabled tools, so Codex-only installs ask no Claude question.
 if [ "$REMOTE_NAME_SET" != 1 ]; then
@@ -486,15 +410,7 @@ if [ "$REMOTE_NAME_SET" != 1 ]; then
 fi
 if [ "$REMOTE_NAME_SET" = 1 ]; then
     # store the name in the Termux config: it survives a reinstall of the guest
-    tmp="$CFG.new.$$"
-    cp "$CFG" "$tmp"
-    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
-    if grep -q '^REMOTE_NAME=' "$tmp"; then
-        sed -i "s|^REMOTE_NAME=.*|REMOTE_NAME=$REMOTE_NAME|" "$tmp"
-    else
-        printf 'REMOTE_NAME=%s\n' "$REMOTE_NAME" >> "$tmp"
-    fi
-    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  Remote-Control-Name gespeichert: $REMOTE_NAME"; fi
+    cfg_set REMOTE_NAME "$REMOTE_NAME" "Remote-Control-Name gespeichert: $REMOTE_NAME"
 fi
 if [ "$CODEX_UPD_SET" = 1 ]; then
     cfg_set CODEX_UPDATE "$CODEX_UPD_MODE" "codex-update-Modus gespeichert: $CODEX_UPD_MODE"
@@ -622,18 +538,6 @@ if [ "$DO_BOOT" = 1 ] && [ -d "$HOME/.termux/boot" ]; then
     inst "$REPO/termux/boot/10-rootbridge.sh" "$HOME/.termux/boot/10-rootbridge.sh"
 fi
 
-# inst_py <src> <dest>: like inst, for a Python program (the shebang points at Termux' python3)
-inst_py() {
-    local tmp="$2.new.$$"
-    mkdir -p "$(dirname "$2")"
-    sed "1s|^#!.*|#!$PREFIX/bin/python3|" "$1" > "$tmp"
-    chmod 755 "$tmp"
-    if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 0; fi
-    backup "$2"
-    mv -f "$tmp" "$2"
-    say "  installiert: $2"
-}
-
 # Voice dictation (/voice of Claude Code) works only with Claude Code: without it there is nothing to talk to.
 VOICE_ON=no
 if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then VOICE_ON=yes; fi
@@ -681,7 +585,7 @@ else
 fi
 # the side key reader (Hisense A9): installed on request only; a reader of an earlier install goes when it is switched off
 if [ "$USE_SIDEKEY" = yes ] && [ "$VOICE_ON" = yes ]; then
-    inst_py "$REPO/termux/bin/sidekey-ptt" "$PREFIX/bin/sidekey-ptt"
+    inst "$REPO/termux/bin/sidekey-ptt" "$PREFIX/bin/sidekey-ptt" python3
 elif [ -f "$PREFIX/bin/sidekey-ptt" ] && grep -q 'sidekey-ptt' "$PREFIX/bin/sidekey-ptt" 2>/dev/null; then
     pkill -f 'sidekey-ptt' 2>/dev/null || true
     rm -f "$PREFIX/bin/sidekey-ptt"
@@ -710,7 +614,7 @@ $f"
         mkdir -p "$bk"
         printf '%s\n' "$OLD_FILES" | while IFS= read -r f; do
             [ -n "$f" ] || continue
-            mv "$f" "$bk/" && say "  verschoben nach $bk: ${f#$HOME/}"
+            mv "$f" "$bk/" && say "  verschoben nach $bk: ${f#"$HOME"/}"
         done
         sed -i '/^alias ubuntu=~\/bin\/ubuntu-toggle\.sh$/d' "$HOME/.bashrc" 2>/dev/null || true
     else
@@ -727,22 +631,24 @@ else
     say "  übersprungen"
 fi
 
-say "== 5/5 Gast ($(sed -n 's/^DISTRO=//p' "$CFG" | tail -n 1))"
-if [ "$DO_GUEST" = 1 ]; then
-    DISTRO="$(sed -n 's/^DISTRO=//p' "$CFG" | tail -n 1)"; DISTRO="${DISTRO:-ubuntu}"
-    GROOT=""
-    for c in "$PREFIX/var/lib/proot-distro/containers/$DISTRO/rootfs" \
-             "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
-        [ -d "$c" ] && GROOT="$c" && break
+# find_guest_root <distro>: the root directory of the guest as seen from Termux; fails if it is not installed
+find_guest_root() {
+    local c
+    for c in "$PREFIX/var/lib/proot-distro/containers/$1/rootfs" "$PREFIX/var/lib/proot-distro/installed-rootfs/$1"; do
+        if [ -d "$c" ]; then printf '%s' "$c"; return 0; fi
     done
+    return 1
+}
+
+say "== 5/5 Gast ($(cfg_get DISTRO))"
+if [ "$DO_GUEST" = 1 ]; then
+    DISTRO="$(cfg_get DISTRO)"; DISTRO="${DISTRO:-ubuntu}"
+    GROOT="$(find_guest_root "$DISTRO" || true)"
     if [ -z "$GROOT" ] && [ "$DO_SETUP" = 1 ]; then
         say "  Gast '$DISTRO' fehlt: proot-distro install $DISTRO (Download, das dauert)"
         proot-distro install "$DISTRO" || die "proot-distro install $DISTRO ist fehlgeschlagen (Netz? Speicherplatz?). Erneut starten: bash install.sh"
         SETUP_DID=1
-        for c in "$PREFIX/var/lib/proot-distro/containers/$DISTRO/rootfs" \
-                 "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
-            [ -d "$c" ] && GROOT="$c" && break
-        done
+        GROOT="$(find_guest_root "$DISTRO" || true)"
     fi
     [ -n "$GROOT" ] || die "Gast '$DISTRO' nicht gefunden (proot-distro list). Ohne --no-setup legt install.sh ihn an; oder mit --no-guest überspringen."
     STAGE="$GROOT/var/tmp/termux-rootbridge-install"

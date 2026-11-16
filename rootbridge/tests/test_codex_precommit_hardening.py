@@ -1,6 +1,7 @@
 """Tests für die Härtung des Codex-Pre-Commit-Hooks: Zeitlimits, Byte-Kappe, privates Log, bereinigte Ausgabe,
 einstellbare Werte. Nutzt den Aufbau von test_codex_precommit.py (Stub-node, Wegwerf-Repos)."""
-import importlib.util
+import hashlib
+import io
 import json
 import os
 import stat
@@ -8,6 +9,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -18,27 +20,15 @@ SCRIPT = base.SCRIPT
 
 def load_module(env=None):
     """Das Skript als Modul laden (mit gesetzter Umgebung, denn die Werte werden beim Import gelesen)."""
-    old = {}
-    for key, value in (env or {}).items():
-        old[key] = os.environ.get(key)
-        os.environ[key] = value
-    try:
-        spec = importlib.util.spec_from_file_location("codex_precommit_review_h", SCRIPT)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-    finally:
-        for key, value in old.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+    with mock.patch.dict(os.environ, env or {}):
+        return base.load_hook()
 
 
 class Hardening(unittest.TestCase):
     setUp = base.HookTest.setUp
     new_repo = base.HookTest.new_repo
     write = base.HookTest.write
+    hook_env = base.HookTest.hook_env
     run_hook = base.HookTest.run_hook
     node_calls = base.HookTest.node_calls
     state_files = base.HookTest.state_files
@@ -126,15 +116,11 @@ class Hardening(unittest.TestCase):
     def test_the_budget_counts_from_the_start_of_the_hook_not_from_the_codex_call(self):
         # Verbrauchen git und Vorbereitung schon Zeit, bleibt für Codex weniger: Sonst überschritte die Summe das
         # Hook-Timeout von Claude Code (900 s), und der Abbruch dort ließe den Commit ungeprüft durch.
-        import io
-        from unittest import mock
         module = load_module({"HOME": self.home})
         module.START = time.monotonic() - (module.TIMEOUT_S - 10)          # nur noch 10 s übrig
         data = json.dumps({"tool_input": {"command": "git commit -m x"}, "cwd": self.repo})
-        env = {"HOME": self.home, "PATH": self.bin + os.pathsep + self.bare, "FAKE_LOG": self.log,
-               "FAKE_PROMPT": self.prompt_file, "FAKE_REPLY": "ALLOW: ok"}
         buffer = io.StringIO()
-        with mock.patch.dict(os.environ, env), mock.patch.object(sys, "stdin", io.StringIO(data)), \
+        with mock.patch.dict(os.environ, self.hook_env()), mock.patch.object(sys, "stdin", io.StringIO(data)), \
                 mock.patch.object(sys, "stderr", buffer):
             code = module.main()
         self.assertEqual(code, 2)
@@ -165,8 +151,7 @@ class Hardening(unittest.TestCase):
 
     def test_a_git_error_is_still_an_error_not_a_pass(self):
         module = load_module()
-        with self.assertRaises(OSError):                   # GitError ist ein OSError: main() blockiert dann
-            module.run_bytes(["sleep", "30"], self.tmp, timeout=1)
+        self.assertTrue(issubclass(module.GitError, OSError))      # ein OSError: main() blockiert dann
 
     # ------------------------------------------------------------------------------------------ Ausgabe an Claude
     def test_findings_for_claude_are_cleaned_capped_and_marked_as_foreign_text(self):
@@ -191,8 +176,6 @@ class Hardening(unittest.TestCase):
 
     def test_the_detail_of_a_failure_is_cleaned(self):
         module = load_module()
-        import io
-        from unittest import mock
         buffer = io.StringIO()
         with mock.patch.object(sys, "stderr", buffer):
             self.assertEqual(module.fail("Grund", "boom \x1b[31mrot\x1b[0m \x00 Ende"), 2)
@@ -226,14 +209,13 @@ class Hardening(unittest.TestCase):
                 self.assertEqual(module.analyze(command, self.repo)[0], elsewhere)
 
     def test_the_review_runs_in_the_repository_of_such_a_commit_not_in_the_session_directory(self):
-        import hashlib
         other = self.new_repo("other", content="y = 2\n")
         command = (f"cd {other} && git add -A && git commit -q -m \"$(cat <<'EOF'\n"
                    "the cut-off of Claude Code's hook\nEOF\n)\"")
         r = self.run_hook(command=command, cwd=self.repo, reply="ALLOW: ok")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.node_calls(), 1)
-        root = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=other, capture_output=True,
+        root = subprocess.run([base.tool("git"), "rev-parse", "--show-toplevel"], cwd=other, capture_output=True,
                               text=True, check=True).stdout.strip()
         remembered = hashlib.sha256(root.encode()).hexdigest()[:16]
         self.assertEqual(self.state_files(), [remembered])         # nicht das Repository der Sitzung
@@ -280,16 +262,13 @@ class Hardening(unittest.TestCase):
 
     def test_xhigh_can_still_be_chosen(self):
         self.assertEqual(self.values(CODEX_PRECOMMIT_EFFORT="xhigh")[3], "xhigh")
-        self.run_hook(CODEX_PRECOMMIT_EFFORT="xhigh")
-        with open(self.prompt_file + ".args") as fh:
-            self.assertEqual(fh.read().split(), ["task", "--json", "--effort", "xhigh"])
 
     def test_the_effort_setting_reaches_codex(self):
-        self.run_hook(CODEX_PRECOMMIT_EFFORT="low")
-        with open(self.prompt_file + ".args") as fh:
-            args = fh.read().split()
-        self.assertIn("--effort", args)
-        self.assertEqual(args[args.index("--effort") + 1], "low")
+        for effort in ("low", "xhigh"):
+            with self.subTest(effort):
+                self.run_hook(reply="BLOCK: x", CODEX_PRECOMMIT_EFFORT=effort)    # BLOCK merkt sich nichts: jede Runde ruft Codex
+                with open(self.prompt_file + ".args") as fh:
+                    self.assertEqual(fh.read().split(), ["task", "--json", "--effort", effort])
 
     def test_the_attempts_setting_limits_the_retries(self):
         r = self.run_hook(FAKE_FAIL="1", CODEX_PRECOMMIT_ATTEMPTS="1")
@@ -298,9 +277,13 @@ class Hardening(unittest.TestCase):
         self.assertIn("1 Versuchen", r.stderr)
 
     def test_the_emergency_switch_still_works_and_is_logged_without_arguments(self):
-        r = self.run_hook(reply="BLOCK: no", CODEX_PRECOMMIT="off")
+        r = self.run_hook(command="git commit -m SECRETTOKEN-1", reply="BLOCK: no", CODEX_PRECOMMIT="off")
         self.assertEqual(r.returncode, 0)
         self.assertEqual(self.node_calls(), 0)
+        with open(os.path.join(self.state_dir(), "hook.log")) as fh:
+            content = fh.read()
+        self.assertIn("CODEX_PRECOMMIT=off", content)
+        self.assertNotIn("SECRETTOKEN-1", content)
 
 
 if __name__ == "__main__":

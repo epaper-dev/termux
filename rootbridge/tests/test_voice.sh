@@ -14,6 +14,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 LIB="$ROOT/termux/lib/rootbridge-lib.sh"
 RBSRC="$ROOT/termux/bin/rootbridge"
 INSTALL="$ROOT/install.sh"
@@ -24,11 +26,6 @@ SETUP="$ROOT/guest/setup-guest.sh"
 T="$(mktemp -d)"
 trap 'kill "$(cat "$T/bridge/.lock/pid" 2>/dev/null)" 2>/dev/null; rm -rf "$T"' EXIT
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 has() { [ -e "$1" ] && echo ja || echo nein; }
 baks() { compgen -G "$1" | wc -l | tr -d ' '; }   # how many files match the glob
 count() { grep -c -- "$2" "$1" 2>/dev/null || true; }
@@ -187,21 +184,7 @@ check "shell: weder PulseAudio noch Seitentaste"          "0 0" "$(calls '^pulse
 H="$T/ih"; P="$T/ip"; GROOT="$P/var/lib/proot-distro/containers/ubuntu/rootfs"
 mkdir -p "$H" "$P/bin" "$P/etc/pulse" "$GROOT/var/tmp" "$T/istubs"
 ln -sf "$(command -v bash)" "$P/bin/bash"
-cat > "$T/istubs/proot-distro" <<'EOF'
-#!/bin/bash
-# logs the call and runs the guest scripts against a staging root, like test_codex.sh
-echo "proot-distro $*" >> "$STUB_LOG"
-[ "$1" = login ] || exit 0
-shift 3; shift
-script="$STUB_GROOT$1"; shift
-case "$script" in *setup-guest.sh) exit 0 ;; esac
-args=()
-while [ $# -gt 0 ]; do
-    case "$1" in /var/tmp/*) args+=("$STUB_GROOT$1") ;; *) args+=("$1") ;; esac
-    shift
-done
-exec bash "$script" --root "$STUB_GUEST_ROOT" "${args[@]}" < /dev/null
-EOF
+cp "$ROOT/tests/stubs/proot-distro-guest-scripts" "$T/istubs/proot-distro"
 printf '#!/bin/bash\nexit 0\n' > "$T/istubs/termux-reload-settings"
 printf '#!/bin/bash\necho "rootbridge $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs/rootbridge"
 printf '#!/bin/bash\necho "pkill $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs/pkill"
@@ -253,7 +236,6 @@ check "install.sh: eigene default.pa: Meldung"             1 "$(count "$T/instal
 rm -f "$PA"
 
 # --no-voice: stored, nothing of voice is set up, the guest hears it
-rm -f "$PA"
 irun --no-voice
 check "--no-voice: läuft, VOICE=off gespeichert"           "0 off" "$IRC $(iget VOICE)"
 check "--no-voice: keine default.pa"                       nein "$(has "$PA")"
@@ -465,5 +447,4 @@ check "sidekey-ptt ist ausführbar"                         ja "$([ -x "$ROOT/te
 check "sidekey-ptt kompiliert"                             0 "$(python3 -I -c "import sys; compile(open(sys.argv[1]).read(), 'x', 'exec')" "$ROOT/termux/bin/sidekey-ptt" >/dev/null 2>&1; echo $?)"
 check "help von install.sh nennt --voice und --sidekey"    "1 1" "$(bash "$INSTALL" --help 2>&1 | grep -c -- '^--voice / --no-voice') $(bash "$INSTALL" --help 2>&1 | grep -c -- '^--sidekey / --no-sidekey')"
 
-printf '\nErgebnis: %d bestanden, %d fehlgeschlagen\n' "$PASS" "$FAIL"
-[ "$FAIL" -eq 0 ]
+finish

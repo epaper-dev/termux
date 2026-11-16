@@ -10,11 +10,10 @@
 #
 # Environment: ROOTBRIDGE_DIR, ROOTBRIDGE_OPEN_WAIT (seconds, default 12)
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
-BRIDGE_DIR="${ROOTBRIDGE_DIR:-}"
-if [ -z "$BRIDGE_DIR" ] && [ -r "$CONF" ]; then
-    BRIDGE_DIR="$(sed -n 's/^BRIDGE_DIR=//p' "$CONF" | tail -n 1 | tr -d "\"'")"
-fi
+# shellcheck source=../lib/rootbridge-guest-lib.sh
+. "${ROOTBRIDGE_GUEST_LIB:-/usr/local/lib/termux-rootbridge/rootbridge-guest-lib.sh}" 2>/dev/null \
+    || { echo "rootbridge-open: rootbridge-guest-lib.sh nicht gefunden (install.sh erneut ausführen)" >&2; exit 1; }
+BRIDGE_DIR="${ROOTBRIDGE_DIR:-$(conf_get BRIDGE_DIR || true)}"
 BRIDGE_DIR="${BRIDGE_DIR:-/data/data/com.termux/files/home/.rootbridge}"
 WAIT="${ROOTBRIDGE_OPEN_WAIT:-12}"
 TERMUX_BIN="${TERMUX_BIN:-/data/data/com.termux/files/usr/bin}"
@@ -22,6 +21,7 @@ TERMUX_BIN="${TERMUX_BIN:-/data/data/com.termux/files/usr/bin}"
 copy_only=0
 if [ "${1:-}" = "--copy-only" ]; then copy_only=1; shift; fi
 url="${1:-}"
+# The same URL rule as RB_URL_RE in rootbridge-lib.sh and VALID_RE in auth-url-hook.py: change all three together.
 RE='^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?([/?#][^[:space:][:cntrl:]"'"'"'<>`\\]*)?$'
 if [ "${#url}" -gt 8192 ] || ! [[ "$url" =~ $RE ]]; then
     echo "rootbridge-open: nur https-URLs ohne Sonderzeichen (max. 8 KiB) werden geöffnet." >&2
@@ -38,11 +38,11 @@ if [ -d "$BRIDGE_DIR" ] && [ -e "$alive" ] \
     if [ "$copy_only" = 1 ]; then printf 'COPY %s\n' "$url"; else printf '%s\n' "$url"; fi \
         > "$BRIDGE_DIR/open-$id.url"
     res="$BRIDGE_DIR/open-res-$id"
-    n=0
+    tenths=0      # tenths of a second waited: every round sleeps 0.3 s
     until [ -e "$res" ]; do
         sleep 0.3
-        n=$(( n + 3 ))
-        if [ "$n" -ge $(( WAIT * 10 )) ]; then
+        tenths=$(( tenths + 3 ))
+        if [ "$tenths" -ge $(( WAIT * 10 )) ]; then
             rm -f "$BRIDGE_DIR/open-$id.url"
             fail "keine Antwort vom Daemon"
         fi

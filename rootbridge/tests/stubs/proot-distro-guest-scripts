@@ -1,0 +1,14 @@
+#!/bin/bash
+# fake proot-distro for the tests: logs "proot-distro <args>" to $STUB_LOG and runs the guest scripts against a staging
+# root ($STUB_GROOT, $STUB_GUEST_ROOT as in proot-distro-guest-installer); setup-guest.sh is not run
+echo "proot-distro $*" >> "$STUB_LOG"
+[ "$1" = login ] || exit 0
+shift 3; shift
+script="$STUB_GROOT$1"; shift
+case "$script" in *setup-guest.sh) exit 0 ;; esac
+args=()
+while [ $# -gt 0 ]; do
+    case "$1" in /var/tmp/*) args+=("$STUB_GROOT$1") ;; *) args+=("$1") ;; esac
+    shift
+done
+exec bash "$script" --root "$STUB_GUEST_ROOT" "${args[@]}" < /dev/null

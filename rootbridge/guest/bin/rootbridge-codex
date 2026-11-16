@@ -14,17 +14,11 @@
 # (the tests set ROOTBRIDGE_CODEX_KEEP_PATH and ROOTBRIDGE_CODEX_BIN to run it with stubs)
 [ -n "${ROOTBRIDGE_CODEX_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
-conf_get() {
-    [ -r "$CONF" ] || return 1
-    local v
-    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    [ -n "$v" ] && printf '%s' "$v"
-}
+# shellcheck source=../lib/rootbridge-guest-lib.sh
+. "${ROOTBRIDGE_GUEST_LIB:-/usr/local/lib/termux-rootbridge/rootbridge-guest-lib.sh}" 2>/dev/null \
+    || { echo "rootbridge-codex: rootbridge-guest-lib.sh nicht gefunden (install.sh erneut ausführen)" >&2; exit 1; }
 
-workdir="$(conf_get WORKDIR || echo /root/work)"
-cd "$workdir" 2>/dev/null || cd /root || exit 1
+enter_workdir
 
 # the browser hand-off for `codex login` (and links Codex opens): Android's browser, like for Claude Code
 export BROWSER=/usr/local/bin/rootbridge-open
@@ -36,24 +30,9 @@ if [ -z "$codex_bin" ]; then
     exec bash -l
 fi
 
-if command -v rootbridge-apt >/dev/null 2>&1; then
-    rootbridge-apt || true
-fi
-
-# claude update, codex update (CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
-if command -v rootbridge-update >/dev/null 2>&1; then
-    rootbridge-update || true
-fi
-
-# After Codex: a clean end (quit = 0, Ctrl+C = 130) ends the script, so the tmux window (and, if it is the last
-# one, the session and the widget's Termux window) close too. On an error the shell stays open.
-after_codex() {
-    case "$1" in 0|130) exit 0 ;; esac
-    echo
-    echo "Codex wurde mit Code $1 beendet. Neu starten mit: codex   (Shell bleibt offen)"
-    exec bash -l
-}
+# apt-get update + upgrade, claude update, codex update (APT_UPGRADE / CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
+run_maintenance
 
 read -r -a extra <<< "$(conf_get CODEX_ARGS || true)"
 ( exec "$codex_bin" "${extra[@]}" )
-after_codex "$?"
+after_tool Codex codex "$?"

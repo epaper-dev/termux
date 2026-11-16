@@ -6,19 +6,15 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 INSTALLER="$ROOT/guest/install-guest.sh"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 export ROOTBRIDGE_GUEST_HOME=/home/tester
 STAGE="$T/stage"
 BASHRC="$STAGE$ROOTBRIDGE_GUEST_HOME/.bashrc"
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 
 bash "$INSTALLER" --root "$STAGE" --autonomous no > "$T/install.log" 2>&1
 check "Installer läuft im Staging-Root" 0 "$?"
@@ -82,5 +78,4 @@ bash "$INSTALLER" --root "$STAGE" --uninstall > "$T/uninstall.log" 2>&1
 check "Deinstallation entfernt den Block"           0 "$(grep -c 'termux-rootbridge' "$BASHRC")"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

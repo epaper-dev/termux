@@ -1,0 +1,14 @@
+#!/bin/bash
+# fake proot-distro for the tests: logs the call ($PROOT_LOG, else $STUB_LOG) and runs the guest installer against a
+# staging root ($STUB_GROOT = the guest root as seen from Termux, $STUB_GUEST_ROOT = what --root gets)
+echo "$*" >> "${PROOT_LOG:-$STUB_LOG}"
+[ "$1" = login ] || exit 0
+shift 3                                   # login DISTRO --
+shift                                     # bash
+script="$STUB_GROOT$1"; shift
+args=()
+while [ $# -gt 0 ]; do
+    case "$1" in /var/tmp/*) args+=("$STUB_GROOT$1") ;; *) args+=("$1") ;; esac
+    shift
+done
+exec bash "$script" --root "$STUB_GUEST_ROOT" "${args[@]}"

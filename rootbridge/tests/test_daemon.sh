@@ -5,13 +5,14 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib.sh
+. "$ROOT/tests/lib.sh"
 DAEMON="$ROOT/termux/bin/rootbridge-daemon"
 CLIENT="$ROOT/guest/bin/androidsu"
 OPENER="$ROOT/guest/bin/rootbridge-open"
 GUARD="$ROOT/guest/claude/android-root-guard.py"
 
-T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+make_tmp
 mkdir -p "$T/bridge/tickets" "$T/home" "$T/bin"
 
 # fake su: `fake-su [-mm] -c <cmd>` -> logs, then runs the command with sh
@@ -40,11 +41,6 @@ export TERMUX_BIN="$T/no-termux-bin"
 export ROOTBRIDGE_TTY_CONFIRM=0 ROOTBRIDGE_CONF="$T/none.conf" ROOTBRIDGE_CONFIG="$T/none.cfg"
 unset CLAUDECODE ROOTBRIDGE_TICKET
 
-PASS=0; FAIL=0
-check() {   # check <name> <expected> <actual>
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); printf 'ok    %s\n' "$1"
-    else FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      erwartet: %s\n      erhalten: %s\n' "$1" "$2" "$3"; fi
-}
 contains() { # contains <name> <needle> <haystack>
     case "$3" in *"$2"*) PASS=$((PASS + 1)); printf 'ok    %s\n' "$1" ;;
         *) FAIL=$((FAIL + 1)); printf 'FAIL  %s\n      "%s" nicht in: %s\n' "$1" "$2" "$3" ;; esac
@@ -204,5 +200,4 @@ check "ohne Daemon und ohne Termux-Tool: open schlägt fehl" 1 "$(cat "$T/code")
 contains "Fehlermeldung nennt die URL" "https://login.example.org/x" "$(cat "$T/err")"
 
 echo
-echo "Ergebnis: $PASS bestanden, $FAIL fehlgeschlagen"
-[ "$FAIL" -eq 0 ]
+finish

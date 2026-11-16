@@ -22,35 +22,21 @@
 # ROOTBRIDGE_APT_KEEP_PATH so that their stub directory stays in front.
 [ -n "${ROOTBRIDGE_APT_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
-CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
+# shellcheck source=../lib/rootbridge-guest-lib.sh
+. "${ROOTBRIDGE_GUEST_LIB:-/usr/local/lib/termux-rootbridge/rootbridge-guest-lib.sh}" 2>/dev/null \
+    || { echo "rootbridge-apt: rootbridge-guest-lib.sh nicht gefunden (install.sh erneut ausführen)" >&2; exit 1; }
 STATE_DIR="${ROOTBRIDGE_APT_STATE_DIR:-/var/lib/termux-rootbridge}"
 STAMP="$STATE_DIR/apt-last-success"
 LOG="${ROOTBRIDGE_APT_LOG:-/var/log/termux-rootbridge-apt.log}"
 DEFAULT_HOLD="rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"
 
-# conf_raw KEY: value of KEY (quotes stripped); fails if the key is not there, even if empty
-conf_raw() {
-    [ -r "$CONF" ] && grep -q "^$1=" "$CONF" || return 1
-    local v
-    v="$(sed -n "s/^$1=//p" "$CONF" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    printf '%s' "$v"
-}
-
-mode="$(conf_raw APT_UPGRADE || true)"
-mode="${mode:-6h}"
+mode="$(conf_get APT_UPGRADE || echo 6h)"
 # interval = minimum distance in seconds between two successful runs (0 = no limit)
-interval=0
-case "$mode" in
-    off) exit 0 ;;
-    always) ;;
-    daily) interval=86400 ;;
-    *) if [[ "$mode" =~ ^[1-9][0-9]{0,2}h$ ]]; then
-           interval=$(( ${mode%h} * 3600 ))
-       else
-           echo "apt: unbekannter Wert APT_UPGRADE=$mode (erlaubt: 6h (Stunden, 1-999), daily, always, off) - übersprungen" >&2
-           exit 0
-       fi ;;
+interval="$(update_interval "$mode")"
+case $? in
+    1) exit 0 ;;
+    2) echo "apt: unbekannter Wert APT_UPGRADE=$mode (erlaubt: 6h (Stunden, 1-999), daily, always, off) - übersprungen" >&2
+       exit 0 ;;
 esac
 
 if [ "$(id -u)" -ne 0 ] && [ -z "${ROOTBRIDGE_APT_ALLOW_NONROOT:-}" ]; then
@@ -58,13 +44,9 @@ if [ "$(id -u)" -ne 0 ] && [ -z "${ROOTBRIDGE_APT_ALLOW_NONROOT:-}" ]; then
     exit 0
 fi
 
-now="$(date +%s)"
-if [ "$interval" -gt 0 ] && [ -r "$STAMP" ]; then
-    last="$(head -n 1 "$STAMP" 2>/dev/null)"
-    if [[ "$last" =~ ^[0-9]{9,12}$ ]] && [ "$last" -le "$now" ] && [ $((now - last)) -lt "$interval" ]; then
-        echo "apt: vor $(( (now - last) / 3600 )) h erfolgreich aktualisiert - übersprungen (APT_UPGRADE=$mode)"
-        exit 0
-    fi
+if [ "$interval" -gt 0 ] && age="$(stamp_age "$STAMP")" && [ "$age" -lt "$interval" ]; then
+    echo "apt: vor $(( age / 3600 )) h erfolgreich aktualisiert - übersprungen (APT_UPGRADE=$mode)"
+    exit 0
 fi
 
 tmo="$(conf_raw APT_TIMEOUT || true)"

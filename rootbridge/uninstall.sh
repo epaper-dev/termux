@@ -33,21 +33,7 @@ fi
 
 for f in "$HOME/.bashrc" "$HOME/.tmux.conf" "$HOME/.termux/termux.properties"; do
     [ -f "$f" ] || continue
-    python3 -I - "$f" "$BEGIN" "$END" <<'PYEOF'
-import sys
-path, begin, end = sys.argv[1:4]
-res, skip = [], False
-for line in open(path, encoding="utf-8").read().split("\n"):
-    if line.strip() == begin:
-        skip = True
-        continue
-    if skip:
-        if line.strip() == end:
-            skip = False
-        continue
-    res.append(line)
-open(path, "w", encoding="utf-8").write("\n".join(res).rstrip("\n") + "\n")
-PYEOF
+    python3 -I "$REPO/guest/lib/rbfile.py" drop "$f" "$BEGIN" "$END"
     say "Block entfernt: $f"
 done
 

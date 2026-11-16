@@ -23,7 +23,8 @@ SIG = b"\x89PNG\r\n\x1a\n"
 
 def read_png(path):
     """-> (width, height, rows) with rows = list of bytearrays of w*4 bytes (RGBA)."""
-    data = open(path, "rb").read()
+    with open(path, "rb") as fh:
+        data = fh.read()
     if data[:8] != SIG:
         raise SystemExit(f"{path}: kein PNG")
     pos, idat, ihdr = 8, [], None
@@ -35,6 +36,8 @@ def read_png(path):
         elif kind == b"IDAT":
             idat.append(body)
         pos += 12 + length
+    if ihdr is None:
+        raise SystemExit(f"{path}: IHDR-Block fehlt")
     w, h, depth, ctype, _comp, _filt, interlace = ihdr
     if (depth, ctype, interlace) != (8, 6, 0):
         raise SystemExit(f"{path}: erwartet 8 Bit RGBA ohne Interlace, gefunden Tiefe {depth}, Farbtyp {ctype}, Interlace {interlace}")
@@ -76,7 +79,8 @@ def write_png(path, w, h, rows):
     raw = b"".join(b"\x00" + bytes(r) for r in rows)
     out = SIG + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
     out += chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
-    open(path, "wb").write(out)
+    with open(path, "wb") as fh:
+        fh.write(out)
 
 
 def spans(src, dst):
