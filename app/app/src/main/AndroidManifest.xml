@@ -206,6 +206,55 @@
             </intent-filter>
         </service>
 
+        <!-- Termux as the digital assistant of the phone: a long press on Home runs `ptt toggle` (termux-rootbridge,
+             push to talk for Claude Code's /voice). Choose it in Settings, Apps, Default apps, Digital assistant app (and, where the
+             phone has them, in the settings of the buttons: long press on Home). -->
+        <service
+            android:name=".app.assist.PttVoiceInteractionService"
+            android:exported="true"
+            android:label="@string/ptt_assist_label"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/ptt_voice_interaction" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".app.assist.PttVoiceInteractionSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+        <!-- Named in ptt_voice_interaction.xml: Android refuses a voice interaction service without one. No intent
+             filter, so it is not offered as a speech recognizer. -->
+        <service
+            android:name=".app.assist.PttRecognitionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+        <activity
+            android:name=".app.assist.PttAssistActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/ptt_assist_label"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Also an app of its own in the list of installed apps, so that a key can be assigned to it: the settings of
+                 a key or button that offer "open an app" (for example the accessibility settings of the E-Ink phones for
+                 the side key) list it as "Termux push to talk". A tap on its icon toggles push to talk as well. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
 
         <!-- This (or rather, value 2.1 or higher) is needed to make the Samsung Galaxy S8 mark the
         app with "This app is optimized to run in full screen." -->

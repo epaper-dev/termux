@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Termux as the digital assistant of the phone: a long press on Home toggles push to talk (ptt toggle). -->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:recognitionService="com.termux.app.assist.PttRecognitionService"
+    android:sessionService="com.termux.app.assist.PttVoiceInteractionSessionService"
+    android:supportsAssist="true" />

@@ -235,4 +235,7 @@
     <!-- Donate Preference -->
     <string name="donate_preference_title">Donate</string>
 
+    <!-- The name of Termux in the list of digital assistants of the phone (a long press on Home toggles push to talk) -->
+    <string name="ptt_assist_label">Termux push to talk</string>
+
 </resources>

@@ -302,6 +302,14 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   prints the hint instead. `rootbridge voice grant` does it any time, `rootbridge voice status` shows PulseAudio and the microphone,
   `rootbridge voice start|stop` run the audio server by hand.
 
+**Triggers without root** (the Termux app of this repository, `app/`, shows "Termux push to talk" to Android; each one runs `ptt toggle`: one
+event, the first starts talking, the next stops):
+* **Long press on Home**: Settings, Apps, Default apps, Digital assistant app, "Termux push to talk" (the phone lists it in the settings of the
+  buttons too, where it has them).
+* **A key that can open an app**, for example the side key of the E-Ink phones in the accessibility settings of the E-Ink app: choose the app
+  "Termux push to talk".
+* **The icon "Termux push to talk"** in the launcher, also as a button on the home screen.
+
 **Side key of the Hisense A9** (`--sidekey`, off by default, stored as `SIDEKEY`): hold the side key to record, let go to stop. The installer puts
 `sidekey-ptt` into `$PREFIX/bin`; it keeps a root `cat` on `/dev/input/event2` (the key, scan code 766) and calls `ptt start` / `ptt stop`.
 Short and double presses stay with the E-Ink app; set its long press to "Nothing". `rootbridge start|attach` start the reader (one instance), and
