@@ -24,6 +24,7 @@ exit 0
 EOF
 chmod +x "$T/bin/rootbridge" "$T/stubs/tmux"
 export STUB_LOG="$T/stub.log" BRIDGE_DIR="$T/bridge"
+export RB_STORAGE_DIR="$T/no-storage"   # the shared storage of the machine must not change what the tests expect
 CONF="$T/home/.config/termux-rootbridge/config"
 RFS="$T/prefix/var/lib/proot-distro/installed-rootfs/ubuntu"
 EP="$RFS/root/.claude/themes/epaper.json"
@@ -85,7 +86,7 @@ check "Standard: kein Neustart"                 0 "$(grep -c 'respawn-pane' "$ST
 # THEME_RESTART=on: Claude Code restarts with --continue, but only on a change
 printf 'THEME_RESTART=on\n' > "$CONF"
 theme light-daltonized; rb theme dark
-check "THEME_RESTART=on: Neustart"              1 "$(grep -c 'respawn-pane -k -t ubuntu:claude proot-distro login ubuntu -- /usr/local/bin/rootbridge-claude --continue' "$STUB_LOG")"
+check "THEME_RESTART=on: Neustart (der Gast bleibt isoliert)" 1 "$(grep -c "respawn-pane -k -t ubuntu:claude proot-distro login ubuntu --isolated --bind $T/bridge:$T/bridge -- /usr/local/bin/rootbridge-claude --continue" "$STUB_LOG")"
 rb theme dark
 check "THEME_RESTART=on: ohne Wechsel kein Neustart" 0 "$(grep -c 'respawn-pane' "$STUB_LOG")"
 theme light-daltonized; STUB_HAS_SESSION=1 rb theme dark

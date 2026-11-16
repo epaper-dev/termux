@@ -35,7 +35,7 @@ HINTS = ("oauth", "authorize", "auth", "login", "signin", "sign-in",
 MAX_URL = 8192
 
 
-# same file format as load_conf() in android-root-guard.py (both hooks are standalone files)
+# KEY=value lines of /etc/termux-rootbridge.conf (the hooks are standalone files, each reads the config itself)
 def load_conf(path=None):
     conf = {}
     try:

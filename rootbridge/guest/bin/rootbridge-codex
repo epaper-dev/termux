@@ -6,10 +6,11 @@
 #      way round (rootbridge-claude does the same): the two review each other.
 #   3. Codex, in the working directory
 #
-# Codex starts with its own defaults (its sandbox and its approval questions): the installer does not turn on
-# any "dangerous" mode for it. CODEX_ARGS in /etc/termux-rootbridge.conf adds options of your own, for example
-# CODEX_ARGS="--model gpt-5.5". The android-root-guard hook protects Claude Code only; Codex gets root through
-# androidsu like everything else, and androidsu refuses without a ticket that only that hook hands out.
+# CODEX_ARGS in /etc/termux-rootbridge.conf adds options, for example CODEX_ARGS="--model gpt-5.5". By default the
+# installer puts --dangerously-bypass-approvals-and-sandbox there (install.sh --codex-bypass, CODEX_BYPASS): under
+# proot the bubblewrap sandbox of Codex fails on every command, so Codex would not run at all. Codex gets no Android
+# root on its own: androidsu hands every request to the Termux daemon, which asks you in an Android dialog. The managed
+# hook rootbridge-hook.py (/etc/codex/requirements.toml) tells Codex when you said no.
 
 # (the tests set ROOTBRIDGE_CODEX_KEEP_PATH and ROOTBRIDGE_CODEX_BIN to run it with stubs)
 [ -n "${ROOTBRIDGE_CODEX_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH

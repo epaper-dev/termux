@@ -2,9 +2,10 @@
 # rootbridge-daemon - headless root bridge of termux-rootbridge v2.
 #
 # Runs in Termux (outside proot). Executes Android-root requests of the guest
-# ONLY when they carry a valid single-use ticket that the Claude Code hook
-# issued after the user confirmed the command inside Claude Code. There is no
-# popup and no fallback: no ticket, no root.
+# ONLY after the user confirmed the command in an Android dialog (termux-dialog)
+# that this daemon shows itself. The guest can write requests, but the answer is
+# the output of the dialog, never a file: no confirmation, no root. A refusal is
+# also written as a note for the hook of the agent that asked (events/).
 #
 # Also opens validated https URLs (login pages) in the Android browser.
 #
@@ -25,25 +26,34 @@ done
 # shellcheck source=../lib/rootbridge-lib.sh
 . "$lib"
 rb_load_config
-mkdir -p "$BRIDGE_DIR/tickets"
-chmod 700 "$BRIDGE_DIR" "$BRIDGE_DIR/tickets" 2>/dev/null
+mkdir -p "$BRIDGE_DIR/events"
+chmod 700 "$BRIDGE_DIR" "$BRIDGE_DIR/events" 2>/dev/null
 
 write_res() { rb_write_atomic "$BRIDGE_DIR/res-$1.txt" "$2" "$3"; }
 
 # --- root requests -----------------------------------------------------------
+MAX_ASK_CHARS=4000      # what the dialog shows must be the whole command: a longer one is refused
+
+# refuse <id> <decision> <message> <command>: answer 99, log it, tell the agent's hook
+refuse() {
+    write_res "$1" 99 "$3"
+    rb_audit "$2" 99 "$4"
+    rb_event "$RB_AGENT_PID" "$2" "$4"
+}
+
 handle_request() {
-    local id="$1" req work tk cmd tid mtime age out code want
+    local id="$1" req work cmd mtime age out code
     local -a su_args
     req="$BRIDGE_DIR/req-$id.txt"
     work="$req.work"
-    tk="$BRIDGE_DIR/req-$id.ticket"
     mv "$req" "$work" 2>/dev/null || return 0          # someone else owns it
     cmd="$(cat "$work" 2>/dev/null)"
+    RB_AGENT=""; RB_AGENT_PID=""
 
     if [ -z "$cmd" ]; then
         write_res "$id" 98 "Leere oder verschwundene Anfrage."
         rb_audit EMPTY 98 ""
-        rm -f "$work" "$tk"; return 0
+        rm -f "$work"; return 0
     fi
 
     mtime="$(stat -c %Y "$work" 2>/dev/null)"
@@ -52,37 +62,39 @@ handle_request() {
         if [ "$age" -gt "$STALE_TIMEOUT" ]; then
             write_res "$id" 99 "Abgelehnt (Anfrage war bereits abgelaufen)."
             rb_audit STALE 99 "$cmd"
-            rm -f "$work" "$tk"; return 0
+            rm -f "$work"; return 0
         fi
     fi
 
     if ! command -v "$RB_SU" >/dev/null 2>&1; then
         write_res "$id" 127 "su nicht gefunden - kein Android-Root verfügbar."
         rb_audit NO-SU 127 "$cmd"
-        rm -f "$work" "$tk"; return 0
+        rm -f "$work"; return 0
     fi
 
-    tid=""
-    [ -r "$tk" ] && IFS= read -r tid < "$tk"
-    want="$(rb_sha256 "$cmd")"
-    if [ -z "$tid" ]; then
-        write_res "$id" 99 "Abgelehnt: keine Freigabe aus Claude Code. Rufe androidsu direkt als Bash-Befehl mit wörtlichem, einfach gequotetem Argument auf; Claude Code fragt dann nach."
-        rb_audit DENY-NOTICKET 99 "$cmd"
-        rm -f "$work" "$tk"; return 0
+    : > "$BRIDGE_DIR/ack-$id"          # tells the client: accepted, now it waits for your answer without a time limit
+    rb_requester "$id"
+    if [ "${#cmd}" -gt "$MAX_ASK_CHARS" ]; then
+        refuse "$id" ASK-FAIL "Abgelehnt: Der Befehl ist zu lang für die Rückfrage ($MAX_ASK_CHARS Zeichen). Als Skriptdatei ausführen und dem Nutzer die Datei zeigen." "$cmd"
+        rm -f "$work"; return 0
     fi
-    if ! rb_consume_ticket "$tid" "$want"; then
-        write_res "$id" 99 "Abgelehnt: $RB_TICKET_REASON."
-        rb_audit "DENY-TICKET" 99 "$cmd ($RB_TICKET_REASON)"
-        rm -f "$work" "$tk"; return 0
-    fi
+    rb_ask "$RB_AGENT" "$(printf '%s' "$cmd" | tr -d '\000-\010\013-\037')"
+    case $? in
+        0) ;;
+        1) refuse "$id" DENY-USER "Abgelehnt: Der Nutzer hat die Root-Anfrage in Termux abgelehnt. Keine Umgehung versuchen (su, adb, magisk, Dateien im Bridge-Ordner)." "$cmd"
+           rm -f "$work"; return 0 ;;
+        2) refuse "$id" ASK-TIMEOUT "Abgelehnt: Keine Antwort auf die Rückfrage in Termux (${ASK_TIMEOUT} s)." "$cmd"
+           rm -f "$work"; return 0 ;;
+        *) refuse "$id" ASK-FAIL "Abgelehnt: Die Rückfrage in Termux ließ sich nicht anzeigen (termux-api und die Termux:API-App installiert?)." "$cmd"
+           rm -f "$work"; return 0 ;;
+    esac
 
-    : > "$BRIDGE_DIR/ack-$id"                             # tells the client: accepted
     read -r -a su_args <<< "$SU_ARGS"
     out="$("$RB_SU" "${su_args[@]}" "$cmd" 2>&1)"
     code=$?
     write_res "$id" "$code" "$out"
     rb_audit ALLOW "$code" "$cmd"
-    rm -f "$work" "$tk"
+    rm -f "$work"
 }
 
 # --- open URL requests -------------------------------------------------------
@@ -152,11 +164,10 @@ startup_cleanup() {
     now="$(date +%s)"
     rm -f "$BRIDGE_DIR"/res-*.txt "$BRIDGE_DIR"/ack-* "$BRIDGE_DIR"/open-res-* \
           "$BRIDGE_DIR"/*.work "$BRIDGE_DIR"/*.tmp.* 2>/dev/null
-    for f in "$BRIDGE_DIR"/req-*.txt "$BRIDGE_DIR"/req-*.ticket \
-             "$BRIDGE_DIR"/open-*.url "$BRIDGE_DIR/tickets"/*; do
+    for f in "$BRIDGE_DIR"/req-*.txt "$BRIDGE_DIR"/open-*.url "$BRIDGE_DIR/events"/*; do
         [ -e "$f" ] || continue
         mtime="$(stat -c %Y "$f" 2>/dev/null)" || continue
-        [ $(( now - mtime )) -gt $(( TICKET_TTL * 2 )) ] && rm -f "$f"
+        [ $(( now - mtime )) -gt 3600 ] && rm -f "$f"
     done
 }
 

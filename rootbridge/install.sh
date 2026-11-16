@@ -7,7 +7,8 @@
 #                   [--apt-upgrade 6h|<N>h|daily|always|off | --no-apt-upgrade]
 #                   [--claude-update 6h|<N>h|daily|always|off | --no-claude-update] [--no-setup]
 #                   [--model NAME|none] [--claude | --no-claude] [--codex | --no-codex]
-#                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update]
+#                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update] [--codex-bypass | --no-codex-bypass]
+#                   [--guidelines | --no-guidelines]
 #                   [--voice | --no-voice] [--sidekey | --no-sidekey]
 #
 # Setup: an interactive Termux shell asks for the device name used in Claude Remote Control
@@ -41,6 +42,16 @@
 #   session (6h default, like --claude-update; stored as CODEX_UPDATE). Still manual: the Codex login,
 #   `rootbridge codex-login`.
 #
+# --codex-bypass / --no-codex-bypass: Codex without its own sandbox, on by default (needs Codex). Under proot the bubblewrap
+#   sandbox of Codex fails on every command ("unsupported host mount"), so Codex would not run at all. The installer sets
+#   CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox" in the guest config (your other arguments stay).
+#   --no-codex-bypass removes the flag again. The choice is stored (CODEX_BYPASS). Android root stays closed either way: the
+#   Termux daemon asks you in an Android dialog for every request, and the managed hook rootbridge-hook.py
+#   (/etc/codex/requirements.toml, no /hooks review needed; an /etc/codex/requirements.toml of your own stays untouched)
+#   tells Codex when you said no.
+# --guidelines / --no-guidelines: code quality guidelines for the agents, on by default: a marked block in the guest's
+#   ~/.claude/CLAUDE.md (with Claude Code) and ~/.codex/AGENTS.md (with Codex); your own text in those files stays and
+#   --no-guidelines removes the blocks again. The choice is stored (GUIDELINES).
 # --voice / --no-voice: voice dictation for Claude Code's /voice, on by default (needs Claude Code). The installer sets up sox in
 #   the guest (rec), PulseAudio in Termux (127.0.0.1 only, with the microphone source and 200 % gain, started with the session),
 #   the guest's ~/.claude/keybindings.json (meta+k = voice:pushToTalk) and "voice": {"enabled": true, "mode": "hold"} in
@@ -100,6 +111,8 @@ CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
 USE_CLAUDE=yes; USE_CLAUDE_SET=0; USE_CODEX=yes; USE_CODEX_SET=0   # which tools: yes | no
 USE_VOICE=yes; USE_VOICE_SET=0; USE_SIDEKEY=no; USE_SIDEKEY_SET=0   # voice dictation / side key as push to talk
+USE_BYPASS=yes; USE_BYPASS_SET=0   # Codex without its own sandbox
+USE_GUIDE=yes; USE_GUIDE_SET=0     # code quality guidelines in CLAUDE.md / AGENTS.md
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 APT_RE='^(always|off|daily|[1-9][0-9]{0,2}h)$'
 while [ $# -gt 0 ]; do
@@ -133,6 +146,10 @@ while [ $# -gt 0 ]; do
         --no-claude) USE_CLAUDE=no; USE_CLAUDE_SET=1 ;;
         --codex) USE_CODEX=yes; USE_CODEX_SET=1 ;;
         --no-codex) USE_CODEX=no; USE_CODEX_SET=1 ;;
+        --guidelines) USE_GUIDE=yes; USE_GUIDE_SET=1 ;;
+        --no-guidelines) USE_GUIDE=no; USE_GUIDE_SET=1 ;;
+        --codex-bypass) USE_BYPASS=yes; USE_BYPASS_SET=1 ;;
+        --no-codex-bypass) USE_BYPASS=no; USE_BYPASS_SET=1 ;;
         --voice) USE_VOICE=yes; USE_VOICE_SET=1 ;;
         --no-voice) USE_VOICE=no; USE_VOICE_SET=1 ;;
         --sidekey) USE_SIDEKEY=yes; USE_SIDEKEY_SET=1 ;;
@@ -190,7 +207,7 @@ fi
 pkg_for() {
     case "$1" in
         python3) echo python ;;
-        termux-open-url) echo termux-api ;;
+        termux-open-url|termux-dialog) echo termux-api ;;
         sha256sum|stat|timeout) echo coreutils ;;
         setsid) echo util-linux ;;
         *) echo "$1" ;;
@@ -198,7 +215,7 @@ pkg_for() {
 }
 if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; then
     need_pkgs=""
-    for c in tmux proot-distro python3 sha256sum stat timeout setsid termux-open-url; do
+    for c in tmux proot-distro python3 sha256sum stat timeout setsid termux-open-url termux-dialog; do
         command -v "$c" >/dev/null 2>&1 && continue
         p="$(pkg_for "$c")"
         case " $need_pkgs " in *" $p "*) ;; *) need_pkgs="$need_pkgs $p" ;; esac
@@ -225,7 +242,8 @@ if [ "$DEPS" = 1 ]; then
         exit 1
     fi
     command -v su >/dev/null 2>&1 || say "Hinweis: kein 'su' gefunden - Root-Befehle werden mit Code 127 beantwortet."
-    command -v termux-open-url >/dev/null 2>&1 || say "Hinweis: pkg install termux-api (für Browser-Öffnen und Zwischenablage)."
+    command -v termux-dialog >/dev/null 2>&1 \
+        || say "Hinweis: pkg install termux-api und die App Termux:API (für die Rückfrage bei Root-Anfragen, Browser-Öffnen und Zwischenablage). Ohne den Dialog lehnt der Daemon jede Root-Anfrage ab."
 fi
 
 backup() {
@@ -291,6 +309,13 @@ inst "$REPO/termux/bin/rootbridge-daemon" "$PREFIX/bin/rootbridge-daemon"
 inst "$REPO/termux/bin/ptt"               "$PREFIX/bin/ptt"
 inst "$REPO/termux/lib/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
 chmod 644 "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
+# A running daemon keeps its old code in memory (an old one wants tickets that nothing issues any more): stop it. The new
+# one starts with the next session, with Termux:Boot or with `rootbridge start`.
+old_pid="$(cat "$BRIDGE_DIR/.lock/pid" 2>/dev/null || true)"
+if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
+    "$PREFIX/bin/rootbridge" daemon-stop >/dev/null 2>&1 || kill "$old_pid" 2>/dev/null || true
+    say "  laufender Daemon beendet (der neue startet mit der nächsten Sitzung oder mit: rootbridge start)"
+fi
 
 say "== 2/5 Konfiguration"
 CFG="$HOME/.config/termux-rootbridge/config"
@@ -302,7 +327,7 @@ if [ ! -e "$CFG" ]; then
 DISTRO=ubuntu
 WORKDIR=/root/work
 SESSION=ubuntu
-TICKET_TTL=1800
+# ASK_TIMEOUT=120       # seconds the Android dialog for a root request waits for your answer (no answer = refused)
 # SU_ARGS=-mm -c      # global mount namespace (Magisk), if paths look empty
 AUTOSTART_DELAY=3
 # REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); default android, change with install.sh --remote-name
@@ -311,6 +336,8 @@ AUTOSTART_DELAY=3
 # CODEX_UPDATE=6h       # codex update at session start: same values; set with install.sh --codex-update / --no-codex-update
 # TOOL_CLAUDE=on        # on | off: Claude Code is part of this installation; set with install.sh --claude / --no-claude
 # TOOL_CODEX=on         # on | off: Codex is part of this installation; set with install.sh --codex / --no-codex
+# GUIDELINES=on         # on | off: code quality block in the guest's CLAUDE.md / AGENTS.md; set with install.sh --guidelines / --no-guidelines
+# CODEX_BYPASS=on       # on | off: Codex without its own sandbox (CODEX_ARGS in the guest config); set with install.sh --codex-bypass / --no-codex-bypass
 # VOICE=on              # on | off: voice dictation for Claude Code (PulseAudio, microphone); set with install.sh --voice / --no-voice
 # SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
 # PTT_TARGET=ubuntu:claude   # `ptt`: tmux window it presses its key in (default <SESSION>:claude)
@@ -374,6 +401,20 @@ if [ "$USE_CLAUDE_SET" = 1 ]; then
 fi
 if [ "$USE_CODEX_SET" = 1 ] || [ "$(cfg_get TOOL_CODEX)" = off ]; then
     cfg_set TOOL_CODEX "$(onoff "$USE_CODEX")" "Codex: $USE_CODEX"
+fi
+# code quality guidelines: same idea (default on)
+if [ "$USE_GUIDE_SET" != 1 ] && [ "$(cfg_get GUIDELINES)" = off ]; then
+    USE_GUIDE=no; say "  Richtlinien: abgewählt (aus der Konfig; wieder an mit --guidelines)"
+fi
+if [ "$USE_GUIDE_SET" = 1 ]; then
+    cfg_set GUIDELINES "$(onoff "$USE_GUIDE")" "Richtlinien: $USE_GUIDE"
+fi
+# Codex without its sandbox: same idea (default on; Codex off = nothing to decide)
+if [ "$USE_BYPASS_SET" != 1 ] && [ "$(cfg_get CODEX_BYPASS)" = off ]; then
+    USE_BYPASS=no; say "  Codex-Sandbox: bleibt an (aus der Konfig; ohne Sandbox mit --codex-bypass)"
+fi
+if [ "$USE_BYPASS_SET" = 1 ]; then
+    cfg_set CODEX_BYPASS "$(onoff "$USE_BYPASS")" "Codex ohne eigene Sandbox: $USE_BYPASS"
 fi
 # voice and side key: same idea (an option wins and is stored; without one the stored value counts)
 if [ "$USE_VOICE_SET" != 1 ] && [ "$(cfg_get VOICE)" = off ]; then
@@ -683,7 +724,7 @@ if [ "$DO_GUEST" = 1 ]; then
             || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh"
         SETUP_DID=1
     fi
-    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON")
+    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --codex-bypass "$USE_BYPASS" --guidelines "$USE_GUIDE")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
     if [ "$MODEL_SET" = 1 ]; then GUEST_ARGS+=(--model "$MODEL"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
@@ -732,6 +773,9 @@ if [ "$SETUP_DID" = 1 ]; then
     else
         say "das Widget 'Codex' auf den Homescreen legen, Codex anmelden (rootbridge codex-login)."
     fi
+fi
+if [ "$USE_CODEX" = yes ] && [ "$USE_BYPASS" = yes ]; then
+    say "Codex läuft ohne eigene Sandbox (unter proot scheitert sie; aus mit --no-codex-bypass). Android-Root bekommt es nur, wenn du die Rückfrage in Termux bestätigst."
 fi
 if [ "$VOICE_ON" = yes ]; then
     say "Sprache: /voice in Claude Code (Modus hold, Alt+K); 'ptt start' / 'ptt stop' halten die Taste für dich (rootbridge voice status prüft das Mikrofon)."

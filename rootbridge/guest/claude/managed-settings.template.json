@@ -1,19 +1,16 @@
 {
   "hooks": {
-    "PreToolUse": [
+    "PostToolUse": [
       {
-        "matcher": "Bash|Monitor|Write|Edit|NotebookEdit|MultiEdit",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "@PYTHON@ -I @LIBDIR@/android-root-guard.py",
-            "timeout": 15,
-            "onFailure": "block"
+            "command": "@PYTHON@ -I @LIBDIR@/rootbridge-hook.py",
+            "timeout": 15
           }
         ]
-      }
-    ],
-    "PostToolUse": [
+      },
       {
         "matcher": "mcp__.*__(authenticate|complete_authentication)",
         "hooks": [
@@ -24,19 +21,17 @@
           }
         ]
       }
-    ]
-  },
-  "permissions": {
-    "ask": [
-      "Bash(androidsu *)",
-      "Edit(//etc/claude-code/**)",
-      "Edit(//etc/termux-rootbridge.conf)",
-      "Edit(//usr/local/lib/termux-rootbridge/**)",
-      "Edit(//usr/local/bin/androidsu)",
-      "Edit(//usr/local/bin/rootbridge-*)",
-      "Edit(//usr/local/bin/xdg-open)",
-      "Edit(//data/data/com.termux/files/home/.rootbridge/**)",
-      "Edit(//data/data/com.termux/files/home/.config/termux-rootbridge/**)"
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@PYTHON@ -I @LIBDIR@/rootbridge-hook.py",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

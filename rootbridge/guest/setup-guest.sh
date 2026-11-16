@@ -54,7 +54,9 @@ codex_present() { [ -x "$HOME_DIR/.local/bin/codex" ] || [ -L "$HOME_DIR/.local/
 # ------------------------------------------------------------------ 1. packages
 say "== Gast: Voraussetzungen"
 pkgs=""
-command -v python3 >/dev/null 2>&1 || pkgs="$pkgs python3"
+# python3 of the guest itself: the hooks run in isolated sessions (rootbridge GUEST_ISOLATE), which do not see the python of Termux
+guest_python() { [ -x /usr/bin/python3 ] || { p="$(command -v python3)" && [ "${p#/data/data/com.termux/}" = "$p" ]; }; }
+guest_python || pkgs="$pkgs python3"
 command -v curl    >/dev/null 2>&1 || pkgs="$pkgs curl"
 [ -s "$CA_BUNDLE" ]                 || pkgs="$pkgs ca-certificates"
 if [ "$CODEX_ON" = yes ]; then
