@@ -4,7 +4,7 @@
 
 [Deutsch](README.de.md) · [Español](README.es.md) · [Comparison with other projects](docs/COMPARISON.md) · [Login & MCP details](docs/LOGIN.md) · [Security](SECURITY.md)
 
-> **Status: v2.0.0-dev.** Unit and integration tests pass (guard hook, login hook, daemon, installers).
+> **Status: v2.1.0-dev.** Unit and integration tests pass (notice hook, login hook, daemon, installers).
 > Confirmed on a device (Hisense A9): the root prompt also in bypass mode, a complete `/login` including the automatic
 > `localhost` redirect, opening the browser from the guest and copying links into the Android clipboard (through the
 > daemon and with the `c` key through tmux). Still to check: the exact `tool_response` format of MCP login tools.
@@ -28,18 +28,36 @@ There is no second terminal window and no popup any more (v1 needed one).
 ## How it works
 
 ```
-Claude Code (Ubuntu guest, root)                  Termux (outside proot)
-────────────────────────────────                  ──────────────────────
+Agent: Claude Code or Codex (Ubuntu guest)        Termux (outside proot)
+──────────────────────────────────────────        ──────────────────────
 Bash: androidsu 'id'
- └─ PreToolUse hook (android-root-guard.py)
-     • literal command?  → single-use ticket bound to sha256("id")
-     • asks: "⚠ ANDROID-ROOT: id"   ← you answer Yes / No in Claude Code
-androidsu ── request + ticket ─────────────────▶  rootbridge-daemon (headless)
-                                                  valid ticket? → su -c 'id'
-                         ◀──────── result ─────  no ticket?    → refused (exit 99)
+androidsu ── request (file in ~/.rootbridge) ──▶  rootbridge-daemon (headless)
+                                                  Android dialog "Android-Root: Claude Code"
+                                                    ← you answer Yes / No, in Termux
+                         ◀──────── result ─────   yes → su -c 'id'     no → refused (exit 99)
+rootbridge-hook.py (PostToolUse, UserPromptSubmit)
+  ◀── the note of the daemon: "the user refused `id`, no workarounds"
 ```
 
-* **No ticket, no root.** A denied prompt means the command never runs. There is no popup fallback.
+<p align="center"><img src="docs/images/android-root-dialog.png" width="300" alt="The Android dialog: Android-Root: Claude Code, the command and the deadline, with the buttons NO and YES"></p>
+
+The dialog of the daemon for one request: who asks, the command, the deadline. (The buttons are English here: the stock Termux:API.
+The Termux:API of this repository, `api/`, shows them in the language of the phone and counts the deadline down.)
+
+* **No confirmation, no root.** The daemon in Termux shows an Android dialog (`termux-dialog`, package `termux-api` and the
+  Termux:API app) for every `androidsu` request, with the command and the agent that asked. Its answer is the output of
+  the dialog itself, never a file the guest could write, so neither Claude Code nor Codex can approve anything. No answer
+  within `ASK_TIMEOUT` (120 s), a missing dialog or a command longer than 4000 characters means refused. With the Termux:API of
+  this repository (`api/`) the dialog has the buttons in the language of the phone (Ja/Nein, Sí/No, else Yes/No), a title that
+  counts down to the deadline and closes itself then, and only a tap on a button answers it. With any other Termux:API build
+  the buttons are English, the deadline stands in the text, and a dialog you swipe away (or a keyboard that hides it) shows
+  again until you tap Yes or No; a Yes within one second of the dialog appearing counts as a slip and is asked again.
+* **Refusals reach the agent.** The daemon leaves a note for the agent that asked (`~/.rootbridge/events/`), and the hook
+  `rootbridge-hook.py` (PostToolUse and UserPromptSubmit, in the managed settings of Claude Code and in
+  `/etc/codex/requirements.toml` for Codex) hands it over as context: you said no, no workarounds (`su`, `adb`, bridge files).
+* **The guest is cut off from Termux.** Agent sessions and shells open with `proot-distro login --isolated` and bind in
+  only `~/.rootbridge`, the shared storage (`/sdcard`) and, for voice, the PulseAudio cookie: no Termux home, no `usr`, no daemon, no `su` wrapper
+  (`GUEST_ISOLATE=off` in the Termux config switches that off). The hooks therefore use the guest's own `python3`.
 * **Autonomy elsewhere.** Anything that is not root-related (including `/sdcard`) runs without questions.
 * **Login links.** `/login`, `/mcp`, `claude mcp login <server>` open the browser through `BROWSER`/`xdg-open`;
   `mcp__*__authenticate` results are intercepted so the long link is opened and copied instead of printed.
@@ -49,9 +67,9 @@ androidsu ── request + ticket ───────────────�
 * Android with Termux (F-Droid/GitHub build), `proot-distro` with an Ubuntu guest, Claude Code installed in the guest
   (`curl -fsSL https://claude.ai/install.sh | bash`); `install.sh` sets up what is missing of this and of the packages below
 * A working `su` (Magisk, KernelSU, ...) — without it, only the login features work
-* Termux packages: `tmux proot-distro python coreutils util-linux`; optional `termux-api` (+ the Termux:API app)
-  for the clipboard
-* Guest packages: `python3` (hooks), coreutils with `sha256sum`, `od`, `timeout`
+* Termux packages: `tmux proot-distro python coreutils util-linux termux-api` and the Termux:API app: the dialog that asks
+  you for every root request (without it every request is refused), the browser hand-off and the clipboard
+* Guest packages: `python3` (the guest's own, for the hooks), coreutils with `sha256sum`, `od`, `timeout`
 * Claude Code ≥ 2.1.295 (`onFailure: "block"` for hooks)
 * Codex (on by default, `--no-codex` leaves it out): `install.sh` installs it with the official installer; the Claude Code
   plugin and the pre-commit review also need `git` and `nodejs` (≥ 18.18) in the guest, and Codex needs `bubblewrap`
@@ -107,7 +125,7 @@ mode** (with `--autonomous no`: in the mode of your `settings.json`); press **Sh
 the installer adds to the Termux extra keys row, see below).
 
 Options: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--model NAME|none`, `--remote-name NAME`,
-`--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`, `--no-claude-update`, `--codex-update 6h|<N>h|daily|always|off`, `--no-codex-update`, `--no-claude`, `--no-codex` (`--claude` / `--codex` turn a tool on again, see [Codex next to Claude Code](#codex-next-to-claude-code)). The installer is idempotent, backs up what it changes, and
+`--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`, `--no-claude-update`, `--codex-update 6h|<N>h|daily|always|off`, `--no-codex-update`, `--no-claude`, `--no-codex`, `--no-codex-bypass` (`--codex-bypass` turns Codex' sandbox-less mode back on), `--no-guidelines` (the code quality blocks in the guest's `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` are on by default; your own text in those files stays, `--guidelines` turns them on again; stored as `GUIDELINES`; `--claude` / `--codex` turn a tool on again, see [Codex next to Claude Code](#codex-next-to-claude-code)). The installer is idempotent, backs up what it changes, and
 migrates the old v1 popup bridge if it finds one.
 
 **Widgets.** With the Termux:Widget app you get three shortcuts: **Claude** (attach to the Claude Code session), **Codex** (the Codex window, see
@@ -202,10 +220,13 @@ a new window.
   `/plugin` and run `/reload-plugins` or restart Claude Code. The pre-commit hook blocks commits until the plugin is ready.
   A second installer run does not use the network when all prerequisites are present; missing `bwrap` is also installed
   alongside an existing Codex. `--no-codex`, `--no-claude` and uninstall remove this plugin declaration, keeping other entries.
-* **Widget "Codex"** and `rootbridge attach codex`: a second window in the same tmux session. Codex starts with its own
-  defaults (its sandbox and approval questions), **not** in a bypass mode; `CODEX_ARGS` in `/etc/termux-rootbridge.conf`
-  adds options. The `android-root-guard` hook protects Claude Code only; `androidsu` still refuses without a ticket, and
-  tickets only come from that hook.
+* **Widget "Codex"** and `rootbridge attach codex`: a second window in the same tmux session. Under proot the bubblewrap
+  sandbox of Codex fails on every command (`unsupported host mount`, proot's mountinfo looks like a bind-mount alias), so
+  by default Codex runs **without its own sandbox**: the installer sets `CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox"`
+  in `/etc/termux-rootbridge.conf` (other arguments of yours stay); `install.sh --no-codex-bypass` removes it again and keeps
+  the choice (`CODEX_BYPASS`). Codex gets no Android root of its own: like Claude Code it reaches root only through
+  `androidsu`, and the daemon asks you. The managed hook `rootbridge-hook.py` (`/etc/codex/requirements.toml`, no review
+  needed in Codex' `/hooks`; an `/etc/codex/requirements.toml` of your own stays untouched) tells Codex when you said no.
 * **Login.** `rootbridge codex-login` runs `codex login` with the browser hand-off (`--device-auth` when there is no
   browser). `rootbridge status` shows whether Codex, its login, the plugin and the hook are in place.
 * **Both stay current.** Starting either window runs `rootbridge-apt` and then `rootbridge-update`: `claude update`,
@@ -299,9 +320,9 @@ Short version (details and troubleshooting: [docs/LOGIN.md](docs/LOGIN.md)):
 ## Configuration
 
 Termux: `~/.config/termux-rootbridge/config` (parsed as data, never executed): `DISTRO`, `WORKDIR`, `SESSION`,
-`TICKET_TTL`, `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE`, `CLAUDE_UPDATE`, `CODEX_UPDATE`, `TOOL_CLAUDE` and `TOOL_CODEX` (all read by `install.sh`).
-Guest: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
-`TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
+`ASK_TIMEOUT`, `GUEST_ISOLATE` (`on` / `off`), `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE`, `CLAUDE_UPDATE`, `CODEX_UPDATE`, `TOOL_CLAUDE` and `TOOL_CODEX` (all read by `install.sh`).
+Guest: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
+`CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
 upgrade, default 1800), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `CODEX_UPDATE` (same values), `CODEX_ARGS` (extra arguments for Codex), `CODEX_PRECOMMIT` (`off` = no pre-commit review, set by `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (see below). `VOICE` / `SIDEKEY` (`on` / `off`). Termux config only: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), see `ptt help`.
 
 `NOFILE_LIMIT` (default `2048`, `0` = leave the limit alone) is the file-descriptor limit Claude Code is started with.
@@ -320,8 +341,8 @@ out for `-p`, `--version` and `--help`.
 
 | Verified by automated tests | Still to check on a real device |
 |---|---|
-| Guard decisions (43 tests): ticket binding, indirect calls, tamper protection, fail-closed | `tool_response` shape of MCP login tools; `updatedToolOutput` |
-| Daemon: ticket single-use/expiry/hash, long commands, URL validation (49 checks) | — |
+| Notice hook (12 tests): notes of its own agent only, Claude Code and Codex, cleaned text, silent on errors | `additionalContext` of PostToolUse / UserPromptSubmit in Claude Code and Codex on a device |
+| Daemon: the dialog decides (yes, no, dismissed, failed, no answer, missing, one at a time), the asking agent, notes for the hook, forged files do not count, long commands, URL validation | The Android dialog from the background daemon; `--isolated` guests with `claude` and `codex` |
 | Login hook (19 tests: response shapes, URL rules, modes) | — |
 | Installers: staging root, idempotence, v1 migration, uninstall | — |
 | Codex next to Claude Code: install options and the stored choice, update steps with stamps and lock, tmux windows, `codex-login` / `codex-off` / `status`, the pre-commit review loop (stub `node`) | `codex-login` and the **Codex** widget on a device; `claude plugin update`, `codex update` and `onFailure: "block"` after a crash of the hook; `bwrap` on other devices |

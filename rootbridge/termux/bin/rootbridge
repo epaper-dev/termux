@@ -31,7 +31,7 @@ done
 . "$lib"
 rb_load_config
 
-VERSION="2.0.0-dev"
+VERSION="2.1.0-dev"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 GUEST_BIN="/usr/local/bin"
 
@@ -76,7 +76,8 @@ guest_root() {
 }
 
 guest_login() {   # guest_login <command...>
-    proot-distro login "$DISTRO" -- "$@"
+    # shellcheck disable=SC2046  # the options are a list of words on purpose
+    proot-distro login "$DISTRO" $(rb_login_opts) -- "$@"
 }
 
 session_exists() { tmux has-session -t "$SESSION" 2>/dev/null; }
@@ -97,7 +98,7 @@ pick_tool() {
 }
 
 tool_cmd() {
-    printf 'proot-distro login %s -- %s/rootbridge-%s' "$DISTRO" "$GUEST_BIN" "$1"
+    printf 'proot-distro login %s %s -- %s/rootbridge-%s' "$DISTRO" "$(rb_login_opts)" "$GUEST_BIN" "$1"
     [ "${2:-}" != --new ] || printf ' --new'
     return 0
 }
@@ -179,7 +180,8 @@ cmd_start() {
 cmd_shell() {
     command -v proot-distro >/dev/null 2>&1 || die "proot-distro fehlt (pkg install proot-distro)"
     daemon_start
-    exec proot-distro login "$DISTRO"
+    # shellcheck disable=SC2046  # the options are a list of words on purpose
+    exec proot-distro login "$DISTRO" $(rb_login_opts)
 }
 
 cmd_stop() {
@@ -288,6 +290,7 @@ cmd_status() {
         echo "Daemon:       gestoppt"
     fi
     if session_exists; then echo "Session:      '$SESSION' läuft"; else echo "Session:      keine"; fi
+    if [ "$GUEST_ISOLATE" = on ]; then echo "Gast:         abgeschottet (nur ~/.rootbridge sichtbar)"; else echo "Gast:         NICHT abgeschottet (GUEST_ISOLATE=off): Root-Dialog umgehbar"; fi
     if root="$(guest_root)"; then
         echo "Gast ($DISTRO):"
         [ -x "$root$GUEST_BIN/androidsu" ] && echo "  androidsu:           ok" || echo "  androidsu:           FEHLT"
@@ -410,7 +413,7 @@ cmd_theme() {
         || { rm -f "$tmp"; return 1; }
     if [ "$THEME_RESTART" = on ] && session_exists; then
         tmux respawn-pane -k -t "$SESSION:claude" \
-            "proot-distro login $DISTRO -- $GUEST_BIN/rootbridge-claude --continue" 2>/dev/null || true
+            "proot-distro login $DISTRO $(rb_login_opts) -- $GUEST_BIN/rootbridge-claude --continue" 2>/dev/null || true
     fi
 }
 

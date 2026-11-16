@@ -51,3 +51,15 @@ Client scripts which processes command line arguments before calling the
 
 - Wifi network search and connect.
 - Add extra permissions to the app to (un)install apps, stop processes etc.
+
+## Changes in this fork
+
+* `Dialog` (the `termux-dialog` API): optional extras of the confirm dialog, used by termux-rootbridge to ask for Android root.
+  Other builds ignore them, then the dialog behaves as before.
+  * `input_yes`, `input_no` (string): the button labels, so the caller can use the language of the phone (default `Yes`, `No`).
+  * `input_timeout` (int, seconds) and `input_timeout_text` (string with one `%d`, default `%d s`): the title counts down and the
+    dialog closes itself at zero, with the result text `timeout`.
+  * `input_modal` (boolean): only a tap on a button answers, not the back key and not a tap outside the dialog.
+
+  The extras are passed with the `termux-api` client, for example
+  `termux-api Dialog --es input_method confirm --es input_yes Ja --es input_no Nein --ei input_timeout 120 --ez input_modal true`.

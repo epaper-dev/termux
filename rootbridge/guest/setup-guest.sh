@@ -54,18 +54,21 @@ codex_present() { [ -x "$HOME_DIR/.local/bin/codex" ] || [ -L "$HOME_DIR/.local/
 # ------------------------------------------------------------------ 1. packages
 say "== Gast: Voraussetzungen"
 pkgs=""
-command -v python3 >/dev/null 2>&1 || pkgs="$pkgs python3"
-command -v curl    >/dev/null 2>&1 || pkgs="$pkgs curl"
-[ -s "$CA_BUNDLE" ]                 || pkgs="$pkgs ca-certificates"
+# guest_has <command>: the guest has it itself, not only as a program of Termux on the PATH. Isolated sessions
+# (rootbridge GUEST_ISOLATE) do not see Termux, so python3, curl and git of Termux would be gone there.
+guest_has() { local p; p="$(command -v "$1" 2>/dev/null)" && [ "${p#/data/data/com.termux/}" = "$p" ]; }
+guest_has python3 || pkgs="$pkgs python3"
+guest_has curl    || pkgs="$pkgs curl"
+[ -s "$CA_BUNDLE" ] || pkgs="$pkgs ca-certificates"
 if [ "$CODEX_ON" = yes ]; then
-    command -v git >/dev/null 2>&1 || pkgs="$pkgs git"
+    guest_has git || pkgs="$pkgs git"
     command -v bwrap >/dev/null 2>&1 || pkgs="$pkgs bubblewrap"
 fi
 if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
-    command -v node >/dev/null 2>&1 || pkgs="$pkgs nodejs"
+    guest_has node || pkgs="$pkgs nodejs"
 fi
 if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
-    command -v rec >/dev/null 2>&1 || pkgs="$pkgs sox libsox-fmt-pulse"
+    guest_has rec || pkgs="$pkgs sox libsox-fmt-pulse"
 fi
 if [ -n "$pkgs" ]; then
     say "  apt-get install:$pkgs"

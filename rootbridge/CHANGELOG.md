@@ -1,5 +1,44 @@
 # Changelog
 
+## 2.1.0-dev (unreleased)
+
+The Termux daemon asks you itself, in an Android dialog, for every root request (Claude Code and Codex), and the guest is cut off from Termux.
+
+### Changed
+* **Code quality guidelines for the agents** (`install.sh --guidelines`, on by default, `--no-guidelines` removes them; stored as
+  `GUIDELINES`): a marked block (`<!-- >>> termux-rootbridge >>> -->`, text from `guest/templates/`) in the guest's
+  `~/.claude/CLAUDE.md` (with Claude Code) and `~/.codex/AGENTS.md` (with Codex). Your own text in those files stays, a second
+  run changes nothing, uninstall removes only the block. Tests: section 1 of `tests/test_codex.sh`.
+* **Termux decides about Android root (Claude Code and Codex).** The daemon shows an Android dialog (`termux-dialog`, package
+  `termux-api` and the Termux:API app) for every `androidsu` request, with the command and the agent that asked (read from
+  the process tree); the answer is the output of the dialog, so the guest cannot approve anything. No answer within
+  `ASK_TIMEOUT` (120 s, Termux config), a missing or failing dialog and a command over 4000 characters are refused; one
+  dialog at a time. A dismissed dialog (a tap outside, the keyboard, another app) shows again until the deadline, and a Yes
+  within `RB_ASK_MIN_MS` (1 s) of its appearing is asked again. The dialog is asked through the `termux-api` client with extras
+  that the Termux:API of this repository understands: buttons in the language of the phone (`getprop`; Ja/Nein, Sí/No, else
+  Yes/No), a title that counts down and a dialog that only a tap on a button answers (`api/`: `input_yes`, `input_no`,
+  `input_timeout`, `input_timeout_text`, `input_modal`). Other Termux:API builds ignore them (English buttons, the deadline in
+  the text). The agent is recognised by its process name (`comm`), not by `/proc/<pid>/exe`, which is no program under proot. The tickets are gone (`TICKET_TTL`, `tickets/`, `ROOTBRIDGE_TICKET`, the confirmation of `androidsu` on a
+  terminal, `TTY_CONFIRM`), and with them the PreToolUse guards of the guest: `android-root-guard.py` and the Codex variant
+  are removed, the installers delete them and the old ask rules of the managed settings. Audit decisions are `ALLOW`,
+  `DENY-USER`, `ASK-TIMEOUT`, `ASK-FAIL`, `STALE`.
+* **A refusal reaches the agent.** The daemon writes a note (`~/.rootbridge/events/<agent pid>-<ns>`); the new hook
+  `rootbridge-hook.py` (PostToolUse and UserPromptSubmit) hands it to the agent as `additionalContext`: the user said no, no
+  workarounds. Registered in the managed settings of Claude Code and, for Codex, as a managed hook in
+  `/etc/codex/requirements.toml` (needs no `/hooks` review; one of your own stays untouched). `merge_managed` now removes the
+  entries of earlier versions in every event.
+* **The guest is cut off from Termux.** Agent sessions and shells (`rootbridge attach`, `shell`, `login`, `codex-login`, theme
+  restart) open with `proot-distro login --isolated --bind ~/.rootbridge` (plus the shared storage `/sdcard` and the PulseAudio cookie with voice): no Termux
+  home, `usr`, daemon or `su` wrapper in the guest. `GUEST_ISOLATE=off` (Termux config) restores the old behaviour. The
+  hooks use the guest's own `python3` (`setup-guest.sh` installs it when only the python of Termux was there). The installer
+  logins stay unisolated. `install.sh` also checks `termux-dialog`.
+* **Codex without its own sandbox** (`install.sh --codex-bypass`, on by default, `--no-codex-bypass` turns it off; stored as
+  `CODEX_BYPASS`). Under proot Codex' bubblewrap sandbox fails on every command (`unsupported host mount`), so the installer
+  sets `CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox"` (other `CODEX_ARGS` stay). Android root stays behind the
+  dialog. Tests: section 1 of `tests/test_codex.sh`.
+* **The guest installer counts only what the guest has itself.** `setup-guest.sh` looks for `python3`, `curl`, `git`, `node` and `rec` as
+  programs of the guest, not as Termux programs on the PATH (an isolated session does not see those).
+
 ## 2.0.0-dev (unreleased)
 
 Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.

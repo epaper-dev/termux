@@ -4,7 +4,8 @@
 #
 #   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
 #                    [--theme NAME] [--model NAME|none] [--apt-upgrade 6h|<N>h|daily|always|off]
-#                    [--claude yes|no] [--codex yes|no] [--voice yes|no] [--claude-update M] [--codex-update M] [--uninstall]
+#                    [--claude yes|no] [--codex yes|no] [--codex-bypass yes|no] [--guidelines yes|no] [--voice yes|no]
+#                    [--claude-update M] [--codex-update M] [--uninstall]
 #
 #   --claude yes|no   Claude Code is part of the installation (default yes). no = Codex only: no Claude Code
 #                     settings, hooks, managed settings or claude() wrapper (an existing value in the config stays
@@ -12,6 +13,14 @@
 #   --codex yes|no    Codex is part of the installation (default yes): rootbridge-codex (the Codex window), the
 #                     update step and, together with Claude Code, the Codex pre-commit review hook in the managed
 #                     settings (an existing value in the config stays without the option)
+#   --codex-bypass yes|no  Codex without its own sandbox (default yes; only with Codex): under proot the bubblewrap
+#                     sandbox fails on every command ("unsupported host mount"), so Codex gets
+#                     CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox" in /etc/termux-rootbridge.conf (your other
+#                     arguments stay). no removes the flag again. Stored as CODEX_BYPASS. What keeps Android root closed is
+#                     the Termux daemon, which asks you itself for every root request.
+#   --guidelines yes|no  code quality guidelines for the agents (default yes): a marked block (<!-- >>> termux-rootbridge >>> -->)
+#                     in ~/.claude/CLAUDE.md (with Claude Code) and ~/.codex/AGENTS.md (with Codex), text from templates/. Your
+#                     own text in those files stays; no removes the blocks again. Stored as GUIDELINES.
 #   --codex-update M  CODEX_UPDATE in /etc/termux-rootbridge.conf: `codex update` at the
 #                     start of a session (rootbridge-update). Same values and rules as --claude-update.
 #   --src DIR         directory that contains bin/, lib/ and claude/ (default: next to this script)
@@ -57,7 +66,7 @@ MODEL=opusplan; MODEL_SET=0
 APT_MODE=""; APT_MODE_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
-CLAUDE_ON=""; CODEX_ON=""; VOICE_ON=yes
+CLAUDE_ON=""; CODEX_ON=""; VOICE_ON=yes; BYPASS_ON=""; GUIDE_ON=""
 UNINSTALL=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -88,6 +97,12 @@ while [ $# -gt 0 ]; do
         --codex)
             [ $# -ge 2 ] || { echo "--codex braucht yes oder no" >&2; exit 2; }
             CODEX_ON="$2"; shift 2 ;;
+        --codex-bypass)
+            [ $# -ge 2 ] || { echo "--codex-bypass braucht yes oder no" >&2; exit 2; }
+            BYPASS_ON="$2"; shift 2 ;;
+        --guidelines)
+            [ $# -ge 2 ] || { echo "--guidelines braucht yes oder no" >&2; exit 2; }
+            GUIDE_ON="$2"; shift 2 ;;
         --voice)
             [ $# -ge 2 ] || { echo "--voice braucht yes oder no" >&2; exit 2; }
             VOICE_ON="$2"; shift 2 ;;
@@ -131,7 +146,7 @@ case "$AUTONOMOUS" in
     yes|no|ask) ;;
     *) echo "--autonomous: ungültiger Wert '$AUTONOMOUS' (erlaubt: yes, no, ask)" >&2; exit 2 ;;
 esac
-for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON" "voice:$VOICE_ON"; do
+for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON" "codex-bypass:$BYPASS_ON" "guidelines:$GUIDE_ON" "voice:$VOICE_ON"; do
     case "${pair#*:}" in
         ""|yes|no) ;;
         *) echo "--${pair%%:*}: ungültiger Wert '${pair#*:}' (erlaubt: yes, no)" >&2; exit 2 ;;
@@ -159,6 +174,13 @@ tool_on() {   # tool_on <config key> <option value yes|no|empty>
 }
 CLAUDE_ON="$(tool_on TOOL_CLAUDE "$CLAUDE_ON")"
 CODEX_ON="$(tool_on TOOL_CODEX "$CODEX_ON")"
+# Codex without its sandbox (the option, else the stored CODEX_BYPASS, else yes) - only with Codex
+GUIDE_SET=0; [ -z "$GUIDE_ON" ] || GUIDE_SET=1
+GUIDE_ON="$(tool_on GUIDELINES "$GUIDE_ON")"
+BYPASS_SET=0; [ -z "$BYPASS_ON" ] || BYPASS_SET=1
+BYPASS_CHOICE="$(tool_on CODEX_BYPASS "$BYPASS_ON")"   # the choice that is stored (also while Codex is off)
+BYPASS_ON="$BYPASS_CHOICE"
+if [ "$CODEX_ON" = no ]; then BYPASS_ON=no; fi
 
 backup() { [ -e "$1" ] && cp -p "$1" "$1.bak-$STAMP" && say "  Sicherung: $1.bak-$STAMP" || true; }
 
@@ -221,13 +243,16 @@ try:
     cur = json.load(open(target, encoding="utf-8"))
 except (OSError, ValueError):
     cur = {}
-# Every entry of ours is replaced by the ones of the templates (so an entry that is no longer in them,
-# e.g. the Codex hook after --no-codex, goes); entries of anybody else stay.
+# Every entry of ours, in every event, is replaced by the ones of the templates (so an entry that is no longer in
+# them goes: the Codex hook after --no-codex, the guard of an earlier version); entries of anybody else stay.
 hooks = cur.setdefault("hooks", {})
+for event in list(hooks):
+    hooks[event] = [e for e in hooks[event]
+                    if not any(MARK in h.get("command", "") for h in e.get("hooks", []))]
 for event, entries in new.items():
-    kept = [e for e in hooks.get(event, [])
-            if not any(MARK in h.get("command", "") for h in e.get("hooks", []))]
-    hooks[event] = kept + entries
+    hooks[event] = hooks.get(event, []) + entries
+for event in [e for e, entries in hooks.items() if not entries]:
+    del hooks[event]
 # These two declarations belong to the Codex review hook. Claude Code fetches the plugin at startup.
 # Removing the Codex template must also remove the declarations, while keeping other plugins/marketplaces.
 for key, owned in (("enabledPlugins", "codex@openai-codex"), ("extraKnownMarketplaces", "openai-codex")):
@@ -239,10 +264,19 @@ for key, owned in (("enabledPlugins", "codex@openai-codex"), ("extraKnownMarketp
     else:
         cur.pop(key, None)
 perms = cur.setdefault("permissions", {})
-ask = perms.setdefault("ask", [])
+# the rules of earlier versions (the guard asked in Claude Code; the Termux daemon asks now) go
+ask = [r for r in perms.get("ask", [])
+       if "androidsu" not in r and "/etc/claude-code" not in r and "rootbridge" not in r
+       and "/usr/local/bin/xdg-open" not in r]
 for rule in asks:
     if rule not in ask:
         ask.append(rule)
+if ask:
+    perms["ask"] = ask
+else:
+    perms.pop("ask", None)
+if not perms:
+    cur.pop("permissions")
 with open(out, "w", encoding="utf-8") as fh:
     json.dump(cur, fh, indent=2, ensure_ascii=False)
     fh.write("\n")
@@ -371,6 +405,18 @@ if [ "$UNINSTALL" = 1 ]; then
     for f in androidsu rootbridge-open rootbridge-claude rootbridge-codex rootbridge-update rootbridge-apt; do rm -f "$ROOT$BINDIR/$f"; done
     [ -L "$ROOT$BINDIR/xdg-open" ] && rm -f "$ROOT$BINDIR/xdg-open"
     rm -rf "$ROOT$LIBDIR" "$ROOT/var/lib/termux-rootbridge"
+    # the managed Codex hook: only our block (a requirements.toml of your own stays)
+    REQ=/etc/codex/requirements.toml
+    if [ -f "$ROOT$REQ" ] && grep -qxF "$BEGIN" "$ROOT$REQ"; then
+        python3 -I "$SRC/lib/rbfile.py" drop "$ROOT$REQ" "$BEGIN" "$END"
+        if ! grep -q '[^[:space:]]' "$ROOT$REQ"; then rm -f "$ROOT$REQ"; rmdir "$ROOT$(dirname "$REQ")" 2>/dev/null || true; fi
+    fi
+    for gf in .claude/CLAUDE.md .codex/AGENTS.md; do
+        if [ -f "$ROOT$HOME_DIR/$gf" ] && grep -qxF '<!-- >>> termux-rootbridge >>> -->' "$ROOT$HOME_DIR/$gf"; then
+            python3 -I "$SRC/lib/rbfile.py" drop "$ROOT$HOME_DIR/$gf" '<!-- >>> termux-rootbridge >>> -->' '<!-- <<< termux-rootbridge <<< -->'
+            grep -q '[^[:space:]]' "$ROOT$HOME_DIR/$gf" || rm -f "$ROOT$HOME_DIR/$gf"
+        fi
+    done
     rm -f "$ROOT$CONF"
     strip_block "$ROOT$HOME_DIR/.bashrc"
     say "Fertig. ($ROOT$HOME_DIR/.claude/settings.json bleibt unverändert.)"
@@ -396,7 +442,9 @@ if [ "$CODEX_ON" = yes ]; then
 fi
 say "  Programme: Claude Code $CLAUDE_ON, Codex $CODEX_ON"
 
-PYTHON="$(command -v python3)"
+# the python3 of the guest itself where there is one: the agents' hooks run in isolated sessions (no Termux inside)
+PYTHON=/usr/bin/python3
+[ -x "$ROOT$PYTHON" ] || PYTHON="$(command -v python3)"
 
 put "$SRC/lib/rootbridge-guest-lib.sh" "$LIBDIR/rootbridge-guest-lib.sh" 644   # sourced by the scripts below
 put "$SRC/bin/androidsu"         "$BINDIR/androidsu"
@@ -406,17 +454,20 @@ put "$SRC/bin/rootbridge-update" "$BINDIR/rootbridge-update"
 # what belongs to a tool that is switched off is removed again (a reinstall with --claude no / --codex no)
 if [ "$CLAUDE_ON" = yes ]; then
     put "$SRC/bin/rootbridge-claude" "$BINDIR/rootbridge-claude"
-    put "$SRC/claude/android-root-guard.py" "$LIBDIR/android-root-guard.py"
     put "$SRC/claude/auth-url-hook.py"      "$LIBDIR/auth-url-hook.py"
     put "$SRC/claude/claude-conversation.py" "$LIBDIR/claude-conversation.py"
 else
-    rm -f "$ROOT$BINDIR/rootbridge-claude" "$ROOT$LIBDIR/android-root-guard.py" "$ROOT$LIBDIR/auth-url-hook.py" "$ROOT$LIBDIR/claude-conversation.py"
+    rm -f "$ROOT$BINDIR/rootbridge-claude" "$ROOT$LIBDIR/auth-url-hook.py" "$ROOT$LIBDIR/claude-conversation.py"
 fi
 if [ "$CODEX_ON" = yes ]; then
     put "$SRC/bin/rootbridge-codex" "$BINDIR/rootbridge-codex"
 else
     rm -f "$ROOT$BINDIR/rootbridge-codex"
 fi
+# rootbridge-hook.py hands the refusals of the Termux daemon to the agent that asked (Claude Code and Codex)
+put "$SRC/claude/rootbridge-hook.py" "$LIBDIR/rootbridge-hook.py"
+# the guards of the earlier versions (the daemon asks now, tickets are gone)
+rm -f "$ROOT$LIBDIR/android-root-guard.py" "$ROOT$LIBDIR/codex-root-guard.py"
 # the Codex pre-commit review hook runs inside Claude Code: it needs both
 if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
     put "$SRC/claude/codex-precommit-review.py" "$LIBDIR/codex-precommit-review.py"
@@ -435,8 +486,8 @@ fi
 # configuration (keep user edits, add missing keys)
 mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"
-for kv in "BRIDGE_DIR=$BRIDGE_DIR" "TICKET_TTL=1800" "WORKDIR=/root/work" \
-          "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" "TTY_CONFIRM=1" \
+for kv in "BRIDGE_DIR=$BRIDGE_DIR" "WORKDIR=/root/work" \
+          "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" \
           "APT_UPGRADE=6h" "APT_TIMEOUT=1800" "CLAUDE_UPDATE=6h" "CODEX_UPDATE=6h" "NOFILE_LIMIT=2048" \
           "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" \
           "TOOL_CLAUDE=$(onoff "$CLAUDE_ON")" \
@@ -459,6 +510,108 @@ for kv in "TOOL_CLAUDE=$(onoff "$CLAUDE_ON")" "TOOL_CODEX=$(onoff "$CODEX_ON")";
     key="${kv%%=*}"
     if [ "$(sed -n "s/^$key=//p" "$ROOT$CONF" | tail -n 1)" != "${kv#*=}" ]; then conf_set "$key" "${kv#*=}" "$kv"; fi
 done
+# Codex without its sandbox (--codex-bypass). The choice is stored as CODEX_BYPASS (on|off) when it was given.
+if [ "$BYPASS_SET" = 1 ]; then
+    grep -q '^CODEX_BYPASS=' "$ROOT$CONF" || printf 'CODEX_BYPASS=%s\n' "$(onoff "$BYPASS_CHOICE")" >> "$ROOT$CONF"
+    if [ "$(sed -n 's/^CODEX_BYPASS=//p' "$ROOT$CONF" | tail -n 1)" != "$(onoff "$BYPASS_CHOICE")" ]; then
+        conf_set CODEX_BYPASS "$(onoff "$BYPASS_CHOICE")" "CODEX_BYPASS=$(onoff "$BYPASS_CHOICE")"
+    fi
+fi
+if [ "$GUIDE_SET" = 1 ]; then
+    grep -q '^GUIDELINES=' "$ROOT$CONF" || printf 'GUIDELINES=%s\n' "$(onoff "$GUIDE_ON")" >> "$ROOT$CONF"
+    if [ "$(sed -n 's/^GUIDELINES=//p' "$ROOT$CONF" | tail -n 1)" != "$(onoff "$GUIDE_ON")" ]; then
+        conf_set GUIDELINES "$(onoff "$GUIDE_ON")" "GUIDELINES=$(onoff "$GUIDE_ON")"
+    fi
+fi
+BYPASS_FLAG="--dangerously-bypass-approvals-and-sandbox"
+REQ_DIR=/etc/codex
+REQ="$REQ_DIR/requirements.toml"
+
+# codex_args <add|remove>: put the bypass flag into CODEX_ARGS (other arguments stay) or take it out (an empty line goes)
+codex_args() {
+    local tmp="$ROOT$CONF.new.$$"
+    python3 -I - "$ROOT$CONF" "$tmp" "$1" "$BYPASS_FLAG" <<'PY'
+import sys
+path, out, mode, flag = sys.argv[1:5]
+lines = open(path, encoding="utf-8").read().split("\n")
+idx = [i for i, l in enumerate(lines) if l.startswith("CODEX_ARGS=")]
+val = ""
+if idx:
+    val = lines[idx[-1]].split("=", 1)[1].strip()
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+        val = val[1:-1]
+toks = [t for t in val.split() if t != flag]
+if mode == "add":
+    toks.append(flag)
+new = 'CODEX_ARGS="' + " ".join(toks) + '"' if toks else None
+res = []
+for i, l in enumerate(lines):
+    if l.startswith("CODEX_ARGS="):
+        if i == idx[-1] and new:
+            res.append(new)
+    else:
+        res.append(l)
+if not idx and new:
+    while res and res[-1] == "":
+        res.pop()
+    res.append(new)
+    res.append("")
+with open(out, "w", encoding="utf-8") as fh:
+    fh.write("\n".join(res))
+PY
+    if cmp -s "$tmp" "$ROOT$CONF"; then rm -f "$tmp"; return 0; fi
+    commit_file "$tmp" "$ROOT$CONF"
+    if [ "$1" = add ]; then say "  CODEX_ARGS: $BYPASS_FLAG (Codex ohne eigene Sandbox)"; else say "  CODEX_ARGS: $BYPASS_FLAG entfernt"; fi
+}
+
+# the managed hook of Codex (requirements.toml is read as the managed layer, its hooks need no review in /hooks):
+# it hands the refusals of the Termux daemon to Codex. A requirements.toml of your own stays untouched.
+if [ "$CODEX_ON" = yes ]; then
+    if [ -s "$ROOT$REQ" ] && python3 -I "$SRC/lib/rbfile.py" other "$ROOT$REQ" "$BEGIN" "$END" '[ \t]*[^ \t#]'; then
+        say "  Hinweis: $REQ enthält eigene Einstellungen und bleibt unverändert. Der Melde-Hook für Codex fehlt dann:"
+        say "           Codex erfährt nicht von abgelehnten Root-Anfragen (den Block von Hand ergänzen, siehe README)."
+    else
+        content="$ROOT$REQ.content.$$"
+        mkdir -p "$ROOT$REQ_DIR"
+        req_src="$ROOT$REQ"; [ -e "$req_src" ] || req_src=/dev/null
+        cat > "$content" <<EOF
+# Hands the refusals of the Termux daemon (Android root) to Codex: install.sh of termux-rootbridge.
+[hooks]
+managed_dir = "$LIBDIR"
+
+[[hooks.PostToolUse]]
+matcher = "Bash"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "$PYTHON -I $LIBDIR/rootbridge-hook.py"
+timeout = 15
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "$PYTHON -I $LIBDIR/rootbridge-hook.py"
+timeout = 15
+EOF
+        python3 -I "$SRC/lib/rbfile.py" set "$req_src" "$ROOT$REQ.new.$$" "$BEGIN" "$END" "$content"
+        rm -f "$content"
+        commit_file "$ROOT$REQ.new.$$" "$ROOT$REQ"
+        chmod 644 "$ROOT$REQ"
+        say "  Codex-Hook: $REQ (Managed Hook $LIBDIR/rootbridge-hook.py)"
+    fi
+elif [ -f "$ROOT$REQ" ] && grep -qxF "$BEGIN" "$ROOT$REQ"; then
+    python3 -I "$SRC/lib/rbfile.py" drop "$ROOT$REQ" "$BEGIN" "$END"
+    if ! grep -q '[^[:space:]]' "$ROOT$REQ"; then rm -f "$ROOT$REQ"; rmdir "$ROOT$REQ_DIR" 2>/dev/null || true; fi
+    say "  Codex-Hook: Block aus $REQ entfernt"
+fi
+# Codex without its sandbox
+if [ "$BYPASS_ON" = yes ]; then
+    codex_args add
+elif [ "$BYPASS_SET" = 1 ] || [ "$CODEX_ON" = no ]; then
+    codex_args remove
+fi
+
 # Remote Control name -> CLAUDE_ARGS (other arguments stay; a new line also gets --continue,
 # because the name belongs to the session and --continue keeps that session).
 # --remote-control NAME turns Remote Control on and titles a new bridge session. The bridge session is reused
@@ -717,5 +870,26 @@ $END
 EOF
 commit_file "$B.new.$$" "$B"
 say "  ~/.bashrc: Block (PATH$([ "$CLAUDE_ON" = yes ] && echo ', claude()')$([ "$CODEX_ON" = yes ] && echo ', codex()'))"
+
+# code quality guidelines: a marked block in the guidance file of each agent (Markdown: the markers are HTML comments)
+GL_BEGIN='<!-- >>> termux-rootbridge >>> -->'
+GL_END='<!-- <<< termux-rootbridge <<< -->'
+# guidelines <on|off> <template> <file in the guest home>: our block in the file; off takes it out (an empty file goes)
+guidelines() {
+    local file="$ROOT$HOME_DIR/$3" src
+    if [ "$1" = on ]; then
+        mkdir -p "$(dirname "$file")"
+        src="$file"; [ -e "$src" ] || src=/dev/null
+        python3 -I "$SRC/lib/rbfile.py" set "$src" "$file.new.$$" "$GL_BEGIN" "$GL_END" "$SRC/templates/$2"
+        commit_file "$file.new.$$" "$file"
+        say "  ~/$3: Richtlinien-Block (Code Quality)"
+    elif [ -f "$file" ] && grep -qxF "$GL_BEGIN" "$file"; then
+        python3 -I "$SRC/lib/rbfile.py" drop "$file" "$GL_BEGIN" "$GL_END"
+        grep -q '[^[:space:]]' "$file" || rm -f "$file"
+        say "  ~/$3: Richtlinien-Block entfernt"
+    fi
+}
+guidelines "$([ "$GUIDE_ON" = yes ] && [ "$CLAUDE_ON" = yes ] && echo on || echo off)" code-quality.claude.md .claude/CLAUDE.md
+guidelines "$([ "$GUIDE_ON" = yes ] && [ "$CODEX_ON" = yes ] && echo on || echo off)" code-quality.codex.md .codex/AGENTS.md
 
 say "Fertig. Gast-Teil installiert."

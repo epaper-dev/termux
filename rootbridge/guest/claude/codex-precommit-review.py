@@ -378,8 +378,6 @@ def _collect_subs(text, subs):
             i += 1
 
 
-# Ein zweiter, anders gebauter Tokenizer steht in android-root-guard.py (er liefert Wortpositionen für die Tickets).
-# Beide Dateien sind absichtlich eigenständig; eine Korrektur der Anführungs-/Substitutionsregeln kann in beiden nötig sein.
 def tokenize(text):
     """-> (commands, subs, grouped). commands: eine Wortliste je einfachem Befehl (Anführungszeichen entfernt);
     subs: Texte von $(...) und `...`; grouped: unquotierte Klammern, deren Shell-Kontext nicht aufgelöst wird.

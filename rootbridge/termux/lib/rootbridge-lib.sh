@@ -10,8 +10,8 @@ RB_CONFIG="${ROOTBRIDGE_CONFIG:-$HOME/.config/termux-rootbridge/config}"
 DISTRO="ubuntu"
 WORKDIR="/root/work"
 SESSION="ubuntu"
-TICKET_TTL=1800
 STALE_TIMEOUT=70        # requests older than this were abandoned by androidsu
+ASK_TIMEOUT=120         # seconds the Android dialog waits for your answer (no answer = refused)
 POLL_INTERVAL=0.5
 SU_ARGS="-c"            # "-mm -c" = global mount namespace (Magisk)
 AUTH_OPEN="auto"        # auto | copy | off   (used by the Claude hook)
@@ -28,12 +28,17 @@ PTT_INTERVAL=50         # milliseconds between the repeats of hold mode
 PTT_MAX=120             # seconds after which hold mode / tap mode stop waiting for `ptt stop`
 THEME_FOLLOW="on"       # on | off: "Auto epaper" follows light/dark (rootbridge theme)
 THEME_RESTART="off"     # on | off: fallback, restart Claude Code (--continue) after a change
+GUEST_ISOLATE="on"      # on | off: guest sessions see nothing of Termux but the bridge directory (proot-distro --isolated)
 
 # Test hooks / binaries. Taken from the environment only, never from the
 # config file, because the config file lies in a directory the guest can write.
 RB_SU="${RB_SU:-su}"
 RB_OPEN_CMD="${RB_OPEN_CMD:-termux-open-url}"
 RB_CLIP_CMD="${RB_CLIP_CMD:-termux-clipboard-set}"
+RB_ASK_CMD="${RB_ASK_CMD:-${PREFIX:-/data/data/com.termux/files/usr}/libexec/termux-api}"   # the client behind termux-dialog
+RB_ASK_MIN_MS="${RB_ASK_MIN_MS:-1000}"   # a Yes sooner than this after the dialog appeared does not count
+RB_PROC_DIR="${RB_PROC_DIR:-/proc}"
+RB_STORAGE_DIR="${RB_STORAGE_DIR:-/storage/self/primary}"
 
 # --- config (parsed as data, never sourced) ---------------------------------
 rb_load_config() {
@@ -49,7 +54,7 @@ rb_load_config() {
                 [[ "$val" =~ ^[A-Za-z0-9._-]+$ ]] && printf -v "$key" '%s' "$val" ;;
             WORKDIR)
                 [[ "$val" =~ ^/[A-Za-z0-9._/-]*$ ]] && WORKDIR="$val" ;;
-            TICKET_TTL|STALE_TIMEOUT|AUTOSTART_DELAY)
+            STALE_TIMEOUT|ASK_TIMEOUT|AUTOSTART_DELAY)
                 [[ "$val" =~ ^[0-9]{1,6}$ ]] && printf -v "$key" '%s' "$val" ;;
             POLL_INTERVAL)
                 [[ "$val" =~ ^[0-9]{1,2}(\.[0-9]{1,3})?$ ]] && POLL_INTERVAL="$val" ;;
@@ -67,7 +72,7 @@ rb_load_config() {
                 [[ "$val" =~ ^[0-9]{2,4}$ ]] && [ "$val" -ge 20 ] && PTT_INTERVAL="$val" ;;
             PTT_MAX)
                 [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -ge 1 ] && PTT_MAX="$val" ;;
-            THEME_FOLLOW|THEME_RESTART|TOOL_CLAUDE|TOOL_CODEX|VOICE|SIDEKEY)
+            THEME_FOLLOW|THEME_RESTART|GUEST_ISOLATE|TOOL_CLAUDE|TOOL_CODEX|VOICE|SIDEKEY)
                 case "$val" in on|off) printf -v "$key" '%s' "$val" ;; esac ;;
             CLAUDE_ARGS)
                 [[ "$val" =~ ^[A-Za-z0-9._\ =:/,-]*$ ]] && CLAUDE_ARGS="$val" ;;
@@ -76,8 +81,6 @@ rb_load_config() {
 }
 
 # --- small helpers ----------------------------------------------------------
-rb_sha256() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
-
 rb_valid_id() { [[ "$1" =~ ^[A-Za-z0-9_]+$ ]]; }
 
 # Appends one tab separated line: time, decision, exit code, command.
@@ -95,30 +98,104 @@ rb_write_atomic() {
     printf '%s\n%s\n' "$first" "$rest" > "$tmp" && mv -f "$tmp" "$file"
 }
 
-# --- tickets ----------------------------------------------------------------
-# Ticket file: line 1 = expiry (epoch), line 2 = sha256 of the command,
-# line 3 = display text. Single use: claimed by an atomic rename.
-RB_TICKET_REASON=""
-rb_consume_ticket() {
-    local tid="$1" want="$2" file claimed exp hash
-    RB_TICKET_REASON="kein gültiges Ticket"
-    [[ "$tid" =~ ^[0-9a-f]{32}$ ]] || return 1
-    file="$BRIDGE_DIR/tickets/$tid"
-    [ -f "$file" ] || { RB_TICKET_REASON="Ticket unbekannt oder schon benutzt"; return 1; }
-    claimed="$file.used.$$"
-    mv "$file" "$claimed" 2>/dev/null || { RB_TICKET_REASON="Ticket schon benutzt"; return 1; }
-    { IFS= read -r exp; IFS= read -r hash; } < "$claimed"
-    rm -f "$claimed"
-    [[ "$exp" =~ ^[0-9]+$ ]] || { RB_TICKET_REASON="Ticket beschädigt"; return 1; }
-    if [ "$(date +%s)" -gt "$exp" ]; then
-        RB_TICKET_REASON="Ticket abgelaufen - Befehl in Claude Code neu bestätigen"
-        return 1
-    fi
-    if [ "$hash" != "$want" ]; then
-        RB_TICKET_REASON="Ticket gehört zu einem anderen Befehl"
-        return 1
-    fi
-    return 0
+# --- guest sessions ----------------------------------------------------------
+# rb_login_opts: the options of every `proot-distro login` that opens a guest session (agents and shells), as one
+# string. proot-distro hands the guest the Termux home and usr by default, and with them the daemon, the su wrapper and
+# the files Termux runs at its next start. --isolated takes all of that away; only the bridge directory (the requests
+# and refusals), the shared storage (/sdcard: your files, nothing of Termux) and, for voice, the PulseAudio cookie are
+# bound in. The installer logins do not use this.
+rb_login_opts() {
+    local opts cookie="$HOME/.config/pulse/cookie"
+    [ "$GUEST_ISOLATE" = on ] || return 0
+    mkdir -p "$BRIDGE_DIR"
+    opts="--isolated --bind $BRIDGE_DIR:$BRIDGE_DIR"
+    if [ -d "$RB_STORAGE_DIR" ]; then opts="$opts --bind $RB_STORAGE_DIR:/sdcard --bind $RB_STORAGE_DIR:/storage/emulated/0"; fi
+    if [ "$VOICE" = on ] && [ -r "$cookie" ]; then opts="$opts --bind $cookie:$cookie"; fi
+    printf '%s' "$opts"
+}
+
+# --- who asks, and your answer -------------------------------------------------
+# rb_requester <request id>: sets RB_AGENT ("Claude Code", "Codex" or "") and RB_AGENT_PID. The id starts with the pid of
+# the androidsu that wrote the request (no pid namespace under proot); its ancestors show the agent, by process name
+# (comm: from outside proot /proc/<pid>/exe is not the program). Only a hint for the dialog and for the event file,
+# never a reason to allow anything.
+rb_requester() {
+    local pid="${1%%_*}" i
+    RB_AGENT=""; RB_AGENT_PID=""
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
+        [[ "$pid" =~ ^[0-9]+$ ]] && [ "$pid" -gt 1 ] || return 0
+        case "$(cat "$RB_PROC_DIR/$pid/comm" 2>/dev/null)" in
+            claude) RB_AGENT="Claude Code" ;;
+            codex) RB_AGENT="Codex" ;;
+        esac
+        if [ -n "$RB_AGENT" ]; then RB_AGENT_PID="$pid"; return 0; fi
+        pid="$(sed -n 's/^PPid:[[:space:]]*//p' "$RB_PROC_DIR/$pid/status" 2>/dev/null)"
+    done
+}
+
+# rb_ask_texts: the words of the dialog in the language of the phone (RB_LANG overrides: de, es, en; anything else is English)
+rb_ask_texts() {
+    local lang="${RB_LANG:-}"
+    [ -n "$lang" ] || lang="$(getprop persist.sys.locale 2>/dev/null)"
+    [ -n "$lang" ] || lang="$(getprop ro.product.locale 2>/dev/null)"
+    [ -n "$lang" ] || lang="$(getprop persist.sys.language 2>/dev/null)"
+    lang="${lang%%[-_]*}"
+    case "${lang,,}" in
+        de) RB_T_YES="Ja";  RB_T_NO="Nein"; RB_T_LEFT="noch %d s";    RB_T_UNTIL="Antwort bis" ;;
+        es) RB_T_YES="Sí";  RB_T_NO="No";   RB_T_LEFT="quedan %d s";  RB_T_UNTIL="Responde hasta" ;;
+        *)  RB_T_YES="Yes"; RB_T_NO="No";   RB_T_LEFT="%d s left";    RB_T_UNTIL="Answer by" ;;
+    esac
+}
+
+# rb_ask <who> <command>: you decide in an Android dialog; the answer is the output of the dialog itself, not a file the
+# guest could write. Returns 0 = yes, 1 = no, 2 = no answer in time, 3 = dialog failed (termux-api missing, ...).
+# The dialog is asked through the termux-api client with a few extras that our Termux:API build understands: the buttons in
+# the language of the phone, a title that counts down to ASK_TIMEOUT (the dialog closes itself then) and a dialog that only
+# a tap on Yes or No answers. The stock Termux:API ignores the extras: English buttons, no countdown (the deadline stands in
+# the text), and a dismissed dialog (a tap outside, the keyboard, another app) shows again until ASK_TIMEOUT; a Yes within
+# RB_ASK_MIN_MS of the dialog appearing is a slip while typing and is asked again.
+# One dialog at a time: flock on a file in the private tmp directory of Termux (not in the bridge directory). The lock
+# goes away with the process, also when it is killed; a mkdir lock is not atomic everywhere (not under proot). A lock that
+# cannot be opened or taken (no flock, no writable tmp directory) means no dialog: result 3, the request is refused.
+rb_ask() {
+    local who="$1" cmd="$2" out rc start deadline left ms hint result=3
+    { exec 9>"${TMPDIR:-/tmp}/rootbridge-ask.flock"; } 2>/dev/null || return 3     # no lock, no dialog
+    if ! flock 9 2>/dev/null; then exec 9>&-; return 3; fi
+    rb_ask_texts
+    deadline=$(( $(date +%s) + ASK_TIMEOUT ))
+    hint="$cmd"$'\n\n'"$RB_T_UNTIL $(date -d "@$deadline" +%T 2>/dev/null)"
+    while :; do
+        left=$(( deadline - $(date +%s) ))
+        if [ "$left" -le 0 ]; then result=2; break; fi
+        start="$(date +%s%N)"
+        out="$(timeout "$left" "$RB_ASK_CMD" Dialog --es input_method confirm \
+                  --es input_title "Android-Root: ${who:-Shell}" --es input_hint "$hint" \
+                  --es input_yes "$RB_T_YES" --es input_no "$RB_T_NO" \
+                  --ei input_timeout "$left" --es input_timeout_text "$RB_T_LEFT" --ez input_modal true \
+                  2>/dev/null < /dev/null 9>&-)"
+        rc=$?
+        ms=$(( ($(date +%s%N) - start) / 1000000 ))
+        if [ "$rc" -eq 124 ]; then result=2; break; fi
+        if [ "$rc" -ne 0 ]; then result=3; break; fi
+        case "$out" in
+            *'"text": "yes"'*|*'"text":"yes"'*)
+                if [ "$ms" -ge "$RB_ASK_MIN_MS" ]; then result=0; break; fi ;;
+            *'"text": "no"'*|*'"text":"no"'*) result=1; break ;;
+            *'"code"'*) ;;
+            *) result=3; break ;;
+        esac
+        sleep 1                    # dismissed or slipped: show it again
+    done
+    exec 9>&-
+    return "$result"
+}
+
+# rb_event <agent pid> <decision> <command>: a note for the hook of that agent (events/<pid>-<ns>: line 1 the decision,
+# line 2 the command). Only informative: a forged note can mislead the agent but gives it no rights.
+rb_event() {
+    [ -n "$1" ] || return 0
+    mkdir -p "$BRIDGE_DIR/events"
+    rb_write_atomic "$BRIDGE_DIR/events/$1-$(date +%s%N)" "$2" "$(printf '%s' "$3" | head -c 300 | tr '\n' ' ')"
 }
 
 # --- URLs -------------------------------------------------------------------

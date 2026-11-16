@@ -9,7 +9,7 @@
 # The start mode comes from settings.json (the installer sets bypassPermissions with --autonomous yes);
 # Shift+Tab switches between the modes, "bypass permissions" included, because
 # --allow-dangerously-skip-permissions is set.
-# Root-related commands are still confirmed by the android-root-guard hook.
+# Android-root requests (androidsu) are confirmed in Termux: the daemon asks you in an Android dialog.
 # --continue (from `rootbridge theme` with THEME_RESTART=on) continues the last conversation.
 
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH

@@ -4,7 +4,7 @@
 # polling, and (2) a daemon's cleanup removed the lock even when a successor owned it.
 #   1. real rootbridge-daemon loop in a temp BRIDGE_DIR: own lock only, leftover daemons stop themselves,
 #      a vanished lock is taken again, a stale lock is taken over
-#   2. install.sh (migration step): keeps the lock of a live daemon, removes leftovers
+#   2. install.sh: stops a running daemon completely (process and lock: an old one would keep its old code), removes leftovers
 # Nothing real is touched: temp BRIDGE_DIR/HOME/PREFIX, `pkill`/`pgrep`/`tmux` are logging stubs, and the
 # processes the test starts are stopped by their pid (never by name).
 #   bash tests/test_daemon_lock.sh
@@ -93,7 +93,7 @@ start_daemon; F="$DPID"
 check "Veraltetes Lock (toter Prozess): F übernimmt"   "$F" "$(lock_pid)"
 kill -TERM "$F"; wait "$F" 2>/dev/null
 
-# ------------------------------------------------ 2. install.sh keeps a live lock
+# ------------------------------------------------ 2. install.sh stops a running daemon
 H="$T/ihome"; P="$T/prefix"; BR="$H/.rootbridge"
 mkdir -p "$H" "$P/bin" "$T/stubs"
 for s in pkill pgrep tmux; do   # install.sh's v1 migration would call these: logging stubs only
@@ -110,12 +110,14 @@ mkdir -p "$BR/.lock"; sleeper; L="$SLEEPER"; echo "$L" > "$BR/.lock/pid"
 : > "$BR/req-old.txt"
 inst
 check "install.sh (Daemon läuft): Exit 0"              0 "$?"
-check "install.sh (Daemon läuft): Lock bleibt"         "$L" "$(cat "$BR/.lock/pid" 2>/dev/null)"
+check "install.sh (Daemon läuft): der alte Daemon ist beendet" nein "$(alive "$L" && echo ja || echo nein)"
+check "install.sh (Daemon läuft): sein Lock ist weg"    nein "$([ -e "$BR/.lock" ] && echo ja || echo nein)"
+check "install.sh (Daemon läuft): Meldung"              1 "$(grep -c 'laufender Daemon beendet' "$T/install.log")"
 check "install.sh: alte Anfragen werden weiter geräumt" nein "$([ -e "$BR/req-old.txt" ] && echo ja || echo nein)"
 inst
-check "install.sh zweimal: Lock bleibt"                "$L" "$(cat "$BR/.lock/pid" 2>/dev/null)"
+check "install.sh zweimal: kein Daemon, kein Lock"      "0 nein" "$(grep -c 'laufender Daemon beendet' "$T/install.log") $([ -e "$BR/.lock" ] && echo ja || echo nein)"
 
-dead_pid > "$BR/.lock/pid"
+mkdir -p "$BR/.lock"; dead_pid > "$BR/.lock/pid"
 inst
 check "install.sh (toter Prozess im Lock): Lock weg"   nein "$([ -e "$BR/.lock" ] && echo ja || echo nein)"
 

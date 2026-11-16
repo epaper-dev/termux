@@ -43,6 +43,7 @@ AV="$T/avail"; mkdir -p "$AV"
 # Everything the "install" of a stub package makes appear; pkg / apt-get copy from here into the env's stubs.
 printf '#!/bin/bash\nexit 0\n' > "$AV/tmux"
 printf '#!/bin/bash\nexit 0\n' > "$AV/termux-open-url"
+printf '#!/bin/bash\nexit 0\n' > "$AV/termux-dialog"
 cat > "$AV/proot-distro" <<'EOF'
 #!/bin/bash
 # fake proot-distro: logs the call. `install X` makes the guest root, `login X -- bash <script>` only
@@ -67,7 +68,7 @@ echo "pkg $* [DEBIAN_FRONTEND=${DEBIAN_FRONTEND:-}]" >> "$STUB_LOG"
 for a in "$@"; do
     case "$a" in
         tmux|proot-distro) cp "$STUB_AV/$a" "$STUB_BIN/$a" ;;
-        termux-api) cp "$STUB_AV/termux-open-url" "$STUB_BIN/termux-open-url" ;;
+        termux-api) cp "$STUB_AV/termux-open-url" "$STUB_AV/termux-dialog" "$STUB_BIN/" ;;
         python) ln -sf "$STUB_REAL_PYTHON" "$STUB_BIN/python3" ;;
         coreutils) for c in stat timeout sha256sum; do
                        r="$(PATH="$STUB_ORIG_PATH" command -v "$c")"; [ -n "$r" ] && ln -sf "$r" "$STUB_BIN/$c"
@@ -142,7 +143,7 @@ exit 97
 EOF
 chmod +x "$AV"/*
 
-# The shim: symlinks to everything on the machine's PATH except tmux, proot-distro, termux-open-url, python3,
+# The shim: symlinks to everything on the machine's PATH except tmux, proot-distro, termux-open-url, termux-dialog, python3,
 # setsid, curl, claude, codex, git, node, apt-get, pkg (those are "missing" until a stub package brings them). Built once,
 # with few forks: one `ln -s -t` per batch of files.
 SHIM="$T/shim"; mkdir -p "$SHIM"
@@ -154,7 +155,7 @@ SHIM="$T/shim"; mkdir -p "$SHIM"
     done
 } | tr '\0' '\n' | awk -F/ '
     { n = $NF }
-    n ~ /^(tmux|proot-distro|termux-open-url|python3|setsid|curl|claude|codex|git|bwrap|node|nodejs|apt-get|pkg)$/ { next }
+    n ~ /^(tmux|proot-distro|termux-open-url|termux-dialog|python3|setsid|curl|claude|codex|git|bwrap|node|nodejs|apt-get|pkg)$/ { next }
     !(n in seen) { seen[n] = 1; print }' | tr '\n' '\0' | xargs -0 ln -s -t "$SHIM" 2>/dev/null
 [ -e "$SHIM/bash" ] && [ -e "$SHIM/sed" ] || { echo "ABBRUCH: Shim-PATH unvollständig" >&2; exit 1; }
 
@@ -190,7 +191,7 @@ envrun() {
 }
 rinstall() { envrun bash "$INSTALL" --no-migrate --no-colors --no-extra-keys --no-voice --autonomous no "$@" > "$E/out.log" 2>&1; }
 
-ALL_DEPS="tmux proot-distro python3 setsid termux-open-url"
+ALL_DEPS="tmux proot-distro python3 setsid termux-open-url termux-dialog"
 
 # =========================================================== A. install.sh, fresh device
 newenv a1
@@ -272,7 +273,7 @@ check "A3 nur termux-api fehlt: läuft durch"                    0 "$?"
 check "A3 nur termux-api wird installiert"                      "pkg install -y -o Dpkg::Options::=--force-confold termux-api [DEBIAN_FRONTEND=noninteractive]" "$(grep '^pkg ' "$LOG")"
 
 # stat, timeout and sha256sum all come from coreutils: named once
-HIDE="stat timeout sha256sum" newenv a10 tmux proot-distro python3 setsid termux-open-url
+HIDE="stat timeout sha256sum" newenv a10 tmux proot-distro python3 setsid termux-open-url termux-dialog
 rinstall --no-guest
 check "A10 coreutils fehlt: läuft durch"                        0 "$?"
 check "A10 coreutils wird genau einmal genannt"                 "pkg install -y -o Dpkg::Options::=--force-confold coreutils [DEBIAN_FRONTEND=noninteractive]" "$(grep '^pkg ' "$LOG")"

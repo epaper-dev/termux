@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Test: Codex next to Claude Code (and Claude Code or Codex alone).
 #   1. guest installer (staging root): Codex hook in the managed settings, scripts, config keys, bashrc block;
-#      --codex no, --claude no (Codex only), both off, --codex-update, a second run changes nothing, uninstall
+#      --codex no, --claude no (Codex only), both off, --codex-update, a second run changes nothing, uninstall,
+#      --codex-bypass (the flag, own arguments stay; the managed notice hook in requirements.toml, an own one stays untouched),
+#      --guidelines (code quality block in CLAUDE.md / AGENTS.md, own text stays, off, uninstall)
 #   2. rootbridge-update with stub claude / codex: what runs, in which order, the stamps, the modes, tools that
 #      are off or missing, a failing step never stops the rest, two runs at once do the work once
 #   3. rootbridge-codex with stubs: apt and the update come before Codex, working directory, CODEX_ARGS, exit
@@ -61,9 +63,10 @@ except OSError:
 pre = d.get("hooks", {}).get("PreToolUse", [])
 cmds = [h for e in pre for h in e.get("hooks", [])]
 codex = [h for h in cmds if "codex-precommit-review.py" in h.get("command", "")]
-guard = [h for h in cmds if "android-root-guard.py" in h.get("command", "")]
-print("pre=%d codex=%d guard=%d post=%d timeout=%s onFailure=%s" % (
-    len(pre), len(codex), len(guard), len(d.get("hooks", {}).get("PostToolUse", [])),
+hooks = d.get("hooks", {})
+notice = [h for event in hooks.values() for e in event for h in e.get("hooks", []) if "rootbridge-hook.py" in h.get("command", "")]
+print("pre=%d codex=%d notice=%d post=%d prompt=%d timeout=%s onFailure=%s" % (
+    len(pre), len(codex), len(notice), len(hooks.get("PostToolUse", [])), len(hooks.get("UserPromptSubmit", [])),
     codex[0].get("timeout") if codex else "-", codex[0].get("onFailure") if codex else "-"))
 PY
 }
@@ -92,10 +95,10 @@ check "Gast ohne Option: Installer läuft"                  0 "$?"
 check "Gast: TOOL_CLAUDE=on"                               on "$(gval "$S" TOOL_CLAUDE)"
 check "Gast: TOOL_CODEX=on"                                on "$(gval "$S" TOOL_CODEX)"
 check "Gast: CODEX_UPDATE=6h als Standard"                 6h "$(gval "$S" CODEX_UPDATE)"
-check "Gast: Hooks der Managed Settings"                   "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$S")"
+check "Gast: Hooks der Managed Settings"                   "pre=1 codex=1 notice=2 post=2 prompt=1 timeout=1560 onFailure=block" "$(msum "$S")"
 check "Gast: Plugin für Claude-Start deklariert, andere Einträge bleiben" "True https://github.com/openai/codex-plugin-cc.git False True" "$(plugins "$S")"
 for f in usr/local/bin/rootbridge-codex usr/local/bin/rootbridge-update usr/local/bin/rootbridge-claude \
-         usr/local/lib/termux-rootbridge/codex-precommit-review.py usr/local/lib/termux-rootbridge/android-root-guard.py; do
+         usr/local/lib/termux-rootbridge/codex-precommit-review.py usr/local/lib/termux-rootbridge/rootbridge-hook.py; do
     check "Gast: $f installiert"                           ja "$(has "$S/$f")"
 done
 check "Gast: Unterhaltungsprüfung installiert" ja "$(has "$S/usr/local/lib/termux-rootbridge/claude-conversation.py")"
@@ -109,13 +112,13 @@ check "Gast: Hook-Befehl hat den Marker (Deinstallation findet ihn)" 1 "$(count 
 before="$(cksum < "$(gconf "$S")")$(cksum < "$S/etc/claude-code/managed-settings.json")"
 ginstall "$S"
 check "Gast zweiter Lauf: Konfig und Managed Settings unverändert" "$before" "$(cksum < "$(gconf "$S")")$(cksum < "$S/etc/claude-code/managed-settings.json")"
-check "Gast zweiter Lauf: Hook genau einmal"               "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$S")"
+check "Gast zweiter Lauf: Hook genau einmal"               "pre=1 codex=1 notice=2 post=2 prompt=1 timeout=1560 onFailure=block" "$(msum "$S")"
 
 # --- --codex no
 ginstall "$S" --codex no
 check "Gast --codex no: Installer läuft"                   0 "$?"
 check "Gast --codex no: TOOL_CODEX=off"                    off "$(gval "$S" TOOL_CODEX)"
-check "Gast --codex no: kein Codex-Hook, Guard bleibt"     "pre=1 codex=0 guard=1 post=1 timeout=- onFailure=-" "$(msum "$S")"
+check "Gast --codex no: kein Codex-Hook, Melde-Hook bleibt"     "pre=0 codex=0 notice=2 post=2 prompt=1 timeout=- onFailure=-" "$(msum "$S")"
 check "Gast --codex no: eigene Plugin-Deklaration weg, andere bleiben" "None - - True" "$(plugins "$S")"
 check "Gast --codex no: rootbridge-codex entfernt"         nein "$(has "$S/usr/local/bin/rootbridge-codex")"
 check "Gast --codex no: Hook-Skript entfernt"              nein "$(has "$S/usr/local/lib/termux-rootbridge/codex-precommit-review.py")"
@@ -123,9 +126,9 @@ check "Gast --codex no: kein codex() in der bashrc"        0 "$(count "$(bashrc 
 check "Gast --codex no: claude() bleibt"                   1 "$(count "$(bashrc "$S")" '^claude() {')"
 ginstall "$S"
 check "Gast ohne Option danach: die Wahl bleibt (aus)"     off "$(gval "$S" TOOL_CODEX)"
-check "Gast ohne Option danach: weiter kein Codex-Hook"    "pre=1 codex=0 guard=1 post=1 timeout=- onFailure=-" "$(msum "$S")"
+check "Gast ohne Option danach: weiter kein Codex-Hook"    "pre=0 codex=0 notice=2 post=2 prompt=1 timeout=- onFailure=-" "$(msum "$S")"
 ginstall "$S" --codex yes
-check "Gast --codex yes: Hook wieder da"                   "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$S")"
+check "Gast --codex yes: Hook wieder da"                   "pre=1 codex=1 notice=2 post=2 prompt=1 timeout=1560 onFailure=block" "$(msum "$S")"
 check "Gast --codex yes: TOOL_CODEX=on"                    on "$(gval "$S" TOOL_CODEX)"
 check "Gast --codex yes: Plugin-Deklaration wieder da" "True https://github.com/openai/codex-plugin-cc.git False True" "$(plugins "$S")"
 
@@ -138,8 +141,9 @@ check "Gast --claude no: Codex bleibt"                     on "$(gval "$S2" TOOL
 check "Gast --claude no: keine Managed Settings"           "keine Datei" "$(msum "$S2")"
 check "Gast --claude no: keine Plugin-Deklaration" "None - - False" "$(plugins "$S2")"
 check "Gast --claude no: kein rootbridge-claude"           nein "$(has "$S2/usr/local/bin/rootbridge-claude")"
-check "Gast --claude no: kein Guard, kein Login-Hook, kein Codex-Hook" "nein nein nein" \
-      "$(has "$S2/usr/local/lib/termux-rootbridge/android-root-guard.py") $(has "$S2/usr/local/lib/termux-rootbridge/auth-url-hook.py") $(has "$S2/usr/local/lib/termux-rootbridge/codex-precommit-review.py")"
+# the notice hook stays with Codex alone (it hands the refusals of the daemon to Codex)
+check "Gast --claude no: Melde-Hook bleibt, kein Login-Hook, kein Codex-Hook" "ja nein nein" \
+      "$(has "$S2/usr/local/lib/termux-rootbridge/rootbridge-hook.py") $(has "$S2/usr/local/lib/termux-rootbridge/auth-url-hook.py") $(has "$S2/usr/local/lib/termux-rootbridge/codex-precommit-review.py")"
 check "Gast --claude no: rootbridge-codex und -update da"  "ja ja" "$(has "$S2/usr/local/bin/rootbridge-codex") $(has "$S2/usr/local/bin/rootbridge-update")"
 check "Gast --claude no: keine Claude-Einstellungen"       nein "$(has "$S2/home/tester/.claude/settings.json")"
 check "Gast --claude no: bashrc nur mit codex()"           "0 1" "$(count "$(bashrc "$S2")" '^claude()') $(count "$(bashrc "$S2")" '^codex()')"
@@ -147,7 +151,7 @@ check "Gast --claude no: PATH-Zeile in der bashrc"         1 "$(count "$(bashrc 
 check "Gast --claude no: keine CLAUDE_ARGS"                0 "$(count "$(gconf "$S2")" '^CLAUDE_ARGS=')"
 check "Gast --claude no: Arbeitsordner trotzdem da"        ja "$(has "$S2/root/work")"
 ginstall "$S2" --claude yes
-check "Gast --claude yes danach: Managed Settings mit beiden Hooks" "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$S2")"
+check "Gast --claude yes danach: Managed Settings mit beiden Hooks" "pre=1 codex=1 notice=2 post=2 prompt=1 timeout=1560 onFailure=block" "$(msum "$S2")"
 ginstall "$S2" --claude no
 check "Gast --claude no nach beiden Tools: Plugin-Deklaration entfernt" "None - - False" "$(plugins "$S2")"
 
@@ -164,6 +168,70 @@ check "Gast --codex-update bogus: Code 2"                  2 "$?"
 ginstall "$T/g4"
 check "Gast ohne Option: CODEX_UPDATE bleibt"              daily "$(gval "$T/g4" CODEX_UPDATE)"
 
+# --- Codex without its own sandbox (--codex-bypass): the flag, and the managed notice hook of Codex (requirements.toml)
+BYP="$T/gbyp"; BREQ="$BYP/etc/codex/requirements.toml"; BFLAG="--dangerously-bypass-approvals-and-sandbox"
+ginstall "$BYP" --codex yes
+check "Bypass Standard: Installer läuft"                   0 "$?"
+check "Bypass Standard: CODEX_ARGS mit dem Flag"           "\"$BFLAG\"" "$(gval "$BYP" CODEX_ARGS)"
+check "Bypass Standard: Melde-Hook installiert, die alten Wächter nicht" "ja nein nein" "$(has "$BYP/usr/local/lib/termux-rootbridge/rootbridge-hook.py") $(has "$BYP/usr/local/lib/termux-rootbridge/android-root-guard.py") $(has "$BYP/usr/local/lib/termux-rootbridge/codex-root-guard.py")"
+check "Bypass Standard: requirements.toml mit managed_dir, PostToolUse und UserPromptSubmit" "1 1 1 2" \
+      "$(count "$BREQ" '^managed_dir = "/usr/local/lib/termux-rootbridge"') $(count "$BREQ" '^\[\[hooks.PostToolUse\]\]') $(count "$BREQ" '^\[\[hooks.UserPromptSubmit\]\]') $(count "$BREQ" 'rootbridge-hook.py"$')"
+check "Bypass Standard: requirements.toml ist gültiges TOML" "ok" "$(python3 -I -c "import sys,tomllib;d=tomllib.load(open(sys.argv[1],'rb'))['hooks'];print('ok' if d['PostToolUse'][0]['matcher']=='Bash' and d['UserPromptSubmit'][0]['hooks'][0]['timeout']==15 else 'falsch')" "$BREQ" 2>&1 | tail -n 1)"
+ginstall "$BYP" --codex yes
+check "Bypass zweiter Lauf: CODEX_ARGS bleibt einmal"      1 "$(count "$(gconf "$BYP")" '^CODEX_ARGS=')"
+check "Bypass zweiter Lauf: keine Sicherung der requirements.toml" nein "$(has "$BYP/etc/codex/requirements.toml.bak-"*)"
+# the user's own arguments stay, the flag is added once and taken out again
+printf 'CODEX_ARGS="--model gpt-test"\n' >> "$(gconf "$BYP")"
+sed -i '/^CODEX_ARGS="--dangerously/d' "$(gconf "$BYP")"
+ginstall "$BYP" --codex yes
+check "Bypass mit eigenen Argumenten: beide stehen da"     "\"--model gpt-test $BFLAG\"" "$(gval "$BYP" CODEX_ARGS)"
+ginstall "$BYP" --codex yes --codex-bypass no
+check "--codex-bypass no: nur das Flag geht"               "\"--model gpt-test\"" "$(gval "$BYP" CODEX_ARGS)"
+check "--codex-bypass no: CODEX_BYPASS=off"                off "$(gval "$BYP" CODEX_BYPASS)"
+check "--codex-bypass no: der Melde-Hook bleibt (er hängt nicht am Flag)" "ja ja" "$(has "$BYP/usr/local/lib/termux-rootbridge/rootbridge-hook.py") $(has "$BREQ")"
+ginstall "$BYP" --codex yes
+check "Bypass ohne Option danach: die Wahl bleibt (aus)"   "\"--model gpt-test\"" "$(gval "$BYP" CODEX_ARGS)"
+ginstall "$BYP" --codex yes --codex-bypass yes
+check "--codex-bypass yes: das Flag ist wieder da"         "\"--model gpt-test $BFLAG\"" "$(gval "$BYP" CODEX_ARGS)"
+ginstall "$BYP" --codex-bypass maybe
+check "--codex-bypass maybe: Code 2"                       2 "$?"
+# a requirements.toml of your own is never touched (the flag does not depend on it)
+OWN="$T/gown"; mkdir -p "$OWN/etc/codex"; printf '[features]\nhooks = true\n' > "$OWN/etc/codex/requirements.toml"
+ginstall "$OWN" --codex yes
+check "Eigene requirements.toml: bleibt unverändert"       "[features] hooks = true" "$(tr '\n' ' ' < "$OWN/etc/codex/requirements.toml" | sed 's/ $//')"
+check "Eigene requirements.toml: Hinweis in der Ausgabe"   1 "$(count "$T/guest.log" 'enthält eigene Einstellungen')"
+check "Eigene requirements.toml: das Flag wird trotzdem gesetzt" "\"$BFLAG\"" "$(gval "$OWN" CODEX_ARGS)"
+# no Codex: no flag, no requirements.toml
+ginstall "$T/gnocodex" --codex no
+check "--codex no: keine requirements.toml, kein Flag"     "nein " "$(has "$T/gnocodex/etc/codex/requirements.toml") $(gval "$T/gnocodex" CODEX_ARGS)"
+
+# --- code quality guidelines (--guidelines): a marked block in ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md
+GL="$T/ggl"; GLC="$GL/home/tester/.claude/CLAUDE.md"; GLA="$GL/home/tester/.codex/AGENTS.md"
+GLB='<!-- >>> termux-rootbridge >>> -->'
+ginstall "$GL"
+check "Richtlinien Standard: Installer läuft"              0 "$?"
+check "Richtlinien Standard: beide Dateien mit Block"      "1 1" "$(count "$GLC" "$GLB") $(count "$GLA" "$GLB")"
+check "Richtlinien Standard: Claude-Text in CLAUDE.md, Codex-Text in AGENTS.md" "1 0 1 0" \
+      "$(count "$GLC" '^## Code quality requirements') $(count "$GLC" '^## Code Quality') $(count "$GLA" '^## Code Quality') $(count "$GLA" '^## Code quality requirements')"
+cp "$GLC" "$T/gl.before"
+ginstall "$GL"
+check "Richtlinien zweiter Lauf: Datei unverändert, keine Sicherung" "ja nein" "$(cmp -s "$GLC" "$T/gl.before" && echo ja || echo nein) $(has "$GLC.bak-"*)"
+{ printf '# Mein Text\nbleibt\n\n'; cat "$GLC"; } > "$T/gl.mine" && cp "$T/gl.mine" "$GLC"
+ginstall "$GL"
+check "Richtlinien mit eigenem Text: der bleibt, der Block einmal" "1 1" "$(count "$GLC" '^# Mein Text') $(count "$GLC" "$GLB")"
+ginstall "$GL" --guidelines no
+check "--guidelines no: Block aus CLAUDE.md weg, eigener Text bleibt" "0 1" "$(count "$GLC" "$GLB") $(count "$GLC" '^# Mein Text')"
+check "--guidelines no: AGENTS.md (nur unser Block) ganz weg" nein "$(has "$GLA")"
+check "--guidelines no: GUIDELINES=off"                    off "$(gval "$GL" GUIDELINES)"
+ginstall "$GL"
+check "Richtlinien ohne Option danach: die Wahl bleibt (aus)" "0 nein" "$(count "$GLC" "$GLB") $(has "$GLA")"
+ginstall "$GL" --guidelines yes --codex no
+check "--guidelines yes --codex no: nur der Claude-Block"  "1 nein" "$(count "$GLC" "$GLB") $(has "$GLA")"
+ginstall "$GL" --guidelines maybe
+check "--guidelines maybe: Code 2"                         2 "$?"
+bash "$GUEST" --root "$GL" --uninstall > "$T/guest.log" 2>&1
+check "Richtlinien Deinstallation: Block weg, eigener Text bleibt" "0 1" "$(count "$GLC" "$GLB") $(count "$GLC" '^# Mein Text')"
+
 # --- uninstall
 bash "$GUEST" --root "$S" --uninstall > "$T/guest.log" 2>&1
 check "Gast Deinstallation: läuft"                         0 "$?"
@@ -171,6 +239,7 @@ check "Gast Deinstallation: rootbridge-codex und -update weg" "nein nein" "$(has
 check "Gast Deinstallation: kein Codex-Hook mehr"          0 "$(count "$S/etc/claude-code/managed-settings.json" 'codex-precommit-review')"
 check "Gast Deinstallation: eigene Plugin-Deklaration weg, andere bleiben" "None - - True" "$(plugins "$S")"
 check "Gast Deinstallation: Hook-Skript weg"               nein "$(has "$S/usr/local/lib/termux-rootbridge/codex-precommit-review.py")"
+check "Gast Deinstallation: requirements.toml und /etc/codex weg" "nein nein" "$(has "$S/etc/codex/requirements.toml") $(has "$S/etc/codex")"
 
 # =========================================================================== 2. rootbridge-update
 UB="$T/ubin"; mkdir -p "$UB"
@@ -393,6 +462,7 @@ exit 0
 EOF
 chmod +x "$T/bin/rootbridge" "$T/bin/rootbridge-daemon" "$T/stubs/tmux" "$T/stubs/proot-distro"
 export STUB_LOG="$T/stub.log" BRIDGE_DIR="$T/bridge"
+export RB_STORAGE_DIR="$T/no-storage"   # the shared storage of the machine must not change what the tests expect
 RBC="$T/home/.config/termux-rootbridge/config"
 rb() {   # rb [env VAR=..] <args...>: the copied rootbridge; exit code in $RC
     : > "$STUB_LOG"
@@ -401,20 +471,22 @@ rb() {   # rb [env VAR=..] <args...>: the copied rootbridge; exit code in $RC
 }
 calls() { grep -c -- "$1" "$STUB_LOG" || true; }
 : > "$RBC"
+# guest sessions are isolated by default: nothing of Termux but the bridge directory (GUEST_ISOLATE)
+ISO="--isolated --bind $T/bridge:$T/bridge"
 
 rb bash "$T/bin/rootbridge" attach
-check "attach (beide Tools): Standard ist Claude Code"     1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu -- /usr/local/bin/rootbridge-claude$')"
+check "attach (beide Tools): Standard ist Claude Code"     1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-claude$')"
 rb bash "$T/bin/rootbridge" attach codex
-check "attach codex ohne Sitzung: erstes Fenster ist Codex" 1 "$(calls '^tmux new-session -d -s ubuntu -n codex proot-distro login ubuntu -- /usr/local/bin/rootbridge-codex$')"
+check "attach codex ohne Sitzung: erstes Fenster ist Codex" 1 "$(calls '^tmux new-session -d -s ubuntu -n codex proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-codex$')"
 check "attach codex ohne Sitzung: hängt sich an"           1 "$(calls '^tmux attach -t ubuntu$')"
 rb env STUB_HAS_SESSION=0 STUB_WINDOWS=claude bash "$T/bin/rootbridge" attach codex
-check "attach codex bei laufender Sitzung: neues Fenster"  1 "$(calls '^tmux new-window -d -t ubuntu: -n codex proot-distro login ubuntu -- /usr/local/bin/rootbridge-codex$')"
+check "attach codex bei laufender Sitzung: neues Fenster"  1 "$(calls '^tmux new-window -d -t ubuntu: -n codex proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-codex$')"
 check "attach codex bei laufender Sitzung: keine neue Sitzung" 0 "$(calls '^tmux new-session')"
 check "attach codex bei laufender Sitzung: Fenster wird gewählt" 1 "$(calls '^tmux select-window -t ubuntu:codex$')"
 rb env STUB_HAS_SESSION=0 STUB_WINDOWS="claude codex" bash "$T/bin/rootbridge" attach codex
 check "attach codex: Fenster da, kein zweites"             0 "$(calls '^tmux new-window')"
 rb env STUB_HAS_SESSION=0 STUB_WINDOWS=codex bash "$T/bin/rootbridge" attach claude
-check "attach claude: fehlendes Claude-Fenster kommt dazu" 1 "$(calls '^tmux new-window -d -t ubuntu: -n claude proot-distro login ubuntu -- /usr/local/bin/rootbridge-claude$')"
+check "attach claude: fehlendes Claude-Fenster kommt dazu" 1 "$(calls '^tmux new-window -d -t ubuntu: -n claude proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-claude$')"
 rb bash "$T/bin/rootbridge" attach vim
 check "attach vim: Fehler"                                 1 "$RC"
 check "attach vim: Meldung"                                1 "$(grep -c 'unbekanntes Programm' "$T/out.txt")"
@@ -440,10 +512,33 @@ check "TOOL_CLAUDE=off: start startet Codex"               1 "$(calls '^tmux new
 rb bash "$T/bin/rootbridge" codex-login
 check "codex-login: Exit 0"                                0 "$RC"
 check "codex-login: Daemon läuft schon, kein zweiter"       0 "$(calls '^daemon-start$')"
-check "codex-login: proot-distro login ... codex login"    1 "$(calls '^proot-distro login ubuntu -- bash -lc .*codex login "\$@" _$')"
+check "codex-login: proot-distro login ... codex login"    1 "$(calls '^proot-distro login ubuntu '"$ISO"' -- bash -lc .*codex login "\$@" _$')"
 check "codex-login: Browser-Übergabe gesetzt"              1 "$(calls 'BROWSER=/usr/local/bin/rootbridge-open')"
 rb bash "$T/bin/rootbridge" codex-login --device-auth
 check "codex-login --device-auth: wird weitergereicht"     1 "$(calls 'codex login "\$@" _ --device-auth$')"
+
+# --- the guest sessions see nothing of Termux but the bridge directory (GUEST_ISOLATE, proot-distro --isolated)
+rm -rf "$T/bridge"
+rb bash "$T/bin/rootbridge" shell
+check "shell: isoliert, nur der Bridge-Ordner gebunden"    1 "$(calls '^proot-distro login ubuntu '"$ISO"'$')"
+check "shell: der Bridge-Ordner wird angelegt"             ja "$([ -d "$T/bridge" ] && echo ja || echo nein)"
+mkdir -p "$T/home/.config/pulse"; : > "$T/home/.config/pulse/cookie"
+COOKIE="$T/home/.config/pulse/cookie"
+rb bash "$T/bin/rootbridge" attach
+check "Voice an: das PulseAudio-Cookie kommt dazu"         1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' --bind '"$COOKIE:$COOKIE"' -- ')"
+mkdir -p "$T/storage"
+rb env RB_STORAGE_DIR="$T/storage" bash "$T/bin/rootbridge" attach
+check "Gemeinsamer Speicher: /sdcard und /storage/emulated/0 sind da" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' --bind '"$T/storage:/sdcard --bind $T/storage:/storage/emulated/0"' --bind '"$COOKIE:$COOKIE"' -- ')"
+printf 'VOICE=off\n' > "$RBC"
+rb bash "$T/bin/rootbridge" attach
+check "Voice aus: kein Cookie im Gast"                     1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- ')"
+printf 'GUEST_ISOLATE=off\n' > "$RBC"
+rb bash "$T/bin/rootbridge" attach
+check "GUEST_ISOLATE=off: Gast wie bisher, ohne Optionen"  1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu  -- /usr/local/bin/rootbridge-claude$')"
+printf 'GUEST_ISOLATE=maybe\n' > "$RBC"; rm -f "$COOKIE"
+rb bash "$T/bin/rootbridge" attach
+check "GUEST_ISOLATE mit unzulässigem Wert: bleibt an"     1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- ')"
+: > "$RBC"
 rb bash "$T/bin/rootbridge" codex-login '; rm -rf /'
 check "codex-login: Schrott als Argument wird abgelehnt"   1 "$RC"
 check "codex-login: nichts ausgeführt"                     0 "$(calls '^proot-distro ')"
@@ -518,7 +613,7 @@ check "install.sh: Codex-Widget startet das Codex-Fenster" 1 "$(count "$H/.short
 check "install.sh: Codex-Widget ist ausführbar"            ja "$([ -x "$H/.shortcuts/Codex" ] && echo ja || echo nein)"
 check "install.sh: Codex-Widget hat das Standard-Icon"     0 "$(cmp -s "$ROOT/termux/shortcuts/icons/widget.png" "$H/.shortcuts/icons/Codex.png"; echo $?)"
 check "install.sh: gibt --claude yes --codex yes an den Gast" 1 "$(guestargs | grep -c -- '--claude yes --codex yes')"
-check "install.sh: Gast hat beide Hooks"                   "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$T/iguest")"
+check "install.sh: Gast hat beide Hooks"                   "pre=1 codex=1 notice=2 post=2 prompt=1 timeout=1560 onFailure=block" "$(msum "$T/iguest")"
 check "install.sh: Abschlussmeldung nennt rootbridge codex-login" 1 "$(count "$T/install.log" 'rootbridge codex-login')"
 for entry in "ubuntu:Ubuntu-Shell" "claude:Claude-Code-Sitzung" "codex:Codex-Sitzung"; do
     check "install.sh: Abschlussmeldung erklärt ${entry%%:*}" 1 "$(count "$T/install.log" "^  ${entry%%:*} .*${entry#*:}")"
@@ -531,7 +626,7 @@ check "install.sh --no-codex: kein Codex-Widget"           nein "$(has "$H/.shor
 check "install.sh --no-codex: Claude-Widget bleibt"        ja "$(has "$H/.shortcuts/Claude")"
 check "install.sh --no-codex: Gast bekommt --codex no"     1 "$(guestargs | grep -c -- '--claude yes --codex no')"
 check "install.sh --no-codex: Wahl in der Termux-Konfig"   off "$(iget TOOL_CODEX)"
-check "install.sh --no-codex: kein Codex-Hook im Gast"     "pre=1 codex=0 guard=1 post=1 timeout=- onFailure=-" "$(msum "$T/iguest")"
+check "install.sh --no-codex: kein Codex-Hook im Gast"     "pre=0 codex=0 notice=2 post=2 prompt=1 timeout=- onFailure=-" "$(msum "$T/iguest")"
 check "install.sh --no-codex: Abschluss ohne Codex-Login-Satz" 0 "$(count "$T/install.log" 'rootbridge codex-login')"
 
 KEEP_GUEST=1 irun
@@ -541,12 +636,12 @@ check "install.sh danach: keine übernommene Codex-Abwahl" 0 "$(count "$T/instal
 check "install.sh danach: Gast bekommt --codex yes"       1 "$(guestargs | grep -c -- '--codex yes')"
 check "install.sh danach: Termux-Konfig wieder on"        on "$(iget TOOL_CODEX)"
 check "install.sh danach: bestehende Gast-Konfig wieder on" on "$(sed -n 's/^TOOL_CODEX=//p' "$T/iguest/etc/termux-rootbridge.conf")"
-check "install.sh danach: Review-Hook wieder vorhanden" "pre=2 codex=1 guard=1 post=1 timeout=1560 onFailure=block" "$(msum "$T/iguest")"
+check "install.sh danach: Review-Hook wieder vorhanden" "pre=1 codex=1 notice=2 post=2 prompt=1 timeout=1560 onFailure=block" "$(msum "$T/iguest")"
 check "install.sh danach: Codex-Kurzbefehl nach source verfügbar" "alias codex='rootbridge attach codex'" \
       "$(env -i HOME="$H" PATH=/usr/bin:/bin bash --noprofile --norc -c 'source "$HOME/.bashrc"; alias codex')"
 KEEP_GUEST=1 irun --no-codex
 check "install.sh erneutes --no-codex: Widget wieder entfernt" nein "$(has "$H/.shortcuts/Codex")"
-check "install.sh erneutes --no-codex: Review-Hook wieder entfernt" "pre=1 codex=0 guard=1 post=1 timeout=- onFailure=-" "$(msum "$T/iguest")"
+check "install.sh erneutes --no-codex: Review-Hook wieder entfernt" "pre=0 codex=0 notice=2 post=2 prompt=1 timeout=- onFailure=-" "$(msum "$T/iguest")"
 irun --codex
 check "install.sh --codex: Codex-Widget wieder da"         ja "$(has "$H/.shortcuts/Codex")"
 check "install.sh --codex: Wahl in der Konfig on"          on "$(iget TOOL_CODEX)"

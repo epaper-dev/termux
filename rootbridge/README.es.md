@@ -4,7 +4,7 @@
 
 [English](README.md) · [Deutsch](README.de.md) · [Comparación con otros proyectos](docs/COMPARISON.md) · [Inicio de sesión y MCP](docs/LOGIN.md) · [Seguridad](SECURITY.md)
 
-> **Estado: v2.0.0-dev.** Las pruebas unitarias y de integración pasan (hook de guardia, hook de inicio de sesión,
+> **Estado: v2.1.0-dev.** Las pruebas unitarias y de integración pasan (hook de guardia, hook de inicio de sesión,
 > daemon, instaladores). Confirmado en un dispositivo (Hisense A9): la confirmación de root también en modo bypass, un
 > inicio de sesión completo con la redirección automática a `localhost`, la apertura del navegador desde el invitado y
 > la copia de enlaces al portapapeles de Android (mediante el daemon y con la tecla `c` a través de tmux). Pendiente de
@@ -29,19 +29,36 @@ Ya no hay una segunda ventana de terminal ni ventana emergente (la v1 necesitaba
 ## Cómo funciona
 
 ```
-Claude Code (invitado Ubuntu, root)               Termux (fuera de proot)
-───────────────────────────────────               ───────────────────────
+Agente: Claude Code o Codex (invitado Ubuntu)     Termux (fuera de proot)
+─────────────────────────────────────────────     ───────────────────────
 Bash: androidsu 'id'
- └─ hook PreToolUse (android-root-guard.py)
-     • ¿comando literal? → ticket de un solo uso, ligado a sha256("id")
-     • pregunta: "⚠ ANDROID-ROOT: id"   ← respondes Sí / No en Claude Code
-androidsu ── solicitud + ticket ───────────────▶  rootbridge-daemon (sin ventana)
-                                                  ¿ticket válido? → su -c 'id'
-                         ◀──────── resultado ──   ¿sin ticket?    → rechazado (exit 99)
+androidsu ── solicitud (archivo en ~/.rootbridge) ▶ rootbridge-daemon (sin ventana)
+                                                  diálogo de Android "Android-Root: Claude Code"
+                                                    ← respondes Sí / No, en Termux
+                         ◀──────── resultado ──   Sí → su -c 'id'      No → rechazado (exit 99)
+rootbridge-hook.py (PostToolUse, UserPromptSubmit)
+  ◀── la nota del daemon: "el usuario rechazó `id`, sin rodeos"
 ```
 
-* **Sin ticket, no hay root.** Si rechazas la confirmación, el comando nunca se ejecuta. No hay alternativa con ventana
-  emergente.
+<p align="center"><img src="docs/images/android-root-dialog.png" width="300" alt="El diálogo de Android: Android-Root: Claude Code, el comando y el plazo, con los botones NO y YES"></p>
+
+El diálogo del daemon para una solicitud: quién pregunta, el comando, el plazo. (Los botones están en inglés aquí: la Termux:API estándar.
+La Termux:API de este repositorio, `api/`, los muestra en el idioma del teléfono y cuenta el plazo atrás.)
+
+* **Sin confirmación, no hay root.** El daemon de Termux muestra un diálogo de Android (`termux-dialog`, paquete `termux-api` y
+  la app Termux:API) por cada solicitud de `androidsu`, con el comando y el agente que lo pide. La respuesta es la salida del
+  propio diálogo, nunca un archivo que el invitado pueda escribir: ni Claude Code ni Codex pueden aprobar nada. Sin respuesta en
+  `ASK_TIMEOUT` (120 s), sin diálogo o con un comando de más de 4000 caracteres: rechazado. Con la Termux:API de este repositorio (`api/`) el diálogo tiene los botones
+  en el idioma del teléfono (Ja/Nein, Sí/No, si no Yes/No), un título que cuenta atrás hasta el plazo y se cierra solo, y solo un
+  toque en un botón lo responde. Con cualquier otra Termux:API los botones están en inglés, el plazo figura en el texto y un diálogo
+  descartado (o tapado por el teclado) vuelve a aparecer hasta que pulses Yes o No; un Yes en menos de un segundo cuenta como descuido
+  y se vuelve a preguntar.
+* **Los rechazos llegan al agente.** El daemon deja una nota para el agente que preguntó (`~/.rootbridge/events/`) y el hook
+  `rootbridge-hook.py` (PostToolUse y UserPromptSubmit, en los managed settings de Claude Code y en `/etc/codex/requirements.toml`
+  para Codex) la entrega como contexto: rechazaste, sin rodeos (`su`, `adb`, archivos del puente).
+* **El invitado está aislado de Termux.** Las sesiones de agentes y shells arrancan con `proot-distro login --isolated` y solo
+  enlazan `~/.rootbridge`, el almacenamiento compartido (`/sdcard`) y, para voz, la cookie de PulseAudio: sin home de Termux, sin `usr`, sin daemon, sin el wrapper `su`
+  (`GUEST_ISOLATE=off` en la configuración de Termux lo desactiva). Los hooks usan por eso el `python3` propio del invitado.
 * **Autonomía para todo lo demás.** Lo que no tiene que ver con root (incluido `/sdcard`) se ejecuta sin preguntas.
 * **Enlaces de inicio de sesión.** `/login`, `/mcp` y `claude mcp login <server>` abren el navegador mediante
   `BROWSER`/`xdg-open`; los resultados de `mcp__*__authenticate` se interceptan para que el enlace largo se abra y se
@@ -204,10 +221,13 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
   `/reload-plugins` o reinicia Claude Code. El hook previo al commit bloquea los commits hasta que el plugin esté listo.
   Una segunda ejecución no usa la red si ya están los requisitos; instala `bwrap` si falta aunque Codex ya esté instalado.
   `--no-codex`, `--no-claude` y la desinstalación eliminan esta declaración y conservan las de otros plugins.
-* **Widget «Codex»** y `rootbridge attach codex`: una segunda ventana en la misma sesión de tmux. Codex arranca con sus
-  valores por defecto (su sandbox y sus preguntas de aprobación), **no** en un modo bypass; `CODEX_ARGS` en
-  `/etc/termux-rootbridge.conf` añade opciones. El hook `android-root-guard` solo protege a Claude Code; `androidsu` sigue
-  negándose sin ticket, y los tickets solo los emite ese hook.
+* **Widget «Codex»** y `rootbridge attach codex`: una segunda ventana en la misma sesión de tmux. Bajo proot la sandbox
+  bubblewrap de Codex falla en cada comando (`unsupported host mount`), por lo que Codex se ejecuta por defecto **sin su
+  propia sandbox**: el instalador pone `CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox"` en
+  `/etc/termux-rootbridge.conf` (tus otros argumentos se conservan); `install.sh --no-codex-bypass` lo quita y recuerda la
+  elección (`CODEX_BYPASS`). Codex no tiene root de Android propio: como Claude Code solo llega a root mediante `androidsu`,
+  y el daemon te pregunta. El hook gestionado `rootbridge-hook.py` (`/etc/codex/requirements.toml`, sin revisión en `/hooks`;
+  un `/etc/codex/requirements.toml` propio no se toca) le dice a Codex cuando has rechazado.
 * **Inicio de sesión.** `rootbridge codex-login` ejecuta `codex login` con el traspaso al navegador (`--device-auth` si no
   hay navegador). `rootbridge status` muestra si Codex, su inicio de sesión, el plugin y el hook están en su sitio.
 * **Ambos se mantienen al día.** Al arrancar cualquiera de las dos ventanas se ejecuta `rootbridge-apt` y luego
@@ -304,10 +324,10 @@ Versión corta (detalles y solución de problemas: [docs/LOGIN.md](docs/LOGIN.md
 ## Configuración
 
 Termux: `~/.config/termux-rootbridge/config` (se interpreta como datos, nunca se ejecuta): `DISTRO`, `WORKDIR`,
-`SESSION`, `TICKET_TTL`, `SU_ARGS` (`-c` o `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE`, `CLAUDE_UPDATE`, `CODEX_UPDATE`, `TOOL_CLAUDE` y `TOOL_CODEX`
+`SESSION`, `ASK_TIMEOUT`, `GUEST_ISOLATE`, `SU_ARGS` (`-c` o `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE`, `CLAUDE_UPDATE`, `CODEX_UPDATE`, `TOOL_CLAUDE` y `TOOL_CODEX`
 (todos los lee `install.sh`).
-Invitado: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `TICKET_TTL`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
-`TTY_CONFIRM`, `PROTECTED_PATHS`, `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
+Invitado: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
+`CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
 la actualización, por defecto 1800), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
 `daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (ver abajo). `VOICE` / `SIDEKEY` (`on` / `off`). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
 
@@ -328,8 +348,8 @@ Remote Control (nunca `--continue`) y lo omite para `-p`, `--version` y `--help`
 
 | Verificado con pruebas automáticas | Pendiente de comprobar en un dispositivo real |
 |---|---|
-| Decisiones de la guardia (43 pruebas): vínculo del ticket, llamadas indirectas, protección contra manipulación, fail-closed | Forma de `tool_response` de las herramientas de inicio de sesión MCP; `updatedToolOutput` |
-| Daemon: ticket de un solo uso/caducidad/hash, comandos largos, validación de URL (49 comprobaciones) | — |
+| Hook de avisos (12 pruebas): solo las notas del propio agente, Claude Code y Codex, texto limpio, silencioso ante errores | Forma de `tool_response` de las herramientas de inicio de sesión MCP; `updatedToolOutput` |
+| Daemon: decide el diálogo (sí, no, descartado, fallido, sin respuesta, ausente, uno a la vez), agente que pregunta, notas para el hook, archivos falsificados no cuentan, comandos largos, validación de URL | — |
 | Hook de inicio de sesión (19 pruebas: formas de respuesta, reglas de URL, modos) | — |
 | Instaladores: raíz de staging, idempotencia, migración de la v1, desinstalación | — |
 | Codex junto a Claude Code: opciones de instalación y la elección guardada, pasos de actualización con marcas y bloqueo, ventanas de tmux, `codex-login` / `codex-off` / `status`, el bucle de revisión previa al commit (`node` simulado) | `codex-login` y el widget **Codex** en un dispositivo; `claude plugin update`, `codex update` y `onFailure: "block"` tras un fallo del hook; `bwrap` en otros dispositivos |

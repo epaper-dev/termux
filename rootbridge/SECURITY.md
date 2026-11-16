@@ -7,48 +7,57 @@ sandbox against a hostile agent or a compromised guest. Read the limits before r
 
 ### Protections
 
-* **Confirmation inside Claude Code.** A PreToolUse hook (`android-root-guard.py`, delivered through *managed
-  settings*, the highest settings level) turns `androidsu`, `adb` (except harmless subcommands), `fastboot`, `su`,
-  `magisk`, `resetprop`, `setprop` and similar into a permission prompt. Claude Code keeps asking for hook
-  decisions of this kind in bypass-permissions mode. Managed settings cannot be overridden by user settings,
-  `--settings` or `disableAllHooks`.
-* **Tickets.** For a literal `androidsu '<cmd>'` the hook creates a single-use ticket bound to `sha256(<cmd>)` with a
-  30 minute lifetime. The daemon runs `su` only for a request with a matching, unexpired, unused ticket. A denied
-  prompt leaves nobody who knows the ticket id.
-* **Fail closed.** A crashing or timing-out hook blocks the call (`onFailure: "block"`); unparsable input asks.
-* **No popup fallback.** Without a ticket there is no way to get root.
-* **Tamper protection.** Writes to the hook, the settings, the bridge directory or the scripts ask for confirmation
-  (hook decision plus static ask rules). Reading them is free.
-* **Indirect calls.** `bash -c`, `xargs`, `find -exec`, interpreters and scripts that mention root tools ask too
-  (without a ticket, so the daemon refuses unless you re-issue the command directly).
-* **Daemon hardening.** Its configuration is parsed as data against a whitelist and never executed. Only plain
-  `https://` URLs are opened (no whitespace, quotes, control characters; ≤ 8 KiB; ≤ 10 per minute).
-* **Audit log.** Every decision is appended to `~/.rootbridge/audit.log`.
+* **You confirm every root request, in Termux.** For each `androidsu` request the daemon shows an Android dialog
+  (`termux-dialog`) with the command and the agent that asked (Claude Code, Codex or a shell, read from the process tree:
+  a hint, not a decision). Your answer is the output of the dialog itself, never a file, so nothing in the guest can
+  approve a request for you. Refused: no answer within `ASK_TIMEOUT` (120 s), a dialog that fails or is missing
+  (`termux-api` and the Termux:API app), and a command longer than 4000 characters (what you see is all that runs).
+  One dialog at a time. A dismissed dialog shows again and a Yes within one second of its appearing (a slip while typing) is asked
+  again; with the Termux:API of this repository (`api/`) the dialog also counts down, closes itself at the deadline and only a tap on
+  Yes or No answers it.
+* **The guest cannot reach Termux.** Agent sessions and shells open with `proot-distro login --isolated` and get only
+  `~/.rootbridge` (the requests and the refusals), the shared storage (`/sdcard`, `/storage/emulated/0`: your phone files,
+  as before, nothing of Termux) and, with voice, the PulseAudio cookie. They see neither the Termux home
+  nor `usr`: not the daemon, not the `su` wrapper of Termux, not the files Termux runs at its next start (`.bashrc`,
+  `~/.termux/boot`, shortcuts). The installer logins are not isolated: there you act, not an agent.
+  `GUEST_ISOLATE=off` in the Termux config switches the isolation off (see the limits).
+* **Refusals reach the agent.** The daemon leaves a note for the agent that asked, and the hook `rootbridge-hook.py` hands it
+  over as context (PostToolUse, UserPromptSubmit; managed settings of Claude Code, `/etc/codex/requirements.toml` for
+  Codex): you said no, do not look for a workaround. This only informs; it does not decide anything.
+* **Daemon hardening.** Its configuration is parsed as data against a whitelist and never executed (the dialog program comes
+  from the environment, not from the config). Only plain `https://` URLs are opened (no whitespace, quotes, control
+  characters; ≤ 8 KiB; ≤ 10 per minute). Control characters are stripped from what the dialog shows.
+* **Audit log.** Every decision is appended to `~/.rootbridge/audit.log` (`ALLOW`, `DENY-USER`, `ASK-TIMEOUT`, `ASK-FAIL`,
+  `STALE`, ...). The guest can write that file: it is a record for you, not evidence against a hostile guest.
 * **Codex pre-commit review.** With Claude Code and Codex installed, a second hook (`codex-precommit-review.py`, managed
   settings, `onFailure: "block"`) lets Codex review every `git commit` of Claude Code, a strict loop that fails closed (no
-  login, plugin or `node`, or a failing Codex blocks the commit). The approved diffs live in `~/.claude/codex-precommit`, a
-  protected path like the other bridge files. Only you switch it off: `rootbridge codex-off`. The hook's log and state live in a
+  login, plugin or `node`, or a failing Codex blocks the commit). The approved diffs live in `~/.claude/codex-precommit`. Only you switch it off: `rootbridge codex-off`. The hook's log and state live in a
   private directory (0700, files 0600), commands are logged by their first word and length only, every `git` call is bounded in
   time and size (a hanging `git` blocks instead of letting Claude Code's cut-off pass the commit unreviewed), and what goes to
   Claude is cleaned of control characters, capped and marked as foreign text.
 
+
 ### Known limits
 
-* **Root in the guest shares the Termux home with the daemon.** proot maps your files into the guest, so a
-  deliberately malicious process there can write a ticket itself. The hook asks before Claude does that with
-  its tools, but a script file, an interpreter or a program that writes the files indirectly is only caught
-  on a best-effort basis (text scan of scripts, interpreter arguments).
-* **Text analysis is not a security boundary.** Shell is too flexible; the tokenizer covers quoting,
-  substitutions, pipelines and wrappers, but obfuscation (encoded commands, scripts generated at runtime) can
-  hide a call. Prefer `permissions.deny` rules for things that must never run.
-* **`adb` has its own root** (`adb root`). It is covered by the hook only, not by tickets.
-* **The terminal confirmation of `androidsu`** (outside Claude Code) trusts the terminal; a process with a
-  pseudo-terminal can answer it. Disable with `TTY_CONFIRM=0` if that matters.
+* **The dialog protects `androidsu`, the isolation protects the rest.** Without the isolation (`GUEST_ISOLATE=off`, or a
+  session you opened by hand with plain `proot-distro login`) the guest runs as the Termux user and sees the Termux home and
+  `usr`: an agent could overwrite the daemon, call the `su` wrapper of Termux directly, or plant files Termux runs later,
+  and never meet a dialog. Keep the isolation on.
+* **The isolated guest still runs as the Termux user, with `/dev`.** It has no `su` binary and no Termux files, but a
+  process that talks to the root manager (Magisk) over its own socket would be outside this control. Revoke the root grant
+  of Termux and use the dialog only if that matters to you; the project cannot close that gap.
+* **The bridge directory stays writable for the guest** (it has to be: the requests are files). A hostile process can create
+  requests (each one costs you a dialog, you say no), forge notes (this can mislead the agent, it gives it no rights), and
+  edit the audit log. It cannot forge your answer.
+* **You approve a command, not what it does.** The dialog shows `androidsu 'sh /root/x.sh'` as that text; the script is a
+  file the guest wrote and can contain anything. Approve what you understand.
+* **`adb` has its own root** (`adb root`). There is no `adb` in the isolated guest; without the isolation nothing watches it.
 * **Auto-opening of login links** follows links that MCP servers return. Only `https` URLs are opened; set
   `AUTH_OPEN=copy` or `off` if you do not trust a server.
-* **Codex is not covered by the guard.** The `android-root-guard` hook runs inside Claude Code. Codex starts with its own
-  defaults (sandbox and approval questions, no bypass mode); `androidsu` still refuses it without a ticket, but the
-  limits below about the shared Termux home apply to it just as well.
+* **Codex runs without its own sandbox.** Under proot the bubblewrap sandbox of Codex fails on every command, so the
+  installer starts Codex with `--dangerously-bypass-approvals-and-sandbox` (`--no-codex-bypass` turns that off). Codex can
+  then read and write the whole guest as root without approval questions of its own. What it cannot do, with the
+  isolation on, is reach Termux or Android root without your answer in the dialog.
 * **The pre-commit review sends your diff to OpenAI** (under the account you logged in to Codex with), and Codex's sandbox
   restricts writing, not reading: it can read more of the guest than the repository.
 * **The review hook takes the command apart like a shell, nothing more.** It reviews a `git commit` that is run (also after
@@ -61,18 +70,17 @@ sandbox against a hostile agent or a compromised guest. Read the limits before r
   Codex blocks only for high severity (a bug that breaks something, a security hole, a secret, data loss, a swallowed
   error); smaller findings come as notes after `ALLOW`. The review sees the working tree as it is when the command
   starts: what the same command changes before the commit (`sed -i … && git commit -a`, a build script) is not covered. It also reads the
-  approved-diff state from a file that a process in the guest could write; the guard asks before Claude Code does that with
-  its tools, nothing more. It is a safety net against slips, not a sandbox.
+  approved-diff state from a file that a process in the guest could write, and nothing stops it. It is a safety net against
+  slips, not a sandbox.
 * **Voice and the side key.** PulseAudio (installed with the voice part) listens on `127.0.0.1` only and lets a client in only with its cookie
   (`~/.config/pulse/cookie`, private to Termux). Anonymous access would let every app on the phone record the microphone through Termux'
-  permission, because every app reaches `127.0.0.1`; the guest shares the Termux home and reads the cookie (`PULSE_COOKIE`), so any process in
+  permission, because every app reaches `127.0.0.1`; the isolated guest gets the cookie bound in (`PULSE_COOKIE`), so any process in
   the guest can record while PulseAudio runs. The microphone
   permission for Termux is granted with a root command (`pm grant ... RECORD_AUDIO`, to Termux:API and for the shared user id to every Termux app) that `install.sh` runs **only on a terminal**, where the root manager asks you,
   and `rootbridge voice grant` runs on request; neither goes through the Claude Code hook. `--sidekey` keeps a root `cat` on `/dev/input/event2` alive
   (reads the side key and the volume key, writes nothing); `--no-sidekey` or `uninstall.sh` removes it.
 * **Bypass mode is bypass mode.** Everything not covered above runs unattended by design. Use it with projects
   and MCP servers you trust.
-* Hardening idea for later: run the guest with `proot-distro --isolated` and bind only `~/.rootbridge`.
 
 ### Emergency switch
 

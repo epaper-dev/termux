@@ -4,7 +4,7 @@
 
 [English](README.md) · [Español](README.es.md) · [Vergleich mit anderen Projekten](docs/COMPARISON.md) · [Login & MCP](docs/LOGIN.md) · [Sicherheit](SECURITY.md)
 
-> **Stand: v2.0.0-dev.** Unit- und Integrationstests laufen (Guard-Hook, Login-Hook, Daemon, Installer).
+> **Stand: v2.1.0-dev.** Unit- und Integrationstests laufen (Guard-Hook, Login-Hook, Daemon, Installer).
 > Auf einem Gerät bestätigt (Hisense A9): die Root-Rückfrage auch im Bypass-Modus, ein vollständiger Login mit
 > automatischem `localhost`-Redirect, Browser-Öffnen aus dem Gast und Kopieren von Links in die Android-Zwischenablage
 > (über den Daemon und mit der Taste `c` durch tmux). Noch zu prüfen: das genaue `tool_response`-Format der
@@ -27,18 +27,36 @@ Es gibt kein zweites Terminal-Fenster und kein Popup mehr (v1 brauchte beides).
 ## Funktionsweise
 
 ```
-Claude Code (Ubuntu-Gast, root)                   Termux (außerhalb proot)
-───────────────────────────────                   ────────────────────────
+Agent: Claude Code oder Codex (Ubuntu-Gast)       Termux (außerhalb proot)
+───────────────────────────────────────────       ────────────────────────
 Bash: androidsu 'id'
- └─ PreToolUse-Hook (android-root-guard.py)
-     • wörtlicher Befehl? → Einmal-Ticket, gebunden an sha256("id")
-     • fragt: „⚠ ANDROID-ROOT: id“   ← Ja / Nein direkt in Claude Code
-androidsu ── Anfrage + Ticket ─────────────────▶  rootbridge-daemon (ohne Fenster)
-                                                  gültiges Ticket? → su -c 'id'
-                         ◀──────── Ergebnis ───   kein Ticket?     → abgelehnt (Exit 99)
+androidsu ── Anfrage (Datei in ~/.rootbridge) ─▶  rootbridge-daemon (ohne Fenster)
+                                                  Android-Dialog „Android-Root: Claude Code“
+                                                    ← du antwortest Ja / Nein, in Termux
+                         ◀──────── Ergebnis ───   Ja → su -c 'id'      Nein → abgelehnt (Exit 99)
+rootbridge-hook.py (PostToolUse, UserPromptSubmit)
+  ◀── die Notiz des Daemons: „Der Nutzer hat `id` abgelehnt, keine Umgehung“
 ```
 
-* **Kein Ticket, kein Root.** Wird die Rückfrage abgelehnt, läuft der Befehl nie. Es gibt keinen Popup-Fallback.
+<p align="center"><img src="docs/images/android-root-dialog.png" width="300" alt="Der Android-Dialog: Android-Root: Claude Code, der Befehl und die Frist, mit den Tasten NO und YES"></p>
+
+Der Dialog des Daemons für eine Anfrage: wer fragt, der Befehl, die Frist. (Die Tasten sind hier englisch: die normale Termux:API.
+Die Termux:API dieses Repositorys, `api/`, zeigt sie in der Sprache des Telefons und zählt die Frist herunter.)
+
+* **Keine Bestätigung, kein Root.** Der Daemon in Termux zeigt für jede `androidsu`-Anfrage einen Android-Dialog
+  (`termux-dialog`, Paket `termux-api` und die App Termux:API) mit Befehl und anfragendem Agenten. Die Antwort ist die Ausgabe
+  des Dialogs selbst, nie eine Datei, die der Gast schreiben könnte; weder Claude Code noch Codex können also etwas
+  freigeben. Keine Antwort innerhalb von `ASK_TIMEOUT` (120 s), ein fehlender Dialog oder ein Befehl über 4000 Zeichen heißt: abgelehnt. Mit der Termux:API dieses Repositorys (`api/`) hat der Dialog die Tasten in der Sprache
+  des Telefons (Ja/Nein, Sí/No, sonst Yes/No), einen Titel, der bis zur Frist herunterzählt und sich dann selbst schließt, und nur ein
+  Tippen auf eine Taste beantwortet ihn. Mit jeder anderen Termux:API stehen die Tasten auf Englisch, die Frist im Text, und ein
+  weggewischter Dialog (oder eine Tastatur, die ihn verdeckt) erscheint neu, bis du Ja oder Nein tippst; ein Ja binnen einer Sekunde
+  nach dem Erscheinen gilt als Versehen und wird neu gefragt.
+* **Ablehnungen erreichen den Agenten.** Der Daemon legt eine Notiz für den anfragenden Agenten ab (`~/.rootbridge/events/`),
+  und der Hook `rootbridge-hook.py` (PostToolUse und UserPromptSubmit, in den Managed Settings von Claude Code und in
+  `/etc/codex/requirements.toml` für Codex) gibt sie als Kontext weiter: Du hast abgelehnt, keine Umgehung (`su`, `adb`, Bridge-Dateien).
+* **Der Gast ist von Termux abgeschnitten.** Agent-Sitzungen und Shells starten mit `proot-distro login --isolated` und binden nur
+  `~/.rootbridge`, den gemeinsamen Speicher (`/sdcard`) und, für Voice, das PulseAudio-Cookie ein: kein Termux-Home, kein `usr`, kein Daemon, kein `su`-Wrapper
+  (`GUEST_ISOLATE=off` in der Termux-Konfig schaltet das ab). Die Hooks nutzen deshalb das eigene `python3` des Gastes.
 * **Autonom alles andere.** Was nicht root-relevant ist (auch `/sdcard`), läuft ohne Rückfrage.
 * **Login-Links.** `/login`, `/mcp` und `claude mcp login <server>` öffnen den Browser über `BROWSER`/`xdg-open`.
   Ergebnisse von `mcp__*__authenticate` werden abgefangen: Der lange Link wird geöffnet und kopiert statt ausgegeben.
@@ -227,10 +245,13 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
   blockiert der Pre-Commit-Hook Commits. Ein zweiter Installer-Lauf lädt nichts nach, wenn alle Voraussetzungen da sind;
   ein fehlendes `bwrap` wird auch bei bestehendem Codex nachinstalliert. `--no-codex`, `--no-claude` und die Deinstallation
   entfernen die eigene Plugin-Deklaration, andere Plugin-Einträge bleiben erhalten.
-* **Widget „Codex“** und `rootbridge attach codex`: ein zweites Fenster in derselben tmux-Sitzung. Codex startet mit seinen
-  eigenen Standardwerten (Sandbox und Rückfragen), **nicht** in einem Bypass-Modus; `CODEX_ARGS` in
-  `/etc/termux-rootbridge.conf` fügt Optionen hinzu. Der Hook `android-root-guard` schützt nur Claude Code; `androidsu`
-  verweigert ohne Ticket weiterhin, und Tickets stellt nur dieser Hook aus.
+* **Widget „Codex“** und `rootbridge attach codex`: ein zweites Fenster in derselben tmux-Sitzung. Unter proot scheitert die
+  bubblewrap-Sandbox von Codex bei jedem Befehl (`unsupported host mount`), deshalb läuft Codex standardmäßig **ohne eigene
+  Sandbox**: Der Installer setzt `CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox"` in `/etc/termux-rootbridge.conf`
+  (eigene Argumente bleiben); `install.sh --no-codex-bypass` entfernt es wieder und merkt sich die Wahl (`CODEX_BYPASS`).
+  Codex bekommt keinen eigenen Android-Root: Wie Claude Code erreicht es Root nur über `androidsu`, und der Daemon fragt dich.
+  Der verwaltete Hook `rootbridge-hook.py` (`/etc/codex/requirements.toml`, in `/hooks` von Codex ohne Prüfung; eine eigene
+  `/etc/codex/requirements.toml` bleibt unberührt) sagt Codex, wenn du abgelehnt hast.
 * **Anmeldung.** `rootbridge codex-login` führt `codex login` mit der Browser-Übergabe aus (`--device-auth`, wenn es keinen
   Browser gibt). `rootbridge status` zeigt, ob Codex, seine Anmeldung, das Plugin und der Hook da sind.
 * **Beide bleiben aktuell.** Der Start eines der beiden Fenster ruft `rootbridge-apt` und danach `rootbridge-update` auf:
@@ -327,8 +348,8 @@ Kurzfassung (Details: [docs/LOGIN.md](docs/LOGIN.md)):
 
 | Durch automatische Tests belegt | Auf einem echten Gerät noch zu prüfen |
 |---|---|
-| Guard-Entscheidungen (43 Tests): Ticketbindung, indirekte Aufrufe, Manipulationsschutz, fail-closed | `tool_response`-Form der MCP-Login-Tools; `updatedToolOutput` |
-| Daemon: Ticket einmalig/Ablauf/Hash, lange Befehle, URL-Prüfung (49 Checks) | — |
+| Melde-Hook (12 Tests): nur Notizen des eigenen Agenten, Claude Code und Codex, bereinigter Text, still bei Fehlern | `tool_response`-Form der MCP-Login-Tools; `updatedToolOutput` |
+| Daemon: der Dialog entscheidet (Ja, Nein, weggedrückt, gescheitert, keine Antwort, fehlend, einer nach dem anderen), anfragender Agent, Notizen für den Hook, gefälschte Dateien zählen nicht, lange Befehle, URL-Prüfung (Checks) | — |
 | Login-Hook (19 Tests: Antwortformen, URL-Regeln, Modi) | — |
 | Installer: Staging-Root, Idempotenz, v1-Migration, Deinstallation | — |
 | Codex neben Claude Code: Installationsoptionen und gespeicherte Wahl, Update-Schritte mit Stempeln und Sperre, tmux-Fenster, `codex-login` / `codex-off` / `status`, die Pre-Commit-Schleife (Stub-`node`) | `codex-login` und das Widget **Codex** auf einem Gerät; `claude plugin update`, `codex update` und `onFailure: "block"` nach einem Absturz des Hooks; `bwrap` auf anderen Geräten |

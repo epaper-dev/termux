@@ -50,6 +50,9 @@ EOF
 printf '#!/bin/bash\nexit 0\n' > "$T/stubs/termux-reload-settings"   # the widget calls it: never the real one
 chmod +x "$T/bin/rootbridge" "$T/bin/rootbridge-daemon" "$T/stubs/tmux" "$T/stubs/proot-distro" "$T/stubs/termux-reload-settings"
 export STUB_LOG="$T/stub.log" BRIDGE_DIR="$T/bridge"
+export RB_STORAGE_DIR="$T/no-storage"   # the shared storage of the machine must not change what the tests expect
+# guest sessions are isolated by default: nothing of Termux but the bridge directory (GUEST_ISOLATE)
+ISO="--isolated --bind $T/bridge:$T/bridge"
 : > "$STUB_LOG"
 
 rb() {   # rb <args...> [with env STUB_HAS_SESSION]: run the copied rootbridge; exit code in $RC
@@ -63,26 +66,26 @@ calls() { grep -c "$1" "$STUB_LOG" || true; }
 rb bash "$T/bin/rootbridge" shell
 check "shell: Exit 0"                                  0 "$RC"
 check "shell: Daemon wird gestartet (für androidsu)"   1 "$(calls '^daemon-start$')"
-check "shell: proot-distro login ubuntu, sonst nichts" "proot-distro login ubuntu" "$(grep '^proot-distro ' "$STUB_LOG")"
-check "shell: kein Befehl hinter 'login ubuntu'"       0 "$(calls '^proot-distro login ubuntu --')"
+check "shell: proot-distro login ubuntu (isoliert), sonst nichts" "proot-distro login ubuntu $ISO" "$(grep '^proot-distro ' "$STUB_LOG")"
+check "shell: kein Befehl hinter 'login ubuntu'"       0 "$(calls '^proot-distro login ubuntu.* -- ')"
 check "shell: tmux wird nie aufgerufen"                0 "$(calls '^tmux ')"
 check "shell: rootbridge-claude wird nie gestartet"    0 "$(calls 'rootbridge-claude')"
 
 # --- shell again, daemon already running: not started twice
 rb bash "$T/bin/rootbridge" shell
 check "shell (Daemon läuft): kein zweiter Daemon"      0 "$(calls '^daemon-start$')"
-check "shell (Daemon läuft): proot-distro login"       1 "$(calls '^proot-distro login ubuntu$')"
+check "shell (Daemon läuft): proot-distro login"       1 "$(calls '^proot-distro login ubuntu '"$ISO"'$')"
 check "shell (Daemon läuft): tmux nie aufgerufen"      0 "$(calls '^tmux ')"
 
 # --- shell while a Claude session is running: it stays untouched (no new window, no attach)
 rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" shell
 check "shell bei laufender Sitzung: tmux nie aufgerufen" 0 "$(calls '^tmux ')"
-check "shell bei laufender Sitzung: eigene Shell"      1 "$(calls '^proot-distro login ubuntu$')"
+check "shell bei laufender Sitzung: eigene Shell"      1 "$(calls '^proot-distro login ubuntu '"$ISO"'$')"
 
 # --- attach still creates the session (with Claude) and attaches
 rb bash "$T/bin/rootbridge" attach
 check "attach: Exit 0"                                 0 "$RC"
-check "attach: legt die Sitzung mit rootbridge-claude an" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu -- /usr/local/bin/rootbridge-claude$')"
+check "attach: legt die Sitzung mit rootbridge-claude an" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-claude$')"
 check "attach: hängt sich an"                          1 "$(calls '^tmux attach -t ubuntu$')"
 
 rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" attach
@@ -93,7 +96,7 @@ check "attach bei laufender Sitzung: hängt sich an"    1 "$(calls '^tmux attach
 check "help nennt: shell startet Claude Code nicht"    1 "$(bash "$T/bin/rootbridge" help 2>&1 | grep -c 'does not start Claude Code')"
 # the widget runs `exec rootbridge shell` through PATH: put the copy under test in front of any installed one
 rb env PATH="$T/bin:$T/stubs:$PATH" bash "$ROOT/termux/shortcuts/ubuntu"
-check "Widget 'ubuntu': nur proot-distro login"     "proot-distro login ubuntu" "$(grep '^proot-distro ' "$STUB_LOG")"
+check "Widget 'ubuntu': nur proot-distro login"     "proot-distro login ubuntu $ISO" "$(grep '^proot-distro ' "$STUB_LOG")"
 check "Widget 'ubuntu': tmux nie aufgerufen"        0 "$(calls '^tmux ')"
 
 # --new always creates a fresh Claude process, even with an existing tmux session.
