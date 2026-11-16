@@ -49,9 +49,9 @@ def agent_pid():
         if pid <= 1:
             return None
         try:
-            exe = os.readlink("%s/%d/exe" % (PROC, pid))
-            if exe.endswith("/claude") or "/claude/versions/" in exe or exe.endswith("/codex"):
-                return pid
+            with open("%s/%d/comm" % (PROC, pid), encoding="utf-8") as fh:
+                if fh.read().strip() in ("claude", "codex"):
+                    return pid
             with open("%s/%d/status" % (PROC, pid), encoding="utf-8") as fh:
                 pid = int(re.search(r"^PPid:\s*(\d+)", fh.read(), re.M).group(1))
         except (OSError, AttributeError, ValueError):

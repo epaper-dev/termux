@@ -35,7 +35,8 @@ GUEST_ISOLATE="on"      # on | off: guest sessions see nothing of Termux but the
 RB_SU="${RB_SU:-su}"
 RB_OPEN_CMD="${RB_OPEN_CMD:-termux-open-url}"
 RB_CLIP_CMD="${RB_CLIP_CMD:-termux-clipboard-set}"
-RB_ASK_CMD="${RB_ASK_CMD:-termux-dialog}"
+RB_ASK_CMD="${RB_ASK_CMD:-${PREFIX:-/data/data/com.termux/files/usr}/libexec/termux-api}"   # the client behind termux-dialog
+RB_ASK_MIN_MS="${RB_ASK_MIN_MS:-1000}"   # a Yes sooner than this after the dialog appeared does not count
 RB_PROC_DIR="${RB_PROC_DIR:-/proc}"
 RB_STORAGE_DIR="${RB_STORAGE_DIR:-/storage/self/primary}"
 
@@ -115,44 +116,80 @@ rb_login_opts() {
 
 # --- who asks, and your answer -------------------------------------------------
 # rb_requester <request id>: sets RB_AGENT ("Claude Code", "Codex" or "") and RB_AGENT_PID. The id starts with the pid of
-# the androidsu that wrote the request (no pid namespace under proot); its ancestors show the agent. Only a hint for the
-# dialog and for the event file, never a reason to allow anything.
+# the androidsu that wrote the request (no pid namespace under proot); its ancestors show the agent, by process name
+# (comm: from outside proot /proc/<pid>/exe is not the program). Only a hint for the dialog and for the event file,
+# never a reason to allow anything.
 rb_requester() {
-    local pid="${1%%_*}" exe i
+    local pid="${1%%_*}" i
     RB_AGENT=""; RB_AGENT_PID=""
     for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
         [[ "$pid" =~ ^[0-9]+$ ]] && [ "$pid" -gt 1 ] || return 0
-        exe="$(readlink "$RB_PROC_DIR/$pid/exe" 2>/dev/null)"
-        case "$exe" in
-            */claude/versions/*|*/claude) RB_AGENT="Claude Code" ;;
-            */codex) RB_AGENT="Codex" ;;
+        case "$(cat "$RB_PROC_DIR/$pid/comm" 2>/dev/null)" in
+            claude) RB_AGENT="Claude Code" ;;
+            codex) RB_AGENT="Codex" ;;
         esac
         if [ -n "$RB_AGENT" ]; then RB_AGENT_PID="$pid"; return 0; fi
         pid="$(sed -n 's/^PPid:[[:space:]]*//p' "$RB_PROC_DIR/$pid/status" 2>/dev/null)"
     done
 }
 
+# rb_ask_texts: the words of the dialog in the language of the phone (RB_LANG overrides: de, es, en; anything else is English)
+rb_ask_texts() {
+    local lang="${RB_LANG:-}"
+    [ -n "$lang" ] || lang="$(getprop persist.sys.locale 2>/dev/null)"
+    [ -n "$lang" ] || lang="$(getprop ro.product.locale 2>/dev/null)"
+    [ -n "$lang" ] || lang="$(getprop persist.sys.language 2>/dev/null)"
+    lang="${lang%%[-_]*}"
+    case "${lang,,}" in
+        de) RB_T_YES="Ja";  RB_T_NO="Nein"; RB_T_LEFT="noch %d s";    RB_T_UNTIL="Antwort bis" ;;
+        es) RB_T_YES="Sí";  RB_T_NO="No";   RB_T_LEFT="quedan %d s";  RB_T_UNTIL="Responde hasta" ;;
+        *)  RB_T_YES="Yes"; RB_T_NO="No";   RB_T_LEFT="%d s left";    RB_T_UNTIL="Answer by" ;;
+    esac
+}
+
 # rb_ask <who> <command>: you decide in an Android dialog; the answer is the output of the dialog itself, not a file the
 # guest could write. Returns 0 = yes, 1 = no, 2 = no answer in time, 3 = dialog failed (termux-api missing, ...).
+# The dialog is asked through the termux-api client with a few extras that our Termux:API build understands: the buttons in
+# the language of the phone, a title that counts down to ASK_TIMEOUT (the dialog closes itself then) and a dialog that only
+# a tap on Yes or No answers. The stock Termux:API ignores the extras: English buttons, no countdown (the deadline stands in
+# the text), and a dismissed dialog (a tap outside, the keyboard, another app) shows again until ASK_TIMEOUT; a Yes within
+# RB_ASK_MIN_MS of the dialog appearing is a slip while typing and is asked again.
 # One dialog at a time: the lock lives in the private tmp directory of Termux, not in the bridge directory.
 rb_ask() {
-    local who="$1" cmd="$2" lock out rc
+    local who="$1" cmd="$2" lock out rc start deadline left ms hint result=3
     lock="${TMPDIR:-/tmp}/rootbridge-ask.lock"
     until mkdir "$lock" 2>/dev/null; do
         # a lock left behind by a killed daemon
         if [ -n "$(find "$lock" -maxdepth 0 -mmin +$(( ASK_TIMEOUT / 60 + 2 )) 2>/dev/null)" ]; then rm -rf "$lock"; fi
         sleep 0.5
     done
-    out="$(timeout "$ASK_TIMEOUT" "$RB_ASK_CMD" confirm -t "Android-Root: ${who:-Shell}" -i "$cmd" 2>/dev/null < /dev/null)"
-    rc=$?
+    rb_ask_texts
+    deadline=$(( $(date +%s) + ASK_TIMEOUT ))
+    hint="$cmd"$'\n\n'"$RB_T_UNTIL $(date -d "@$deadline" +%T 2>/dev/null)"
+    while :; do
+        left=$(( deadline - $(date +%s) ))
+        if [ "$left" -le 0 ]; then result=2; break; fi
+        start="$(date +%s%N)"
+        out="$(timeout "$left" "$RB_ASK_CMD" Dialog --es input_method confirm \
+                  --es input_title "Android-Root: ${who:-Shell}" --es input_hint "$hint" \
+                  --es input_yes "$RB_T_YES" --es input_no "$RB_T_NO" \
+                  --ei input_timeout "$left" --es input_timeout_text "$RB_T_LEFT" --ez input_modal true \
+                  2>/dev/null < /dev/null)"
+        rc=$?
+        ms=$(( ($(date +%s%N) - start) / 1000000 ))
+        if [ "$rc" -eq 124 ]; then result=2; break; fi
+        if [ "$rc" -ne 0 ]; then result=3; break; fi
+        case "$out" in
+            *'"text": "yes"'*|*'"text":"yes"'*)
+                if [ "$ms" -ge "$RB_ASK_MIN_MS" ]; then result=0; break; fi ;;
+            *'"text": "no"'*|*'"text":"no"'*) result=1; break ;;
+            *'"code"'*) ;;
+            *) result=3; break ;;
+        esac
+        sleep 1                    # dismissed or slipped: show it again
+    done
     rmdir "$lock" 2>/dev/null
-    [ "$rc" -ne 124 ] || return 2
-    [ "$rc" -eq 0 ] || return 3
-    case "$out" in
-        *'"text": "yes"'*|*'"text":"yes"'*) return 0 ;;
-        *'"code"'*) return 1 ;;
-    esac
-    return 3
+    return "$result"
 }
 
 # rb_event <agent pid> <decision> <command>: a note for the hook of that agent (events/<pid>-<ns>: line 1 the decision,

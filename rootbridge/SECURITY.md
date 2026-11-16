@@ -12,7 +12,9 @@ sandbox against a hostile agent or a compromised guest. Read the limits before r
   a hint, not a decision). Your answer is the output of the dialog itself, never a file, so nothing in the guest can
   approve a request for you. Refused: no answer within `ASK_TIMEOUT` (120 s), a dialog that fails or is missing
   (`termux-api` and the Termux:API app), and a command longer than 4000 characters (what you see is all that runs).
-  One dialog at a time.
+  One dialog at a time. A dismissed dialog shows again and a Yes within one second of its appearing (a slip while typing) is asked
+  again; with the Termux:API of this repository (`api/`) the dialog also counts down, closes itself at the deadline and only a tap on
+  Yes or No answers it.
 * **The guest cannot reach Termux.** Agent sessions and shells open with `proot-distro login --isolated` and get only
   `~/.rootbridge` (the requests and the refusals), the shared storage (`/sdcard`, `/storage/emulated/0`: your phone files,
   as before, nothing of Termux) and, with voice, the PulseAudio cookie. They see neither the Termux home

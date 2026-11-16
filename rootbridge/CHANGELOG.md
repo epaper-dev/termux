@@ -1,8 +1,8 @@
 # Changelog
 
-## 2.0.0-dev (unreleased)
+## 2.1.0-dev (unreleased)
 
-Rewrite. The tmux popup and the second Termux window are gone; since the next entry the Termux daemon asks you itself, in an Android dialog.
+The Termux daemon asks you itself, in an Android dialog, for every root request (Claude Code and Codex), and the guest is cut off from Termux.
 
 ### Changed
 * **Code quality guidelines for the agents** (`install.sh --guidelines`, on by default, `--no-guidelines` removes them; stored as
@@ -13,7 +13,12 @@ Rewrite. The tmux popup and the second Termux window are gone; since the next en
   `termux-api` and the Termux:API app) for every `androidsu` request, with the command and the agent that asked (read from
   the process tree); the answer is the output of the dialog, so the guest cannot approve anything. No answer within
   `ASK_TIMEOUT` (120 s, Termux config), a missing or failing dialog and a command over 4000 characters are refused; one
-  dialog at a time. The tickets are gone (`TICKET_TTL`, `tickets/`, `ROOTBRIDGE_TICKET`, the confirmation of `androidsu` on a
+  dialog at a time. A dismissed dialog (a tap outside, the keyboard, another app) shows again until the deadline, and a Yes
+  within `RB_ASK_MIN_MS` (1 s) of its appearing is asked again. The dialog is asked through the `termux-api` client with extras
+  that the Termux:API of this repository understands: buttons in the language of the phone (`getprop`; Ja/Nein, Sí/No, else
+  Yes/No), a title that counts down and a dialog that only a tap on a button answers (`api/`: `input_yes`, `input_no`,
+  `input_timeout`, `input_timeout_text`, `input_modal`). Other Termux:API builds ignore them (English buttons, the deadline in
+  the text). The agent is recognised by its process name (`comm`), not by `/proc/<pid>/exe`, which is no program under proot. The tickets are gone (`TICKET_TTL`, `tickets/`, `ROOTBRIDGE_TICKET`, the confirmation of `androidsu` on a
   terminal, `TTY_CONFIRM`), and with them the PreToolUse guards of the guest: `android-root-guard.py` and the Codex variant
   are removed, the installers delete them and the old ask rules of the managed settings. Audit decisions are `ALLOW`,
   `DENY-USER`, `ASK-TIMEOUT`, `ASK-FAIL`, `STALE`.
@@ -31,6 +36,14 @@ Rewrite. The tmux popup and the second Termux window are gone; since the next en
   `CODEX_BYPASS`). Under proot Codex' bubblewrap sandbox fails on every command (`unsupported host mount`), so the installer
   sets `CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox"` (other `CODEX_ARGS` stay). Android root stays behind the
   dialog. Tests: section 1 of `tests/test_codex.sh`.
+* **The guest installer counts only what the guest has itself.** `setup-guest.sh` looks for `python3`, `curl`, `git`, `node` and `rec` as
+  programs of the guest, not as Termux programs on the PATH (an isolated session does not see those).
+
+## 2.0.0-dev (unreleased)
+
+Rewrite. The tmux popup and the second Termux window are gone; confirmation happens inside Claude Code.
+
+### Changed
 * The guest scripts (`androidsu`, `rootbridge-claude`, `rootbridge-codex`, `rootbridge-update`, `rootbridge-apt`,
   `rootbridge-open`) share one library, `/usr/local/lib/termux-rootbridge/rootbridge-guest-lib.sh` (config reader,
   update intervals, session start and end), instead of a copy of each helper per script. `install.sh` installs it with

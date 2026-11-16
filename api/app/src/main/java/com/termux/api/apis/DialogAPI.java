@@ -11,6 +11,9 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ResolveInfo;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -403,12 +406,12 @@ public class DialogAPI {
 
             @Override
             String getNegativeButtonText() {
-                return "No";
+                return extraOr("input_no", "No");      // input_no / input_yes: the labels in the language of the caller
             }
 
             @Override
             String getPositiveButtonText() {
-                return "Yes";
+                return extraOr("input_yes", "Yes");
             }
         }
 
@@ -995,7 +998,53 @@ public class DialogAPI {
 
                 // Dialog interface that will display to user
                 dialog = getDialogBuilder(activity, clickListener).create();
+                final Intent intent = activity.getIntent();
+                // input_modal: only a tap on a button answers, not the back key and not a tap outside the dialog
+                if (intent.getBooleanExtra("input_modal", false)) {
+                    dialog.setCancelable(false);
+                    dialog.setCanceledOnTouchOutside(false);
+                }
                 dialog.show();
+                startTimeout(intent);
+            }
+
+            /**
+             * input_timeout (seconds): the title counts down (input_timeout_text, a format with one %d, default "%d s")
+             * and the dialog closes by itself at zero with the result text "timeout".
+             */
+            void startTimeout(Intent intent) {
+                final int seconds = intent.getIntExtra("input_timeout", 0);
+                if (seconds <= 0) return;
+                final String title = intent.hasExtra("input_title") ? intent.getStringExtra("input_title") : "";
+                final String format = intent.hasExtra("input_timeout_text") ? intent.getStringExtra("input_timeout_text") : "%d s";
+                final long end = SystemClock.elapsedRealtime() + seconds * 1000L;
+                final Handler handler = new Handler(Looper.getMainLooper());
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!dialog.isShowing()) return;
+                        final long left = (end - SystemClock.elapsedRealtime() + 999) / 1000;
+                        if (left <= 0) {
+                            inputResult.text = "timeout";
+                            dialog.dismiss();
+                            return;
+                        }
+                        String remaining;
+                        try {
+                            remaining = String.format(Locale.ROOT, format, left);
+                        } catch (java.util.IllegalFormatException e) {
+                            remaining = left + " s";
+                        }
+                        dialog.setTitle(title + " \u00b7 " + remaining);
+                        handler.postDelayed(this, 1000);
+                    }
+                });
+            }
+
+            /** A string extra of the calling intent, or the fallback if it is not there. */
+            String extraOr(String key, String fallback) {
+                final Intent intent = activity.getIntent();
+                return intent.hasExtra(key) ? intent.getStringExtra(key) : fallback;
             }
 
             void postCanceledResult() {

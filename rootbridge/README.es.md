@@ -4,7 +4,7 @@
 
 [English](README.md) · [Deutsch](README.de.md) · [Comparación con otros proyectos](docs/COMPARISON.md) · [Inicio de sesión y MCP](docs/LOGIN.md) · [Seguridad](SECURITY.md)
 
-> **Estado: v2.0.0-dev.** Las pruebas unitarias y de integración pasan (hook de guardia, hook de inicio de sesión,
+> **Estado: v2.1.0-dev.** Las pruebas unitarias y de integración pasan (hook de guardia, hook de inicio de sesión,
 > daemon, instaladores). Confirmado en un dispositivo (Hisense A9): la confirmación de root también en modo bypass, un
 > inicio de sesión completo con la redirección automática a `localhost`, la apertura del navegador desde el invitado y
 > la copia de enlaces al portapapeles de Android (mediante el daemon y con la tecla `c` a través de tmux). Pendiente de
@@ -43,7 +43,11 @@ rootbridge-hook.py (PostToolUse, UserPromptSubmit)
 * **Sin confirmación, no hay root.** El daemon de Termux muestra un diálogo de Android (`termux-dialog`, paquete `termux-api` y
   la app Termux:API) por cada solicitud de `androidsu`, con el comando y el agente que lo pide. La respuesta es la salida del
   propio diálogo, nunca un archivo que el invitado pueda escribir: ni Claude Code ni Codex pueden aprobar nada. Sin respuesta en
-  `ASK_TIMEOUT` (120 s), sin diálogo o con un comando de más de 4000 caracteres: rechazado.
+  `ASK_TIMEOUT` (120 s), sin diálogo o con un comando de más de 4000 caracteres: rechazado. Con la Termux:API de este repositorio (`api/`) el diálogo tiene los botones
+  en el idioma del teléfono (Ja/Nein, Sí/No, si no Yes/No), un título que cuenta atrás hasta el plazo y se cierra solo, y solo un
+  toque en un botón lo responde. Con cualquier otra Termux:API los botones están en inglés, el plazo figura en el texto y un diálogo
+  descartado (o tapado por el teclado) vuelve a aparecer hasta que pulses Yes o No; un Yes en menos de un segundo cuenta como descuido
+  y se vuelve a preguntar.
 * **Los rechazos llegan al agente.** El daemon deja una nota para el agente que preguntó (`~/.rootbridge/events/`) y el hook
   `rootbridge-hook.py` (PostToolUse y UserPromptSubmit, en los managed settings de Claude Code y en `/etc/codex/requirements.toml`
   para Codex) la entrega como contexto: rechazaste, sin rodeos (`su`, `adb`, archivos del puente).

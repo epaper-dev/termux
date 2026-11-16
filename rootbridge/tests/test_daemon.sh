@@ -22,19 +22,41 @@ shift
 echo "$1" >> "$(dirname "$0")/su.log"
 exec sh -c "$1"
 EOF
-# fake dialog: `fake-ask confirm -t <title> -i <text>`; the answer is the content of ask.answer
+# fake termux-api client: `fake-ask Dialog --es input_title <t> --es input_hint <text> --es input_yes <Ja> ...`; the answer is
+# the content of ask.answer, what it was asked is in ask.log (title and first line of the text) and ask.extras (the rest)
 cat > "$T/fake-ask" <<'EOF'
 #!/bin/sh
 d="$(dirname "$0")"
-echo "START $3|$(printf '%s' "$5" | tr '\n' ' ')" >> "$d/ask.log"
-case "$(cat "$d/ask.answer" 2>/dev/null)" in
-    yes)     echo '{"code": -1, "text": "yes"}' ;;
-    no)      echo '{"code": -2, "text": "no"}' ;;
-    dismiss) echo '{"code": -2}' ;;
+shift
+title=""; hint=""; yes=""; no=""; tmo=""; txt=""; modal=""
+while [ $# -gt 0 ]; do
+    case "$1:$2" in
+        --es:input_title) title="$3"; shift 3 ;;
+        --es:input_hint) hint="$3"; shift 3 ;;
+        --es:input_yes) yes="$3"; shift 3 ;;
+        --es:input_no) no="$3"; shift 3 ;;
+        --ei:input_timeout) tmo="$3"; shift 3 ;;
+        --es:input_timeout_text) txt="$3"; shift 3 ;;
+        --ez:input_modal) modal="$3"; shift 3 ;;
+        *) shift ;;
+    esac
+done
+echo "START $title|$(printf '%s' "$hint" | head -n 1)" >> "$d/ask.log"
+echo "yes=$yes no=$no timeout=$tmo text=$txt modal=$modal hint=$(printf '%s' "$hint" | tr '\n' '|')" > "$d/ask.extras"
+ans="$(cat "$d/ask.answer" 2>/dev/null)"
+case "$ans" in seq:*)
+    list="${ans#seq:}"; ans="${list%%,*}"; rest="${list#*,}"
+    if [ "$rest" = "$list" ]; then rest=""; fi
+    if [ -n "$rest" ]; then printf 'seq:%s' "$rest"; else printf 'no'; fi > "$d/ask.answer" ;;
+esac
+case "$ans" in
+    yes)     echo '{"code": 0, "text": "yes"}' ;;
+    no)      echo '{"code": 0, "text": "no"}' ;;
+    dismiss) echo '{"code": -2, "text": ""}' ;;
     garbage) echo 'huh' ;;
     fail)    exit 1 ;;
-    slow)    sleep 5; echo '{"code": -1, "text": "yes"}' ;;
-    slowyes) sleep 1; echo '{"code": -1, "text": "yes"}' ;;
+    slow)    sleep 5; echo '{"code": 0, "text": "yes"}' ;;
+    slowyes) sleep 1; echo '{"code": 0, "text": "yes"}' ;;
 esac
 echo "END" >> "$d/ask.log"
 EOF
@@ -50,10 +72,10 @@ chmod +x "$T/fake-su" "$T/fake-ask" "$T/fake-open" "$T/fake-clip"
 printf '#!/bin/bash\nexec bash "%s" "$@"\n' "$CLIENT" > "$T/bin/androidsu"
 chmod +x "$T/bin/androidsu"
 
-printf 'ASK_TIMEOUT=2\n' > "$T/test.cfg"
+printf 'ASK_TIMEOUT=4\n' > "$T/test.cfg"
 export HOME="$T/home" BRIDGE_DIR="$T/bridge" ROOTBRIDGE_DIR="$T/bridge" TMPDIR="$T/tmp"
 export RB_SU="$T/fake-su" RB_ASK_CMD="$T/fake-ask" RB_OPEN_CMD="$T/fake-open" RB_CLIP_CMD="$T/fake-clip"
-export RB_PROC_DIR="$T/proc"
+export RB_PROC_DIR="$T/proc" RB_ASK_MIN_MS=0 RB_LANG=en   # a Yes of the fake dialog comes at once; English unless a test says otherwise
 export TERMUX_BIN="$T/no-termux-bin"
 export ROOTBRIDGE_CONF="$T/none.conf" ROOTBRIDGE_CONFIG="$T/test.cfg"
 unset CLAUDECODE ROOTBRIDGE_TICKET
@@ -92,8 +114,11 @@ contains "Nein: Grund und Hinweis gegen Umgehung" "Der Nutzer hat die Root-Anfra
 check "Nein: su nicht erneut aufgerufen" 1 "$(su_runs)"
 
 answer dismiss
+n="$(asks)"
 run_client 'echo hi'
-check "Dialog weggedrückt: 99, su nicht aufgerufen" "99 1" "$CODE $(su_runs)"
+check "Dialog nur weggedrückt, nie beantwortet: nach ASK_TIMEOUT 99, su nicht aufgerufen" "99 1" "$CODE $(su_runs)"
+contains "Dialog nur weggedrückt: Grund ist die fehlende Antwort" "Keine Antwort auf die Rückfrage" "$OUT"
+check "Dialog weggedrückt: er wurde mehrmals neu gezeigt" ja "$([ "$(( $(asks) - n ))" -ge 2 ] && echo ja || echo nein)"
 
 answer garbage
 run_client 'echo hi'
@@ -113,6 +138,42 @@ check "Keine Antwort in ASK_TIMEOUT: 99" 99 "$CODE"
 contains "Keine Antwort: Grund" "Keine Antwort auf die Rückfrage" "$OUT"
 check "Keine Antwort: su nicht aufgerufen" 1 "$(su_runs)"
 check "Dialog-Sperre wieder frei" nein "$([ -d "$T/tmp/rootbridge-ask.lock" ] && echo ja || echo nein)"
+
+echo "== Dialog: Sprache des Telefons, Countdown, nicht wegdrückbar"
+answer yes
+run_client 'echo hi'
+ex="$(cat "$T/ask.extras")"
+contains "Englisch: Tasten Yes und No" "yes=Yes no=No" "$ex"
+contains "Frist: input_timeout bis ASK_TIMEOUT" "timeout=" "$ex"
+check "Frist: input_timeout liegt zwischen 1 und ASK_TIMEOUT" ja "$(t="${ex#*timeout=}"; t="${t%% *}"; [ "$t" -ge 1 ] && [ "$t" -le 4 ] && echo ja || echo nein)"
+contains "Countdown-Text" "text=%d s left" "$ex"
+contains "Nur Tippen auf die Tasten: input_modal" "modal=true" "$ex"
+case "$ex" in *"hint=echo hi||Answer by "[0-9][0-9]:[0-9][0-9]:[0-9][0-9]) PASS=$((PASS + 1)); echo "ok    Text: Befehl, Leerzeile, Frist als Uhrzeit" ;; *) FAIL=$((FAIL + 1)); echo "FAIL  Text: Befehl, Leerzeile, Frist als Uhrzeit: $ex" ;; esac
+RB_LANG=de run_client 'echo hi'
+contains "Deutsch: Ja und Nein, noch %d s, Antwort bis" "yes=Ja no=Nein timeout=" "$(cat "$T/ask.extras")"
+contains "Deutsch: Countdown-Text" "text=noch %d s" "$(cat "$T/ask.extras")"
+contains "Deutsch: Frist im Text" "||Antwort bis " "$(cat "$T/ask.extras")"
+RB_LANG=es-ES run_client 'echo hi'
+contains "Spanisch (es-ES): Sí und No" "yes=Sí no=No" "$(cat "$T/ask.extras")"
+RB_LANG=fr run_client 'echo hi'
+contains "Unbekannte Sprache: Englisch" "yes=Yes no=No" "$(cat "$T/ask.extras")"
+
+echo "== weggedrückt oder zu schnell: der Dialog kommt wieder"
+answer seq:dismiss,yes
+n="$(asks)"
+run_client 'echo nach-dem-wegdruecken'
+check "Weggedrückt, dann Ja: der Dialog kommt wieder, Ja gilt" "0 nach-dem-wegdruecken $(( n + 2 ))" "$CODE $OUT $(asks)"
+answer seq:dismiss,no
+run_client 'echo hi'
+check "Weggedrückt, dann Nein: abgelehnt" 99 "$CODE"
+RB_ASK_MIN_MS=500 answer seq:yes,no
+n="$(asks)"
+RB_ASK_MIN_MS=500 run_client 'echo zu-schnell'
+check "Ja binnen RB_ASK_MIN_MS gilt nicht: neu gefragt, dann Nein" "99 $(( n + 2 ))" "$CODE $(asks)"
+answer slowyes
+RB_ASK_MIN_MS=500 run_client 'echo bedacht'
+check "Ja nach der Mindestzeit gilt" "0 bedacht" "$CODE $OUT"
+answer yes
 
 answer yes
 run_client 'exit 7'
@@ -145,17 +206,17 @@ run_client "$(printf 'echo ok\001\033[31mrot')"
 check "Steuerzeichen stehen nicht im Dialog" "START Android-Root: Shell|echo ok[31mrot" "$(grep '^START' "$T/ask.log" | tail -n 1)"
 
 echo "== Anfragender: Claude Code, Codex, keiner"
-mkproc() {  # mkproc <pid> <ppid> [exe]
+mkproc() {  # mkproc <pid> <ppid> <process name>: what Termux reads from /proc/<pid>/{status,comm} (not exe: under proot it is no program)
     mkdir -p "$T/proc/$1"
-    printf 'Name:\tx\nPPid:\t%s\n' "$2" > "$T/proc/$1/status"
-    [ -z "${3:-}" ] || ln -sfn "$3" "$T/proc/$1/exe"
+    printf 'Name:\t%s\nPPid:\t%s\n' "$3" "$2" > "$T/proc/$1/status"
+    printf '%s\n' "$3" > "$T/proc/$1/comm"
 }
-mkproc 4000 1 /root/.local/share/claude/versions/2.1.325   # claude
-mkproc 4100 4000 /usr/bin/bash                             # rootbridge-claude, Bash tool
-mkproc 4242 4100 /usr/bin/bash                             # androidsu
-mkproc 5000 1 /root/.codex/packages/standalone/releases/0.169.0/bin/codex
-mkproc 5242 5000 /usr/bin/bash
-mkproc 6242 1 /usr/bin/bash                                # a plain shell
+mkproc 4000 1 claude
+mkproc 4100 4000 bash                                      # rootbridge-claude, Bash tool
+mkproc 4242 4100 bash                                      # androidsu
+mkproc 5000 1 codex
+mkproc 5242 5000 bash
+mkproc 6242 1 bash                                         # a plain shell
 rm -rf "$BRIDGE_DIR/events"; answer no
 for rid in 4242_1 5242_1 6242_1; do
     printf '%s\n' 'echo wer' > "$BRIDGE_DIR/req-$rid.txt"
@@ -197,7 +258,7 @@ EOF
 check "unzulässige Config-Werte ignoriert, Dialog-Programm bleibt aus der Umgebung" "-c|120|$T/fake-ask" "$(cat "$T/cfgresult")"
 check "Config-Datei nicht ausgeführt" "no" "$([ -e "$T/pwned" ] || [ -e "$T/pwned2" ] && echo yes || echo no)"
 ( ROOTBRIDGE_CONFIG="$T/test.cfg"; . "$ROOT/termux/lib/rootbridge-lib.sh"; rb_load_config; echo "$ASK_TIMEOUT" > "$T/cfgresult" )
-check "ASK_TIMEOUT aus der Config" 2 "$(cat "$T/cfgresult")"
+check "ASK_TIMEOUT aus der Config" 4 "$(cat "$T/cfgresult")"
 
 echo "== Audit-Log"
 log="$(cat "$BRIDGE_DIR/audit.log")"

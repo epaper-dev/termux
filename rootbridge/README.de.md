@@ -4,7 +4,7 @@
 
 [English](README.md) · [Español](README.es.md) · [Vergleich mit anderen Projekten](docs/COMPARISON.md) · [Login & MCP](docs/LOGIN.md) · [Sicherheit](SECURITY.md)
 
-> **Stand: v2.0.0-dev.** Unit- und Integrationstests laufen (Guard-Hook, Login-Hook, Daemon, Installer).
+> **Stand: v2.1.0-dev.** Unit- und Integrationstests laufen (Guard-Hook, Login-Hook, Daemon, Installer).
 > Auf einem Gerät bestätigt (Hisense A9): die Root-Rückfrage auch im Bypass-Modus, ein vollständiger Login mit
 > automatischem `localhost`-Redirect, Browser-Öffnen aus dem Gast und Kopieren von Links in die Android-Zwischenablage
 > (über den Daemon und mit der Taste `c` durch tmux). Noch zu prüfen: das genaue `tool_response`-Format der
@@ -41,7 +41,11 @@ rootbridge-hook.py (PostToolUse, UserPromptSubmit)
 * **Keine Bestätigung, kein Root.** Der Daemon in Termux zeigt für jede `androidsu`-Anfrage einen Android-Dialog
   (`termux-dialog`, Paket `termux-api` und die App Termux:API) mit Befehl und anfragendem Agenten. Die Antwort ist die Ausgabe
   des Dialogs selbst, nie eine Datei, die der Gast schreiben könnte; weder Claude Code noch Codex können also etwas
-  freigeben. Keine Antwort innerhalb von `ASK_TIMEOUT` (120 s), ein fehlender Dialog oder ein Befehl über 4000 Zeichen heißt: abgelehnt.
+  freigeben. Keine Antwort innerhalb von `ASK_TIMEOUT` (120 s), ein fehlender Dialog oder ein Befehl über 4000 Zeichen heißt: abgelehnt. Mit der Termux:API dieses Repositorys (`api/`) hat der Dialog die Tasten in der Sprache
+  des Telefons (Ja/Nein, Sí/No, sonst Yes/No), einen Titel, der bis zur Frist herunterzählt und sich dann selbst schließt, und nur ein
+  Tippen auf eine Taste beantwortet ihn. Mit jeder anderen Termux:API stehen die Tasten auf Englisch, die Frist im Text, und ein
+  weggewischter Dialog (oder eine Tastatur, die ihn verdeckt) erscheint neu, bis du Ja oder Nein tippst; ein Ja binnen einer Sekunde
+  nach dem Erscheinen gilt als Versehen und wird neu gefragt.
 * **Ablehnungen erreichen den Agenten.** Der Daemon legt eine Notiz für den anfragenden Agenten ab (`~/.rootbridge/events/`),
   und der Hook `rootbridge-hook.py` (PostToolUse und UserPromptSubmit, in den Managed Settings von Claude Code und in
   `/etc/codex/requirements.toml` für Codex) gibt sie als Kontext weiter: Du hast abgelehnt, keine Umgehung (`su`, `adb`, Bridge-Dateien).

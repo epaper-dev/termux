@@ -4,7 +4,7 @@
 
 [Deutsch](README.de.md) · [Español](README.es.md) · [Comparison with other projects](docs/COMPARISON.md) · [Login & MCP details](docs/LOGIN.md) · [Security](SECURITY.md)
 
-> **Status: v2.0.0-dev.** Unit and integration tests pass (notice hook, login hook, daemon, installers).
+> **Status: v2.1.0-dev.** Unit and integration tests pass (notice hook, login hook, daemon, installers).
 > Confirmed on a device (Hisense A9): the root prompt also in bypass mode, a complete `/login` including the automatic
 > `localhost` redirect, opening the browser from the guest and copying links into the Android clipboard (through the
 > daemon and with the `c` key through tmux). Still to check: the exact `tool_response` format of MCP login tools.
@@ -42,7 +42,11 @@ rootbridge-hook.py (PostToolUse, UserPromptSubmit)
 * **No confirmation, no root.** The daemon in Termux shows an Android dialog (`termux-dialog`, package `termux-api` and the
   Termux:API app) for every `androidsu` request, with the command and the agent that asked. Its answer is the output of
   the dialog itself, never a file the guest could write, so neither Claude Code nor Codex can approve anything. No answer
-  within `ASK_TIMEOUT` (120 s), a missing dialog or a command longer than 4000 characters means refused.
+  within `ASK_TIMEOUT` (120 s), a missing dialog or a command longer than 4000 characters means refused. With the Termux:API of
+  this repository (`api/`) the dialog has the buttons in the language of the phone (Ja/Nein, Sí/No, else Yes/No), a title that
+  counts down to the deadline and closes itself then, and only a tap on a button answers it. With any other Termux:API build
+  the buttons are English, the deadline stands in the text, and a dialog you swipe away (or a keyboard that hides it) shows
+  again until you tap Yes or No; a Yes within one second of the dialog appearing counts as a slip and is asked again.
 * **Refusals reach the agent.** The daemon leaves a note for the agent that asked (`~/.rootbridge/events/`), and the hook
   `rootbridge-hook.py` (PostToolUse and UserPromptSubmit, in the managed settings of Claude Code and in
   `/etc/codex/requirements.toml` for Codex) hands it over as context: you said no, no workarounds (`su`, `adb`, bridge files).

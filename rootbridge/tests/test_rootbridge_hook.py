@@ -11,8 +11,8 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOOK = os.path.join(HERE, "..", "guest", "claude", "rootbridge-hook.py")
-CLAUDE_EXE = "/root/.local/share/claude/versions/2.1.325"
-CODEX_EXE = "/root/.codex/packages/standalone/releases/0.169.0/bin/codex"
+CLAUDE = "claude"   # the process name (comm) of Claude Code
+CODEX = "codex"
 
 
 class HookCase(unittest.TestCase):
@@ -26,17 +26,16 @@ class HookCase(unittest.TestCase):
         self.conf = os.path.join(self.tmp.name, "rootbridge.conf")
         with open(self.conf, "w") as fh:
             fh.write("BRIDGE_DIR=%s\n" % self.bridge)
-        self.agent(CLAUDE_EXE)
+        self.agent(CLAUDE)
 
-    def agent(self, exe, ppid=1):
-        """The test process (the parent of the hook) is the agent with this executable."""
-        d = os.path.join(self.proc, str(os.getpid()))
+    def agent(self, comm, ppid=1, pid=None):
+        """The test process (the parent of the hook) is the process with this name."""
+        d = os.path.join(self.proc, str(os.getpid() if pid is None else pid))
         os.makedirs(d, exist_ok=True)
-        if os.path.lexists(os.path.join(d, "exe")):
-            os.remove(os.path.join(d, "exe"))
-        os.symlink(exe, os.path.join(d, "exe"))
+        with open(os.path.join(d, "comm"), "w") as fh:
+            fh.write(comm + "\n")
         with open(os.path.join(d, "status"), "w") as fh:
-            fh.write("Name:\tx\nPPid:\t%d\n" % ppid)
+            fh.write("Name:\t%s\nPPid:\t%d\n" % (comm, ppid))
 
     def note(self, decision, command, pid=None, name=None):
         pid = os.getpid() if pid is None else pid
@@ -67,18 +66,15 @@ class HookCase(unittest.TestCase):
         self.assertIsNone(self.run_hook(), "the note is delivered once")
 
     def test_codex_gets_its_notes_too(self):
-        self.agent(CODEX_EXE)
+        self.agent(CODEX)
         self.note("DENY-USER", "su -c id")
         self.assertIn("`su -c id`", self.context(self.run_hook()))
 
     def test_agent_is_found_above_the_hook_not_only_directly(self):
         # hook -> test process (a shell) -> agent
         agent_pid = 424242
-        os.makedirs(os.path.join(self.proc, str(agent_pid)))
-        os.symlink(CLAUDE_EXE, os.path.join(self.proc, str(agent_pid), "exe"))
-        with open(os.path.join(self.proc, str(agent_pid), "status"), "w") as fh:
-            fh.write("PPid:\t1\n")
-        self.agent("/usr/bin/bash", ppid=agent_pid)
+        self.agent(CLAUDE, pid=agent_pid)
+        self.agent("bash", ppid=agent_pid)
         self.note("DENY-USER", "androidsu id", pid=agent_pid)
         self.assertIsNotNone(self.run_hook())
 
@@ -88,7 +84,7 @@ class HookCase(unittest.TestCase):
         self.assertTrue(os.path.exists(other))
 
     def test_no_agent_above_the_hook_means_no_output(self):
-        self.agent("/usr/bin/bash", ppid=1)
+        self.agent("bash", ppid=1)
         path = self.note("DENY-USER", "androidsu id")
         self.assertIsNone(self.run_hook())
         self.assertTrue(os.path.exists(path))
