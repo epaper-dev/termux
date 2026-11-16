@@ -319,9 +319,11 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   Android-Quelle „Spracherkennung“ leise ist). Es startet mit der Sitzung (`rootbridge start` / `attach`); eine eigene `default.pa` bleibt.
 * **Einstellungen von Claude Code**: `~/.claude/keybindings.json` bekommt `meta+k` = `voice:pushToTalk`, `~/.claude/settings.json` bekommt
   `"voice": {"enabled": true, "mode": "hold"}`. Beides nur, wo du noch nichts entschieden hast (eine vorhandene Belegung der Aktion oder ein `voice`-Wert bleibt).
-* **`ptt`**: `ptt start` drückt die Taste für dich, `ptt stop` lässt sie los. Im Modus `hold` (Standard) wiederholt es Alt+K alle 50 ms, wie eine
-  gehaltene Taste, damit nur dein eigenes `stop` die Aufnahme beendet (eine gehaltene Taste kann eine Bildschirmtastatur nicht). Ohne Stopp
-  enden die Wiederholungen nach `PTT_MAX` Sekunden (120). `ptt` drückt nur eine Taste in einem tmux-Fenster (`PTT_TARGET`, Standard
+* **`ptt`**: `ptt start` drückt die Taste für dich, `ptt stop` lässt sie los. `ptt toggle` startet oder stoppt in einem Aufruf (das führen der Home-Langdruck und das Launcher-Symbol aus). `ptt` folgt dem Modus von
+  `/voice` in Claude Code (`PTT_MODE=auto`, der Standard: es liest `voice.mode` aus den Einstellungen des Gastes). Im Modus `hold` wiederholt es Alt+K
+  alle 50 ms, wie eine gehaltene Taste (Claude Code hält die Taste für losgelassen, wenn 200 ms nichts kommt, deshalb startet jede Runde nur `tmux`),
+  und nur dein eigenes `stop` beendet die Aufnahme; ohne Stopp enden die Wiederholungen nach `PTT_MAX` Sekunden (120). Im Modus `tap` drücken `start`,
+  `stop` und `toggle` je einmal, und Claude Code entscheidet: Der erste Druck startet (das Eingabefeld muss leer sein), der nächste stoppt und sendet. `ptt` drückt nur eine Taste in einem tmux-Fenster (`PTT_TARGET`, Standard
   `ubuntu:claude`; `PTT_KEY`, Standard `M-k`) und passt damit zu jedem Programm, das auf eine Taste hört.
 * **Mikrofon-Berechtigung von Android** für Termux (eine Laufzeit-Berechtigung: sie ist mit jeder Neuinstallation der App weg; die Termux-Apps teilen
   eine Benutzerkennung, und nur die **App Termux:API** deklariert `RECORD_AUDIO`, sie muss also installiert sein). Sie braucht Root:

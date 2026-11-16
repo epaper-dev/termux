@@ -41,6 +41,13 @@ The Termux daemon asks you itself, in an Android dialog, for every root request 
   event toggles, so it fits any button. The Hisense A9 does not list the assistant in its settings: set it with root (`cmd role add-role-holder
   --user 0 android.app.role.ASSISTANT com.termux`, see the README). The accessibility settings of the A9 offer only fixed actions for the side key,
   no app: `--sidekey` (root) stays for hold-to-record there.
+* **`ptt` is reliable on the phone and follows Claude Code.** Claude Code takes a held key for released when no key event comes for 200 ms
+  (`useVoice`: release timer), and the old repeater started `tmux`, `cat` in a subshell and `sleep` in every round: gaps of up to 220 ms, mean 160 to
+  180 ms at an interval of 50 ms, which showed as "listening" flickering on and off. A round now starts only `tmux` (token read with `read`,
+  pause with `read -t`): mean 50 to 60 ms, longest 94 ms (measured in the guest, where processes cost more than in Termux). `PTT_MODE=auto` is the
+  new default: `ptt` reads `voice.mode` from the Claude Code settings of the guest and follows it, so a repeater can no longer meet a program in tap
+  mode (every press toggles there). `ptt toggle` in tap mode presses once every time; Claude Code knows whether it records. An explicit `PTT_MODE=hold`
+  or `tap` still wins. Tests: `tests/test_ptt.sh`.
 * **The guest installer counts only what the guest has itself.** `setup-guest.sh` looks for `python3`, `curl`, `git`, `node` and `rec` as
   programs of the guest, not as Termux programs on the PATH (an isolated session does not see those).
 

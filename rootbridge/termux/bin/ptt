@@ -8,18 +8,22 @@
 #   ptt status    "talking" or "idle"
 #
 # How it presses the key (PTT_MODE in the rootbridge config):
-#   hold  (default)  `start` repeats the key every PTT_INTERVAL ms, like a key held down, until `stop`
-#                    (or PTT_MAX seconds, in case `stop` never comes). The program's own "hold to talk" mode
-#                    ends the recording when the repeats stop, so there is no silence timeout in between.
+#   auto  (default)  the mode that Claude Code's /voice has (hold or tap), read from voice.mode in the settings
+#                    of the guest; hold when it cannot be read. ptt and Claude Code then always agree: a
+#                    repeater against a program in tap mode would toggle it with every press.
+#   hold             `start` repeats the key every PTT_INTERVAL ms, like a key held down, until `stop`
+#                    (or PTT_MAX seconds, in case `stop` never comes). Claude Code ends the recording when
+#                    no key comes for 200 ms, so the repeater must never be late: one process per round.
 #                    Claude Code: /voice hold
-#   tap              `start` and `stop` press the key once each (the program's "tap to talk" mode). ptt only
+#   tap              `start` and `stop` press the key once each (the program's "tap to talk" mode); `toggle`
+#                    presses once and leaves it to the program whether that starts or sends. ptt only
 #                    remembers that it pressed `start`; when the program ended the recording by itself, a later
-#                    `stop` starts a new one (limit of tap mode, hence the default hold).
+#                    `stop` starts a new one (limit of tap mode). Claude Code: /voice tap, the input has to be empty.
 #
 # Settings (~/.config/termux-rootbridge/config, read as data): PTT_TARGET (tmux target, default
 # "<SESSION>:claude"), PTT_KEY (tmux key name, default M-k = Alt+K, the key that Claude Code's
 # "voice:pushToTalk" is bound to in ~/.claude/keybindings.json), PTT_MODE, PTT_INTERVAL (ms), PTT_MAX (s).
-# Test hook, from the environment only: PTT_TMUX (tmux binary), PTT_STATE_DIR.
+# Test hook, from the environment only: PTT_TMUX (tmux binary), PTT_STATE_DIR, PTT_CLAUDE_SETTINGS (settings file of Claude Code).
 
 set -u
 
@@ -46,17 +50,43 @@ usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' 
 
 press() { "$TMUX_BIN" send-keys -t "$TARGET" "$PTT_KEY" 2>/dev/null; }
 
+# claude_voice_mode: hold or tap, the voice.mode of Claude Code in the guest (the same machine, so ptt reads the file)
+claude_voice_mode() {
+    local cand f=""
+    for cand in "${PREFIX:-}/var/lib/proot-distro/containers/$DISTRO/rootfs" "${PREFIX:-}/var/lib/proot-distro/installed-rootfs/$DISTRO"; do
+        if [ -d "$cand" ]; then f="$cand/root/.claude/settings.json"; break; fi
+    done
+    f="${PTT_CLAUDE_SETTINGS:-$f}"
+    python3 -I - "$f" 2>/dev/null <<'PYMODE' || echo hold
+import json, sys
+try:
+    mode = json.load(open(sys.argv[1], encoding="utf-8")).get("voice", {}).get("mode")
+except (OSError, ValueError, AttributeError):
+    mode = None
+print(mode if mode in ("hold", "tap") else "hold")
+PYMODE
+}
+if [ "$PTT_MODE" = auto ]; then MODE="$(claude_voice_mode)"; else MODE="$PTT_MODE"; fi
+case "$MODE" in hold|tap) ;; *) MODE=hold ;; esac
+
 # Hold mode: the file $PIDFILE holds the token of the running repeater. `stop` removes it, a newer `start` replaces
 # it; the repeater ends when its token is gone. No pid is needed, so there is no race between starting the loop and
 # writing the file, and a killed repeater leaves a file that goes stale after PTT_MAX seconds.
+# Claude Code takes the key for released when none comes for 200 ms, and on a phone every process costs a few tens of
+# milliseconds: a round starts only `tmux` (the token is read with `read`, the pause is `read -t` on a pipe that never
+# gets data), not cat in a subshell and sleep as well.
 hold_loop() {   # hold_loop <token>
-    local token="$1" end=$((SECONDS + PTT_MAX)) delay
+    local token="$1" end=$((SECONDS + PTT_MAX)) delay cur
     delay="$(printf '%d.%03d' $((PTT_INTERVAL / 1000)) $((PTT_INTERVAL % 1000)))"
-    while [ "$SECONDS" -lt "$end" ] && [ "$(cat "$PIDFILE" 2>/dev/null)" = "$token" ]; do
+    exec 3<> <(:)
+    while [ "$SECONDS" -lt "$end" ]; do
+        cur=""; read -r cur < "$PIDFILE" 2>/dev/null || true
+        [ "$cur" = "$token" ] || break
         press || break
-        sleep "$delay"
+        read -r -t "$delay" -u 3 _ || true
     done
-    if [ "$(cat "$PIDFILE" 2>/dev/null)" = "$token" ]; then rm -f "$PIDFILE"; fi
+    cur=""; read -r cur < "$PIDFILE" 2>/dev/null || true
+    if [ "$cur" = "$token" ]; then rm -f "$PIDFILE"; fi
     return 0
 }
 
@@ -81,14 +111,14 @@ tap_active() {
 }
 
 active() {
-    if [ "$PTT_MODE" = hold ]; then hold_alive; else tap_active; fi
+    if [ "$MODE" = hold ]; then hold_alive; else tap_active; fi
 }
 
 do_start() {
     mkdir -p "$STATE"
     active && return 0
     press || return 0            # no such window: nothing to do
-    if [ "$PTT_MODE" = hold ]; then
+    if [ "$MODE" = hold ]; then
         local token="$$.$RANDOM.$SECONDS"
         printf '%s\n' "$token" > "$PIDFILE"
         ( hold_loop "$token" ) </dev/null >/dev/null 2>&1 &
@@ -99,7 +129,7 @@ do_start() {
 }
 
 do_stop() {
-    if [ "$PTT_MODE" = hold ]; then
+    if [ "$MODE" = hold ]; then
         rm -f "$PIDFILE"         # the repeater sees this at its next round and ends
     else
         tap_active && press
@@ -108,10 +138,23 @@ do_stop() {
     return 0
 }
 
+# toggle: in hold mode ptt knows whether it is talking (it is the one that repeats); in tap mode the program knows (it may
+# have ended the recording by itself), so one press is all it does, and the program starts or sends
+do_toggle() {
+    if [ "$MODE" = tap ]; then
+        press || return 0
+        if tap_active; then rm -f "$FLAG"; else mkdir -p "$STATE"; : > "$FLAG"; fi
+    elif active; then
+        do_stop
+    else
+        do_start
+    fi
+}
+
 case "${1:-}" in
     start)  do_start ;;
     stop)   do_stop ;;
-    toggle) if active; then do_stop; else do_start; fi ;;
+    toggle) do_toggle ;;
     status) if active; then echo talking; else echo idle; fi ;;
     -h|--help|help|'') usage ;;
     *) echo "ptt: unbekannter Befehl: $1 (start | stop | toggle | status)" >&2; exit 2 ;;
