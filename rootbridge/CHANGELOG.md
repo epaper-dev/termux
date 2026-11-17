@@ -28,6 +28,9 @@ Push to talk holds without flicker, ShellCheck in the guest, the Codex pre-commi
   highest version that is listed and supports the effort, read from Codex' own model list (`$CODEX_HOME/models_cache.json`,
   refreshed by Codex), or else `gpt-6.1-sol`. Measured with `gpt-6.1-sol` and `xhigh`: median 146 s, at most 847 s, inside the
   budget of 1500 s. Tests: `tests/test_codex_precommit*.py`.
+* **`APT_TIMEOUT` is 600 s again (was 1800 s).** The longer limit did not help: when dpkg hangs under proot (seen after
+  `Setting up libc-bin`), it hangs past 1800 s as well and only delays the start by half an hour. The installer sets the former default
+  `APT_TIMEOUT=1800` back to 600; other values stay. Tests: `tests/test_apt_upgrade.sh`.
 
 ## 2.1.0-dev (in release set set-20261116-20)
 

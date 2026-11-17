@@ -167,9 +167,9 @@ Ubuntu-Shell. Nur wenn Claude Code mit einem Fehlercode endet, bleibt die Gast-S
 **Paket-Updates im Gast.** Standardmäßig an: Beim Start der Claude-Code-Sitzung führt `rootbridge-apt`
 `apt-get update` und `apt-get -y upgrade` aus, höchstens einmal in 6 h nach einem Erfolg (`APT_UPGRADE=6h`; `12h` usw. ändern den Abstand, `daily` = 24 h), und
 blockiert den Start nie (kein Netz, ein Fehler oder ein Timeout geben nur einen Hinweis aus, Claude Code startet, der
-nächste Start versucht es erneut). Für `apt-get upgrade` gelten standardmäßig 1800 Sekunden
-(30 Minuten, `APT_TIMEOUT` in `/etc/termux-rootbridge.conf`). Der Installer erhöht den bisherigen Wert 600
-auf 1800; andere eingestellte Werte bleiben erhalten. Zwei Schutzmaßnahmen sind unter proot-distro mit Ubuntu 26.04 wichtig: dpkg bekommt
+nächste Start versucht es erneut). Für `apt-get upgrade` gelten standardmäßig 600 Sekunden
+(10 Minuten, `APT_TIMEOUT` in `/etc/termux-rootbridge.conf`). Der Installer setzt den früheren Standard 1800
+wieder auf 600; andere eingestellte Werte bleiben erhalten. Zwei Schutzmaßnahmen sind unter proot-distro mit Ubuntu 26.04 wichtig: dpkg bekommt
 `-o DPkg::Path` mit `/usr/local/bin`, weil die uutils-coreutils dort die GNU-benannten Symlinks brauchen (sonst brechen
 Maintainer-Skripte mit „Security violation“ ab), und die coreutils-Pakete (`APT_HOLD`) werden zurückgehalten, weil ein
 Upgrade des Multicall-Binarys den Gast kaputt macht. Log: `/var/log/termux-rootbridge-apt.log` im Gast – jeder Lauf

@@ -344,7 +344,7 @@ Termux: `~/.config/termux-rootbridge/config` (se interpreta como datos, nunca se
 (todos los lee `install.sh`).
 Invitado: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
-la actualización, por defecto 1800), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
+la actualización, por defecto 600), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
 `daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (ver abajo). `VOICE` / `SIDEKEY` (`on` / `off`). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`auto` / `hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
 
 `NOFILE_LIMIT` (por defecto `2048`, `0` = dejar el límite como está) es el límite de descriptores de archivo con el que
