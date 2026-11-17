@@ -4,7 +4,7 @@
 
 [Deutsch](README.de.md) · [Español](README.es.md) · [Comparison with other projects](docs/COMPARISON.md) · [Login & MCP details](docs/LOGIN.md) · [Security](SECURITY.md)
 
-> **Status: v2.1.0-dev.** Unit and integration tests pass (notice hook, login hook, daemon, installers).
+> **Status: v2.1.1-dev.** Unit and integration tests pass (notice hook, login hook, daemon, installers).
 > Confirmed on a device (Hisense A9): the root prompt also in bypass mode, a complete `/login` including the automatic
 > `localhost` redirect, opening the browser from the guest and copying links into the Android clipboard (through the
 > daemon and with the `c` key through tmux). Still to check: the exact `tool_response` format of MCP login tools.
