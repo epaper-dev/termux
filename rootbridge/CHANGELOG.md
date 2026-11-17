@@ -44,10 +44,16 @@ The Termux daemon asks you itself, in an Android dialog, for every root request 
 * **`ptt` is reliable on the phone and follows Claude Code.** Claude Code takes a held key for released when no key event comes for 200 ms
   (`useVoice`: release timer), and the old repeater started `tmux`, `cat` in a subshell and `sleep` in every round: gaps of up to 220 ms, mean 160 to
   180 ms at an interval of 50 ms, which showed as "listening" flickering on and off. A round now starts only `tmux` (token read with `read`,
-  pause with `read -t`): mean 50 to 60 ms, longest 94 ms (measured in the guest, where processes cost more than in Termux). `PTT_MODE=auto` is the
+  pause with `read -t` on a fifo): mean 125 ms, longest 190 ms (measured with a stub `tmux` in the guest, where processes cost more than in Termux). `PTT_MODE=auto` is the
   new default: `ptt` reads `voice.mode` from the Claude Code settings of the guest and follows it, so a repeater can no longer meet a program in tap
   mode (every press toggles there). `ptt toggle` in tap mode presses once every time; Claude Code knows whether it records. An explicit `PTT_MODE=hold`
-  or `tap` still wins. Tests: `tests/test_ptt.sh`.
+  or `tap` still wins. The repeats of `hold` begin `PTT_WARMUP` ms (default 1200, at most 1500) after the first key: Claude Code starts its recorder with
+  that key (the checks of `sox` and `rec` block it for half a second on the phone) and arms its 200 ms release timer only with the second key (it waits
+  2 s for that). A second key right after the first ran the timer into the stall and ended the recording over and over (22 starts instead of 3 in
+  three runs of 5 s, measured with a second Claude Code in the guest at a steady 100 ms), which showed as "listening" flickering at the start. The repeater sends all keys through one `tmux -C` control client (no process per key; a
+  process per key took up to 220 ms under proot) and watches the SoX recorder that Claude Code starts (`rec ... --buffer 1024 -t raw`): when it
+  ends (or none starts), the repeater stops instead of starting a new recording. Measured with a fresh Claude Code in a guest tmux: 5 of 5
+  recordings (the first one cold), 3 of 3 with a forced stall of 0.5 s, no recorder left behind. Tests: `tests/test_ptt.sh`.
 * **The guest installer counts only what the guest has itself.** `setup-guest.sh` looks for `python3`, `curl`, `git`, `node` and `rec` as
   programs of the guest, not as Termux programs on the PATH (an isolated session does not see those).
 

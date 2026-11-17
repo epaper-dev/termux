@@ -298,7 +298,8 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   `"voice": {"enabled": true, "mode": "hold"}`. Ambos solo donde aún no has decidido nada (una asignación existente de la acción o un valor `voice` se conservan).
 * **`ptt`**: `ptt start` pulsa la tecla por ti, `ptt stop` la suelta. `ptt toggle` inicia o detiene en una sola llamada (lo que ejecutan la pulsación larga de Inicio y el icono del lanzador). `ptt` sigue el modo de
   `/voice` de Claude Code (`PTT_MODE=auto`, el valor por defecto: lee `voice.mode` de los ajustes del invitado). En el modo `hold` repite Alt+K cada
-  50 ms, como una tecla mantenida (Claude Code da la tecla por soltada si en 200 ms no llega nada, por eso cada ronda solo inicia `tmux`), y solo tu propio
+  50 ms, como una tecla mantenida (Claude Code da la tecla por soltada si en 200 ms no llega nada, por eso cada ronda solo inicia `tmux`; las repeticiones empiezan `PTT_WARMUP` ms (1200) después de la primera
+  tecla, porque entonces Claude Code inicia su grabador, y un temporizador de liberación que cae en ese momento termina la grabación una y otra vez; todas las teclas pasan por un cliente `tmux -C`, y si termina el grabador `rec` de Claude Code, las repeticiones paran), y solo tu propio
   `stop` termina la grabación; sin parada, las repeticiones terminan tras `PTT_MAX` segundos (120). En el modo `tap`, `start`, `stop` y `toggle` pulsan una vez
   y Claude Code decide: la primera pulsación inicia (la entrada debe estar vacía), la siguiente detiene y envía. `ptt` solo pulsa una tecla en una ventana de tmux (`PTT_TARGET`, por defecto
   `ubuntu:claude`; `PTT_KEY`, por defecto `M-k`) y sirve para cualquier programa que escuche una tecla.

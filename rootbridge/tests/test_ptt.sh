@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Test: `ptt start|stop|toggle|status` (push to talk through a tmux key).
 #   - settings from the rootbridge config (read as data, bad values ignored): PTT_TARGET, PTT_KEY, PTT_MODE,
-#     PTT_INTERVAL, PTT_MAX
-#   - hold mode: `start` presses the key and repeats it until `stop`, a second `start` does not start a second
-#     repeater, the repeater ends by itself after PTT_MAX, no window means nothing happens
+#     PTT_INTERVAL, PTT_WARMUP, PTT_MAX
+#   - hold mode: `start` presses the key and repeats it (after PTT_WARMUP) until `stop`, a second `start` does not
+#     start a second repeater, the repeater ends by itself after PTT_MAX, no window means nothing happens; it stops
+#     when the recorder of Claude Code (`rec ... --buffer 1024 -t raw`) that started after it ends, or none starts
 #   - tap mode: one press for `start`, one for `stop`, no press without a matching `start`, a stale mark is ignored;
 #     `toggle` presses once every time (the program knows whether it records)
 #   - auto mode (default): the mode of Claude Code's /voice, read from its settings; an explicit hold or tap wins
@@ -51,7 +52,7 @@ check "Hilfe nennt start und stop"                        2 "$(runptt help | gre
 check "unbekannter Befehl: Exit 2"                        2 "$(runptt nope >/dev/null 2>&1; echo $?)"
 
 # ------------------------------------------------------------------ hold mode
-reset; printf 'PTT_INTERVAL=20\n' > "$CONF"
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\n' > "$CONF"
 runptt start
 check "hold: start drueckt sofort die Taste (Standard)"   "send-keys -t ubuntu:claude M-k" "$(head -n 1 "$LOG")"
 check "hold: status nach start"                           talking "$(runptt status)"
@@ -84,7 +85,7 @@ check "toggle: zweiter Aufruf stoppt"                     idle "$(runptt status)
 sleep 0.2
 
 # the repeater ends by itself (PTT_MAX), the status goes with it
-reset; printf 'PTT_INTERVAL=20\nPTT_MAX=1\n' > "$CONF"
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\nPTT_MAX=1\n' > "$CONF"
 runptt start
 sleep 3.2
 check "hold: PTT_MAX beendet den Wiederholer, status idle" idle "$(runptt status)"
@@ -102,6 +103,34 @@ reset; printf '' > "$CONF"
 check "hold: ohne Fenster Exit 0"                         0 "$(PTT_TEST_NOWINDOW=1 runptt start; echo $?)"
 check "hold: ohne Fenster kein Zustand"                   idle "$(runptt status)"
 
+# warmup: the repeats begin PTT_WARMUP ms after the first key (Claude Code arms its release timer with the second key,
+# after its recorder has started)
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=600\n' > "$CONF"
+runptt start; sleep 0.35
+check "warmup: in der Pause nur die erste Taste"          1 "$(presses)"
+sleep 0.8
+check "warmup: danach wird die Taste wiederholt"          ja "$([ "$(presses)" -ge 4 ] && echo ja || echo nein)"
+runptt stop; sleep 0.2
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=400\n' > "$CONF"
+runptt start; sleep 0.1; runptt stop; sleep 0.8
+check "warmup: stop in der Pause, danach keine Wiederholung" 1 "$(presses)"
+
+# the recorder of Claude Code: the repeater keeps going while the recorder that started after it runs, stops when that
+# recorder ends, and stops when none comes (an older recorder does not count)
+fake_rec() { bash -c 'exec -a rec python3 -c "import time; time.sleep(30)" --buffer 1024 -t raw' & FAKE=$!; }
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\n' > "$CONF"
+runptt start; sleep 0.2; fake_rec; sleep 0.6
+check "rec: mit Recorder wird wiederholt"                talking "$(runptt status)"
+kill "$FAKE"; wait "$FAKE" 2>/dev/null; sleep 0.4
+check "rec: Recorder beendet, Wiederholer stoppt"        idle "$(runptt status)"
+n4="$(presses)"; sleep 0.4
+check "rec: danach keine Taste mehr"                      "$n4" "$(presses)"
+reset; fake_rec; sleep 0.3; runptt start; sleep 0.8
+check "rec: alter Recorder, zunaechst wird gewartet"      talking "$(runptt status)"
+sleep 4.5
+check "rec: kein neuer Recorder, Wiederholer stoppt"      idle "$(runptt status)"
+kill "$FAKE"; wait "$FAKE" 2>/dev/null
+
 # ------------------------------------------------------------------ settings
 reset; printf 'PTT_TARGET=work:codex\nPTT_KEY=C-g\nPTT_INTERVAL=20\n' > "$CONF"
 runptt start; runptt stop
@@ -109,11 +138,12 @@ check "Konfig: Ziel und Taste"                            "send-keys -t work:cod
 reset; printf 'SESSION=mine\n' > "$CONF"
 runptt start; runptt stop
 check "Standardziel folgt SESSION"                        "send-keys -t mine:claude M-k" "$(head -n 1 "$LOG")"
-reset; printf 'PTT_TARGET=a;rm -rf /\nPTT_KEY=M k\nPTT_MODE=loud\nPTT_INTERVAL=5\nPTT_MAX=0\n' > "$CONF"
+reset; printf 'PTT_TARGET=a;rm -rf /\nPTT_KEY=M k\nPTT_MODE=loud\nPTT_INTERVAL=5\nPTT_WARMUP=3000\nPTT_MAX=0\n' > "$CONF"
 runptt start; runptt stop
 check "Konfig: ungueltige Werte werden ignoriert"         "send-keys -t ubuntu:claude M-k" "$(head -n 1 "$LOG")"
 check "Konfig: ungueltiger Modus bleibt auto"             auto "$(. "$LIB"; ROOTBRIDGE_CONFIG="$CONF" rb_load_config; echo "$PTT_MODE")"
 check "Konfig: PTT_INTERVAL unter 20 ms wird ignoriert"   50 "$(. "$LIB"; RB_CONFIG="$CONF" rb_load_config; echo "$PTT_INTERVAL")"
+check "Konfig: PTT_WARMUP ueber 1500 ms wird ignoriert" 1200 "$(. "$LIB"; RB_CONFIG="$CONF" rb_load_config; echo "$PTT_WARMUP")"
 check "Konfig: PTT_MAX 0 wird ignoriert"                  120 "$(. "$LIB"; RB_CONFIG="$CONF" rb_load_config; echo "$PTT_MAX")"
 
 # ------------------------------------------------------------------ tap mode
@@ -150,7 +180,8 @@ modeis '{"voice":{"enabled":true,"mode":"tap"}}'
 runptt toggle; runptt toggle
 check "auto: Claude Code im Modus tap, toggle drueckt je einmal"        2 "$(presses)"
 check "auto: tap, kein Wiederholer"                                      idle "$(runptt status)"
-modeis '{"voice":{"enabled":true,"mode":"hold"}}' 'PTT_INTERVAL=20'
+modeis '{"voice":{"enabled":true,"mode":"hold"}}' 'PTT_INTERVAL=20
+PTT_WARMUP=0'
 runptt toggle; sleep 0.4
 check "auto: Claude Code im Modus hold, toggle startet den Wiederholer" talking "$(runptt status)"
 check "auto: hold, die Taste wird wiederholt"                            ja "$([ "$(presses)" -ge 4 ] && echo ja || echo nein)"

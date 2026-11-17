@@ -13,7 +13,13 @@
 #                    repeater against a program in tap mode would toggle it with every press.
 #   hold             `start` repeats the key every PTT_INTERVAL ms, like a key held down, until `stop`
 #                    (or PTT_MAX seconds, in case `stop` never comes). Claude Code ends the recording when
-#                    no key comes for 200 ms, so the repeater must never be late: one process per round.
+#                    no key comes for 200 ms, so the repeater must never be late: one tmux client for all keys.
+#                    When Claude Code ends the recording itself (its recorder `rec` is gone), the repeater stops
+#                    instead of starting a new one; it also stops when no recorder starts (hold mode is for Claude Code).
+#                    The repeats begin PTT_WARMUP ms after the first key: Claude Code starts its recorder with the first key
+#                    (checks of sox, then rec), which blocks it for half a second or more on a phone, and its 200 ms release
+#                    timer only starts with the second key. A second key into that stall ended the recording again and again
+#                    ("listening" flickered). A program waits 2 s for the second key, so PTT_WARMUP stays below that.
 #                    Claude Code: /voice hold
 #   tap              `start` and `stop` press the key once each (the program's "tap to talk" mode); `toggle`
 #                    presses once and leaves it to the program whether that starts or sends. ptt only
@@ -22,8 +28,9 @@
 #
 # Settings (~/.config/termux-rootbridge/config, read as data): PTT_TARGET (tmux target, default
 # "<SESSION>:claude"), PTT_KEY (tmux key name, default M-k = Alt+K, the key that Claude Code's
-# "voice:pushToTalk" is bound to in ~/.claude/keybindings.json), PTT_MODE, PTT_INTERVAL (ms), PTT_MAX (s).
-# Test hook, from the environment only: PTT_TMUX (tmux binary), PTT_STATE_DIR, PTT_CLAUDE_SETTINGS (settings file of Claude Code).
+# "voice:pushToTalk" is bound to in ~/.claude/keybindings.json), PTT_MODE, PTT_INTERVAL (ms), PTT_WARMUP (ms), PTT_MAX (s).
+# Test hook, from the environment only: PTT_TMUX (tmux binary), PTT_STATE_DIR, PTT_CLAUDE_SETTINGS (settings file of Claude Code),
+# PTT_PROC (/proc, where the recorder of Claude Code is looked for).
 
 set -u
 
@@ -45,6 +52,7 @@ TARGET="${PTT_TARGET:-$SESSION:claude}"
 STATE="${PTT_STATE_DIR:-$HOME/.cache/ptt}"
 PIDFILE="$STATE/hold.pid"
 FLAG="$STATE/tap.flag"
+PROC="${PTT_PROC:-/proc}"
 
 usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$self"; }
 
@@ -72,19 +80,72 @@ case "$MODE" in hold|tap) ;; *) MODE=hold ;; esac
 # Hold mode: the file $PIDFILE holds the token of the running repeater. `stop` removes it, a newer `start` replaces
 # it; the repeater ends when its token is gone. No pid is needed, so there is no race between starting the loop and
 # writing the file, and a killed repeater leaves a file that goes stale after PTT_MAX seconds.
-# Claude Code takes the key for released when none comes for 200 ms, and on a phone every process costs a few tens of
-# milliseconds: a round starts only `tmux` (the token is read with `read`, the pause is `read -t` on a pipe that never
-# gets data), not cat in a subshell and sleep as well.
+# Claude Code takes the key for released when none comes for 200 ms, so the repeater talks to tmux through one client
+# in control mode (`tmux -C`), started once: a round starts no process (a process per key took up to 220 ms under
+# proot). Without a control client (an old tmux) each key is one `tmux` process.
+# When Claude Code has ended the recording itself (Esc, a stall), one more key would start a new recording right into
+# the start of its recorder, which is the flicker. Claude Code records with SoX (`rec ... --buffer 1024 -t raw ...`) and
+# ends that process with the recording; the screen is no use here, it shows the end only some 50 ms later. So after
+# the warmup the repeater looks for the recorder that is new since its start, and before every key it checks that
+# this recorder still runs; when it is gone, or none comes within PTT_WARMUP + 2 s, the repeater stops. Left open: a key
+# that is already on its way when Claude Code ends the recording (Esc takes it some 150 ms) starts a new one, which
+# ends again at once without more keys.
+# The pause is `read -t` on a fifo that never gets data (not `<(:)`: under proot a read on that returns at once).
+find_recorders() {   # REC_PIDS: the running recorders of Claude Code, read from /proc without starting a process
+    local d args
+    REC_PIDS=()
+    for d in "$PROC"/[0-9]*; do
+        mapfile -d '' -t args < "$d/cmdline" 2>/dev/null || continue
+        if [[ ${args[0]-} == *rec && " ${args[*]} " == *" --buffer 1024 -t raw "* ]]; then REC_PIDS+=("${d##*/}"); fi
+    done
+}
+
+tm_open() {   # start the control client and skip everything it says before the answer to our first command
+    local line
+    coproc TM { exec "$TMUX_BIN" -C attach-session -t "$TARGET" -f ignore-size,no-output 2>/dev/null; }
+    printf 'display-message -p ptt-ready\n' >&"${TM[1]}" 2>/dev/null || return 1
+    while :; do IFS= read -r -t 3 -u "${TM[0]}" line || return 1; [ "$line" = ptt-ready ] && break; done
+    while :; do IFS= read -r -t 3 -u "${TM[0]}" line || return 1; [[ $line == %end* ]] && return 0; done
+}
+
+tm() {   # tm <tmux command>: run it through the control client and wait for its end
+    local line
+    printf '%s\n' "$1" >&"${TM[1]}" 2>/dev/null || return 1
+    while :; do
+        IFS= read -r -t 2 -u "${TM[0]}" line || return 1
+        case "$line" in %end*) return 0 ;; %error*) return 1 ;; esac
+    done
+}
+
 hold_loop() {   # hold_loop <token>
-    local token="$1" end=$((SECONDS + PTT_MAX)) delay cur
+    local token="$1" end=$((SECONDS + PTT_MAX)) delay cur ctl=0 rec="" old p st nap="$STATE/nap.$BASHPID.$RANDOM"
+    local rec_deadline=$((SECONDS + PTT_WARMUP / 1000 + 3))   # SECONDS counts whole seconds: about warmup + 2 s
+    trap '' PIPE                                                # a control client that is gone must not end the loop
     delay="$(printf '%d.%03d' $((PTT_INTERVAL / 1000)) $((PTT_INTERVAL % 1000)))"
-    exec 3<> <(:)
+    find_recorders; old=" ${REC_PIDS[*]} "
+    mkfifo "$nap" || return 0
+    exec 3<> "$nap"
+    rm -f "$nap"
+    tm_open && ctl=1
+    read -r -t "$(printf '%d.%03d' $((PTT_WARMUP / 1000)) $((PTT_WARMUP % 1000)))" -u 3 _ || true   # the first key was pressed by do_start
     while [ "$SECONDS" -lt "$end" ]; do
         cur=""; read -r cur < "$PIDFILE" 2>/dev/null || true
         [ "$cur" = "$token" ] || break
-        press || break
+        if [ -z "$rec" ]; then
+            find_recorders
+            for p in "${REC_PIDS[@]}"; do [[ $old == *" $p "* ]] || rec="$p"; done
+            if [ -z "$rec" ] && [ "$SECONDS" -ge "$rec_deadline" ]; then break; fi   # Claude Code does not record
+        else
+            # Claude Code ended the recording when its recorder is gone, a zombie (not reaped yet), or has a signal pending
+            # (field 31: the SIGTERM of Claude Code, seen before the recorder has ended)
+            st=(); read -r -a st < "$PROC/$rec/stat" 2>/dev/null || true
+            case "${st[2]:-}" in ''|Z|X) break ;; esac
+            if [ "${st[30]:-0}" != 0 ]; then break; fi
+        fi
+        if [ "$ctl" = 1 ]; then tm "send-keys -t $TARGET $PTT_KEY" || break; else press || break; fi
         read -r -t "$delay" -u 3 _ || true
     done
+    if [ -n "${TM_PID:-}" ]; then kill "$TM_PID" 2>/dev/null; fi
     cur=""; read -r cur < "$PIDFILE" 2>/dev/null || true
     if [ "$cur" = "$token" ]; then rm -f "$PIDFILE"; fi
     return 0

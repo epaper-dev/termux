@@ -294,7 +294,8 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   `"voice": {"enabled": true, "mode": "hold"}`. Both only where you have not decided yet (an existing binding for the action, or a `voice` value, stays).
 * **`ptt`**: `ptt start` presses the key for you, `ptt stop` lets go. `ptt toggle` starts or stops in one call (what the Home long press and the launcher icon run). `ptt` follows the mode of
   Claude Code's `/voice` (`PTT_MODE=auto`, the default: it reads `voice.mode` from the settings of the guest). In `hold` mode it repeats Alt+K every
-  50 ms, like a held key (Claude Code takes the key for released when none comes for 200 ms, so each round starts only `tmux`), and nothing but your own
+  50 ms, like a held key (Claude Code takes the key for released when none comes for 200 ms, so each round starts only `tmux`; the repeats begin `PTT_WARMUP` ms, 1200, after the first
+  key, because Claude Code starts its recorder then and a release timer that runs into that moment ends the recording again and again; all keys go through one `tmux -C` client, and when Claude Code's recorder `rec` ends the repeats stop), and nothing but your own
   `stop` ends the recording; without a stop the repeats end after `PTT_MAX` seconds (120). In `tap` mode `start`, `stop` and `toggle` press once and
   Claude Code decides: the first press starts (the input has to be empty), the next one stops and sends. `ptt` only presses a key in a tmux window (`PTT_TARGET`, default `ubuntu:claude`; `PTT_KEY`,
   default `M-k`), so it fits any program that listens for one key.
