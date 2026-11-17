@@ -103,14 +103,14 @@ find_recorders() {   # REC_PIDS: the running recorders of Claude Code, read from
 tm_open() {   # start the control client and skip everything it says before the answer to our first command
     local line
     coproc TM { exec "$TMUX_BIN" -C attach-session -t "$TARGET" -f ignore-size,no-output 2>/dev/null; }
-    printf 'display-message -p ptt-ready\n' >&"${TM[1]}" 2>/dev/null || return 1
+    printf 'display-message -p ptt-ready\n' 1>&"${TM[1]}" 2>/dev/null || return 1
     while :; do IFS= read -r -t 3 -u "${TM[0]}" line || return 1; [ "$line" = ptt-ready ] && break; done
     while :; do IFS= read -r -t 3 -u "${TM[0]}" line || return 1; [[ $line == %end* ]] && return 0; done
 }
 
 tm() {   # tm <tmux command>: run it through the control client and wait for its end
     local line
-    printf '%s\n' "$1" >&"${TM[1]}" 2>/dev/null || return 1
+    printf '%s\n' "$1" 1>&"${TM[1]}" 2>/dev/null || return 1
     while :; do
         IFS= read -r -t 2 -u "${TM[0]}" line || return 1
         case "$line" in %end*) return 0 ;; %error*) return 1 ;; esac

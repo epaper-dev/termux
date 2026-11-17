@@ -69,7 +69,8 @@ The Termux:API of this repository, `api/`, shows them in the language of the pho
 * A working `su` (Magisk, KernelSU, ...) — without it, only the login features work
 * Termux packages: `tmux proot-distro python coreutils util-linux termux-api` and the Termux:API app: the dialog that asks
   you for every root request (without it every request is refused), the browser hand-off and the clipboard
-* Guest packages: `python3` (the guest's own, for the hooks), coreutils with `sha256sum`, `od`, `timeout`
+* Guest packages: `python3` (the guest's own, for the hooks), coreutils with `sha256sum`, `od`, `timeout`, `shellcheck` (for the
+  agents' shell scripts; `install.sh` installs it with `apt`)
 * Claude Code ≥ 2.1.295 (`onFailure: "block"` for hooks)
 * Codex (on by default, `--no-codex` leaves it out): `install.sh` installs it with the official installer; the Claude Code
   plugin and the pre-commit review also need `git` and `nodejs` (≥ 18.18) in the guest, and Codex needs `bubblewrap`

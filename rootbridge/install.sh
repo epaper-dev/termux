@@ -695,11 +695,12 @@ if [ "$DO_GUEST" = 1 ]; then
     STAGE="$GROOT/var/tmp/termux-rootbridge-install"
     rm -rf "$STAGE"; mkdir -p "$STAGE"
     cp -r "$REPO/guest/." "$STAGE/"
-    # Setup, part 3: python3 / curl / certificates and Claude Code in the guest. Looked up from outside
+    # Setup, part 3: python3 / curl / certificates / shellcheck and Claude Code in the guest. Looked up from outside
     # (a link that points outside the guest only counts as missing: setup-guest.sh then looks properly)
     guest_ready() {
         local h="${ROOTBRIDGE_GUEST_HOME:-/root}"
         { [ -e "$GROOT/usr/bin/python3" ] && [ -e "$GROOT/usr/bin/curl" ] && [ -s "$GROOT/etc/ssl/certs/ca-certificates.crt" ]; } || return 1
+        [ -e "$GROOT/usr/bin/shellcheck" ] || return 1      # the agents check their shell scripts with it
         if [ "$USE_CLAUDE" = yes ]; then
             { [ -x "$GROOT$h/.local/bin/claude" ] || [ -x "$GROOT/usr/local/bin/claude" ] || [ -x "$GROOT/usr/bin/claude" ]; } || return 1
         fi

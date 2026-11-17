@@ -66,7 +66,8 @@ Die Termux:API dieses Repositorys, `api/`, zeigt sie in der Sprache des Telefons
 * Android mit Termux (F-Droid/GitHub-Build), `proot-distro` mit Ubuntu-Gast, Claude Code im Gast installiert (`install.sh` richtet fehlende Teile davon und die Pakete unten selbst ein)
 * funktionierendes `su` (Magisk, KernelSU ...) – ohne `su` gehen nur die Login-Funktionen
 * Termux-Pakete: `tmux proot-distro python coreutils util-linux`, optional `termux-api` (+ Termux:API-App) für die Zwischenablage
-* Gast: `python3`, coreutils mit `sha256sum`, `od`, `timeout`
+* Gast: `python3`, coreutils mit `sha256sum`, `od`, `timeout`, `shellcheck` (für die Shell-Skripte der Agenten; `install.sh`
+  installiert es per `apt`)
 * Claude Code ≥ 2.1.295
 * Codex (standardmäßig an, `--no-codex` lässt es weg): `install.sh` installiert es mit dem offiziellen Installer; das
   Claude-Code-Plugin und die Pre-Commit-Review brauchen außerdem `git` und `nodejs` (≥ 18.18) im Gast, Codex braucht

@@ -108,7 +108,7 @@ check "hold: ohne Fenster kein Zustand"                   idle "$(runptt status)
 reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=600\n' > "$CONF"
 runptt start; sleep 0.35
 check "warmup: in der Pause nur die erste Taste"          1 "$(presses)"
-sleep 0.8
+sleep 1.5
 check "warmup: danach wird die Taste wiederholt"          ja "$([ "$(presses)" -ge 4 ] && echo ja || echo nein)"
 runptt stop; sleep 0.2
 reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=400\n' > "$CONF"

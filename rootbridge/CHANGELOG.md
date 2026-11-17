@@ -54,6 +54,9 @@ The Termux daemon asks you itself, in an Android dialog, for every root request 
   process per key took up to 220 ms under proot) and watches the SoX recorder that Claude Code starts (`rec ... --buffer 1024 -t raw`): when it
   ends (or none starts), the repeater stops instead of starting a new recording. Measured with a fresh Claude Code in a guest tmux: 5 of 5
   recordings (the first one cold), 3 of 3 with a forced stall of 0.5 s, no recorder left behind. Tests: `tests/test_ptt.sh`.
+* **ShellCheck in the guest.** `setup-guest.sh` installs `shellcheck` (`apt`) with or without Claude Code and Codex, so the agents can
+  check their shell scripts the way the CI of this repository does; `install.sh` runs the guest setup again when it is missing.
+  Tests: `tests/test_setup.sh` (A2e and the package lists).
 * **The guest installer counts only what the guest has itself.** `setup-guest.sh` looks for `python3`, `curl`, `git`, `node` and `rec` as
   programs of the guest, not as Termux programs on the PATH (an isolated session does not see those).
 

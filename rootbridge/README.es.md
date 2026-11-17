@@ -71,7 +71,8 @@ La Termux:API de este repositorio, `api/`, los muestra en el idioma del teléfon
 * Un `su` que funcione (Magisk, KernelSU, ...); sin él, solo funcionan las funciones de inicio de sesión
 * Paquetes de Termux: `tmux proot-distro python coreutils util-linux`; opcional `termux-api` (+ la app Termux:API)
   para el portapapeles
-* Paquetes del invitado: `python3` (hooks), coreutils con `sha256sum`, `od`, `timeout`
+* Paquetes del invitado: `python3` (hooks), coreutils con `sha256sum`, `od`, `timeout`, `shellcheck` (para los scripts de shell de
+  los agentes; `install.sh` lo instala con `apt`)
 * Claude Code ≥ 2.1.295 (`onFailure: "block"` para los hooks)
 * Codex (activado por defecto, `--no-codex` lo omite): `install.sh` lo instala con el instalador oficial; el plugin de
   Claude Code y la revisión previa al commit necesitan además `git` y `nodejs` (≥ 18.18) en el invitado, y Codex necesita

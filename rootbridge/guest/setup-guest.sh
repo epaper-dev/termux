@@ -4,7 +4,8 @@
 #   1. python3, curl and the CA certificates (apt-get; only when one is missing); git when Codex is part of
 #      the installation (Codex reviews through git, and so does the pre-commit hook), plus bubblewrap for its sandbox; nodejs when both tools are
 #      (the Codex plugin of Claude Code is a node program, Node.js 18.18 or newer); sox for /voice
-#      when Claude Code and voice are both part of it (Claude Code records through `rec`)
+#      when Claude Code and voice are both part of it (Claude Code records through `rec`); shellcheck for the
+#      agents' shell scripts (the CI of this repository checks them with it)
 #   2. Claude Code with the official installer (only when there is no claude yet)
 #   3. Codex with the official standalone installer (only when there is no codex yet)
 # The hooks and Codex plugin declaration are written by install-guest.sh. Claude Code fetches the plugin at
@@ -60,6 +61,7 @@ guest_has() { local p; p="$(command -v "$1" 2>/dev/null)" && [ "${p#/data/data/c
 guest_has python3 || pkgs="$pkgs python3"
 guest_has curl    || pkgs="$pkgs curl"
 [ -s "$CA_BUNDLE" ] || pkgs="$pkgs ca-certificates"
+guest_has shellcheck || pkgs="$pkgs shellcheck"
 if [ "$CODEX_ON" = yes ]; then
     guest_has git || pkgs="$pkgs git"
     command -v bwrap >/dev/null 2>&1 || pkgs="$pkgs bubblewrap"
@@ -78,7 +80,7 @@ if [ -n "$pkgs" ]; then
     apt-get install -y --no-install-recommends $pkgs \
         || die "apt-get install$pkgs ist fehlgeschlagen. Erneut starten: bash install.sh --setup"
 else
-    say "  python3, curl und Zertifikate sind da"
+    say "  python3, curl, Zertifikate und shellcheck sind da"
 fi
 # the plugin needs Node.js 18.18 or newer; only a warning (an older node is the user's own choice)
 if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ] && command -v node >/dev/null 2>&1; then
