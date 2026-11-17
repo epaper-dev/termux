@@ -66,7 +66,8 @@ Die Termux:API dieses Repositorys, `api/`, zeigt sie in der Sprache des Telefons
 * Android mit Termux (F-Droid/GitHub-Build), `proot-distro` mit Ubuntu-Gast, Claude Code im Gast installiert (`install.sh` richtet fehlende Teile davon und die Pakete unten selbst ein)
 * funktionierendes `su` (Magisk, KernelSU ...) – ohne `su` gehen nur die Login-Funktionen
 * Termux-Pakete: `tmux proot-distro python coreutils util-linux`, optional `termux-api` (+ Termux:API-App) für die Zwischenablage
-* Gast: `python3`, coreutils mit `sha256sum`, `od`, `timeout`
+* Gast: `python3`, coreutils mit `sha256sum`, `od`, `timeout`, `shellcheck` (für die Shell-Skripte der Agenten; `install.sh`
+  installiert es per `apt`)
 * Claude Code ≥ 2.1.295
 * Codex (standardmäßig an, `--no-codex` lässt es weg): `install.sh` installiert es mit dem offiziellen Installer; das
   Claude-Code-Plugin und die Pre-Commit-Review brauchen außerdem `git` und `nodejs` (≥ 18.18) im Gast, Codex braucht
@@ -283,7 +284,9 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
   eine Größenkappe, das Log ist privat (0600), wird rotiert und enthält keine Befehlsargumente, und was an Claude geht,
   wird von Steuerzeichen befreit, gekürzt und als Fremdtext gekennzeichnet. Pro Gerät lassen sich in der Umgebung, mit der
   Claude Code startet, `CODEX_PRECOMMIT_TIMEOUT_S` (60-3000), `CODEX_PRECOMMIT_ATTEMPTS` (1-5),
-  `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) und `CODEX_PRECOMMIT_EFFORT` (`none` bis `xhigh`) setzen; das Hook-Timeout in den
+  `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) und `CODEX_PRECOMMIT_EFFORT` (`none` bis `xhigh`, Standard `xhigh`) und
+  `CODEX_PRECOMMIT_MODEL` (Standard: das neueste Sol-Modell mit dieser Stufe aus Codex' eigener Modellliste
+  `~/.codex/models_cache.json`, sonst `gpt-6.1-sol`) setzen; das Hook-Timeout in den
   Managed Settings ist zusammen mit dem Budget anzuheben.
 * **Daten.** Der Diff und alles, was Codex im Arbeitsbaum liest, gehen an OpenAI, unter dem Konto, mit dem du dich angemeldet
   hast. Die Sandbox von Codex beschränkt das Schreiben, nicht das Lesen: Es kann mehr vom Gast lesen als das Repository.
@@ -319,9 +322,12 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   Android-Quelle „Spracherkennung“ leise ist). Es startet mit der Sitzung (`rootbridge start` / `attach`); eine eigene `default.pa` bleibt.
 * **Einstellungen von Claude Code**: `~/.claude/keybindings.json` bekommt `meta+k` = `voice:pushToTalk`, `~/.claude/settings.json` bekommt
   `"voice": {"enabled": true, "mode": "hold"}`. Beides nur, wo du noch nichts entschieden hast (eine vorhandene Belegung der Aktion oder ein `voice`-Wert bleibt).
-* **`ptt`**: `ptt start` drückt die Taste für dich, `ptt stop` lässt sie los. Im Modus `hold` (Standard) wiederholt es Alt+K alle 50 ms, wie eine
-  gehaltene Taste, damit nur dein eigenes `stop` die Aufnahme beendet (eine gehaltene Taste kann eine Bildschirmtastatur nicht). Ohne Stopp
-  enden die Wiederholungen nach `PTT_MAX` Sekunden (120). `ptt` drückt nur eine Taste in einem tmux-Fenster (`PTT_TARGET`, Standard
+* **`ptt`**: `ptt start` drückt die Taste für dich, `ptt stop` lässt sie los. `ptt toggle` startet oder stoppt in einem Aufruf (das führen der Home-Langdruck und das Launcher-Symbol aus). `ptt` folgt dem Modus von
+  `/voice` in Claude Code (`PTT_MODE=auto`, der Standard: es liest `voice.mode` aus den Einstellungen des Gastes). Im Modus `hold` wiederholt es Alt+K
+  alle 50 ms, wie eine gehaltene Taste (Claude Code hält die Taste für losgelassen, wenn 200 ms nichts kommt, deshalb startet jede Runde nur `tmux`; die Wiederholungen beginnen `PTT_WARMUP` ms (1200) nach der ersten
+  Taste, denn dann startet Claude Code seinen Recorder, und ein Loslass-Zeitgeber, der in diesen Moment läuft, beendet die Aufnahme immer wieder; alle Tasten laufen über einen `tmux -C`-Client, und endet Claudes Recorder `rec`, hören die Wiederholungen auf),
+  und nur dein eigenes `stop` beendet die Aufnahme; ohne Stopp enden die Wiederholungen nach `PTT_MAX` Sekunden (120). Im Modus `tap` drücken `start`,
+  `stop` und `toggle` je einmal, und Claude Code entscheidet: Der erste Druck startet (das Eingabefeld muss leer sein), der nächste stoppt und sendet. `ptt` drückt nur eine Taste in einem tmux-Fenster (`PTT_TARGET`, Standard
   `ubuntu:claude`; `PTT_KEY`, Standard `M-k`) und passt damit zu jedem Programm, das auf eine Taste hört.
 * **Mikrofon-Berechtigung von Android** für Termux (eine Laufzeit-Berechtigung: sie ist mit jeder Neuinstallation der App weg; die Termux-Apps teilen
   eine Benutzerkennung, und nur die **App Termux:API** deklariert `RECORD_AUDIO`, sie muss also installiert sein). Sie braucht Root:
@@ -331,11 +337,13 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
 
 **Auslöser ohne Root** (die Termux-App dieses Repositorys, `app/`, zeigt Android „Termux push to talk“ an; jeder führt `ptt toggle` aus: ein
 Ereignis, das erste startet das Sprechen, das nächste stoppt es):
-* **Langer Druck auf Home**: Einstellungen, Apps, Standard-Apps, Digitaler Assistent, „Termux push to talk“ (das Telefon listet ihn auch in
-  den Einstellungen der Tasten, wo es sie hat).
-* **Eine Taste, die eine App öffnen kann**, zum Beispiel die Seitentaste der E-Ink-Telefone in den Bedienungshilfen der E-Ink-App: die App
-  „Termux push to talk“ wählen.
-* **Das Symbol „Termux push to talk“** im Launcher, auch als Knopf auf dem Homescreen.
+* **Langer Druck auf Home**: Einstellungen, Apps, Standard-Apps, Digitaler Assistent, „Termux push to talk“. Manche Telefone zeigen diese Auswahl
+  nicht (das Hisense A9 nicht); die App ist trotzdem ein gültiger Assistent, und mit Root setzt du ihn selbst:
+  `su -c 'cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux'` (zurück mit `remove-role-holder`).
+* **Das Symbol „Termux push to talk“** im Launcher, auch als Knopf auf dem Homescreen und für Einstellungen, die einer Taste eine App zuweisen.
+
+Die Bedienungshilfen des A9 bieten für die Seitentaste nur feste Aktionen (Bildschirm leeren, Musik, Home, Menü, Hintergrundlicht, nichts), keine
+App: Für die Seitentaste nimm `--sidekey` (unten).
 
 **Seitentaste des Hisense A9** (`--sidekey`, standardmäßig aus, gespeichert als `SIDEKEY`): Seitentaste halten = aufnehmen, loslassen = stoppen. Der Installer legt
 `sidekey-ptt` nach `$PREFIX/bin`; es hält ein root-`cat` auf `/dev/input/event2` (die Taste, Scancode 766) und ruft `ptt start` / `ptt stop`.

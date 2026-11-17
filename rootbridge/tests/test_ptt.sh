@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Test: `ptt start|stop|toggle|status` (push to talk through a tmux key).
 #   - settings from the rootbridge config (read as data, bad values ignored): PTT_TARGET, PTT_KEY, PTT_MODE,
-#     PTT_INTERVAL, PTT_MAX
-#   - hold mode: `start` presses the key and repeats it until `stop`, a second `start` does not start a second
-#     repeater, the repeater ends by itself after PTT_MAX, no window means nothing happens
-#   - tap mode: one press for `start`, one for `stop`, no press without a matching `start`, a stale mark is ignored
+#     PTT_INTERVAL, PTT_WARMUP, PTT_MAX
+#   - hold mode: `start` presses the key and repeats it (after PTT_WARMUP) until `stop`, a second `start` does not
+#     start a second repeater, the repeater ends by itself after PTT_MAX, no window means nothing happens; it stops
+#     when the recorder of Claude Code (`rec ... --buffer 1024 -t raw`) that started after it ends, or none starts
+#   - tap mode: one press for `start`, one for `stop`, no press without a matching `start`, a stale mark is ignored;
+#     `toggle` presses once every time (the program knows whether it records)
+#   - auto mode (default): the mode of Claude Code's /voice, read from its settings; an explicit hold or tap wins
 #   - install.sh puts `ptt` into $PREFIX/bin (made by test_widgets.sh), uninstall.sh removes it
 # Nothing real is touched: `tmux` is a logging stub (PTT_TMUX), state and config live in a temp dir.
 #   bash tests/test_ptt.sh
@@ -36,6 +39,7 @@ export ROOTBRIDGE_CONFIG="$CONF"
 export ROOTBRIDGE_LIB="$LIB"
 export PTT_TMUX="$T/tmux"
 export PTT_STATE_DIR="$T/state"
+export PTT_CLAUDE_SETTINGS="$T/claude-settings.json"      # never the real settings of the guest
 
 reset() { rm -rf "$T/state" "$LOG"; : > "$LOG"; unset PTT_TEST_NOWINDOW; }
 presses() { grep -c '^send-keys' "$LOG"; }
@@ -48,7 +52,7 @@ check "Hilfe nennt start und stop"                        2 "$(runptt help | gre
 check "unbekannter Befehl: Exit 2"                        2 "$(runptt nope >/dev/null 2>&1; echo $?)"
 
 # ------------------------------------------------------------------ hold mode
-reset; printf 'PTT_INTERVAL=20\n' > "$CONF"
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\n' > "$CONF"
 runptt start
 check "hold: start drueckt sofort die Taste (Standard)"   "send-keys -t ubuntu:claude M-k" "$(head -n 1 "$LOG")"
 check "hold: status nach start"                           talking "$(runptt status)"
@@ -81,7 +85,7 @@ check "toggle: zweiter Aufruf stoppt"                     idle "$(runptt status)
 sleep 0.2
 
 # the repeater ends by itself (PTT_MAX), the status goes with it
-reset; printf 'PTT_INTERVAL=20\nPTT_MAX=1\n' > "$CONF"
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\nPTT_MAX=1\n' > "$CONF"
 runptt start
 sleep 3.2
 check "hold: PTT_MAX beendet den Wiederholer, status idle" idle "$(runptt status)"
@@ -99,6 +103,34 @@ reset; printf '' > "$CONF"
 check "hold: ohne Fenster Exit 0"                         0 "$(PTT_TEST_NOWINDOW=1 runptt start; echo $?)"
 check "hold: ohne Fenster kein Zustand"                   idle "$(runptt status)"
 
+# warmup: the repeats begin PTT_WARMUP ms after the first key (Claude Code arms its release timer with the second key,
+# after its recorder has started)
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=600\n' > "$CONF"
+runptt start; sleep 0.35
+check "warmup: in der Pause nur die erste Taste"          1 "$(presses)"
+sleep 1.5
+check "warmup: danach wird die Taste wiederholt"          ja "$([ "$(presses)" -ge 4 ] && echo ja || echo nein)"
+runptt stop; sleep 0.2
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=400\n' > "$CONF"
+runptt start; sleep 0.1; runptt stop; sleep 0.8
+check "warmup: stop in der Pause, danach keine Wiederholung" 1 "$(presses)"
+
+# the recorder of Claude Code: the repeater keeps going while the recorder that started after it runs, stops when that
+# recorder ends, and stops when none comes (an older recorder does not count)
+fake_rec() { bash -c 'exec -a rec python3 -c "import time; time.sleep(30)" --buffer 1024 -t raw' & FAKE=$!; }
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\n' > "$CONF"
+runptt start; sleep 0.2; fake_rec; sleep 0.6
+check "rec: mit Recorder wird wiederholt"                talking "$(runptt status)"
+kill "$FAKE"; wait "$FAKE" 2>/dev/null; sleep 0.4
+check "rec: Recorder beendet, Wiederholer stoppt"        idle "$(runptt status)"
+n4="$(presses)"; sleep 0.4
+check "rec: danach keine Taste mehr"                      "$n4" "$(presses)"
+reset; fake_rec; sleep 0.3; runptt start; sleep 0.8
+check "rec: alter Recorder, zunaechst wird gewartet"      talking "$(runptt status)"
+sleep 4.5
+check "rec: kein neuer Recorder, Wiederholer stoppt"      idle "$(runptt status)"
+kill "$FAKE"; wait "$FAKE" 2>/dev/null
+
 # ------------------------------------------------------------------ settings
 reset; printf 'PTT_TARGET=work:codex\nPTT_KEY=C-g\nPTT_INTERVAL=20\n' > "$CONF"
 runptt start; runptt stop
@@ -106,11 +138,12 @@ check "Konfig: Ziel und Taste"                            "send-keys -t work:cod
 reset; printf 'SESSION=mine\n' > "$CONF"
 runptt start; runptt stop
 check "Standardziel folgt SESSION"                        "send-keys -t mine:claude M-k" "$(head -n 1 "$LOG")"
-reset; printf 'PTT_TARGET=a;rm -rf /\nPTT_KEY=M k\nPTT_MODE=loud\nPTT_INTERVAL=5\nPTT_MAX=0\n' > "$CONF"
+reset; printf 'PTT_TARGET=a;rm -rf /\nPTT_KEY=M k\nPTT_MODE=loud\nPTT_INTERVAL=5\nPTT_WARMUP=3000\nPTT_MAX=0\n' > "$CONF"
 runptt start; runptt stop
 check "Konfig: ungueltige Werte werden ignoriert"         "send-keys -t ubuntu:claude M-k" "$(head -n 1 "$LOG")"
-check "Konfig: ungueltiger Modus bleibt hold"             hold "$(. "$LIB"; ROOTBRIDGE_CONFIG="$CONF" rb_load_config; echo "$PTT_MODE")"
+check "Konfig: ungueltiger Modus bleibt auto"             auto "$(. "$LIB"; ROOTBRIDGE_CONFIG="$CONF" rb_load_config; echo "$PTT_MODE")"
 check "Konfig: PTT_INTERVAL unter 20 ms wird ignoriert"   50 "$(. "$LIB"; RB_CONFIG="$CONF" rb_load_config; echo "$PTT_INTERVAL")"
+check "Konfig: PTT_WARMUP ueber 1500 ms wird ignoriert" 1200 "$(. "$LIB"; RB_CONFIG="$CONF" rb_load_config; echo "$PTT_WARMUP")"
 check "Konfig: PTT_MAX 0 wird ignoriert"                  120 "$(. "$LIB"; RB_CONFIG="$CONF" rb_load_config; echo "$PTT_MAX")"
 
 # ------------------------------------------------------------------ tap mode
@@ -134,6 +167,48 @@ mkdir -p "$T/state"; : > "$T/state/tap.flag"; touch -d '10 minutes ago' "$T/stat
 runptt stop
 check "tap: veraltete Markierung, stop drueckt nichts"    0 "$(presses)"
 check "tap: veraltete Markierung wird entfernt"           nein "$([ -e "$T/state/tap.flag" ] && echo ja || echo nein)"
+
+# toggle in tap mode presses every time: Claude Code knows whether it records, a mark of ours may be wrong
+reset; printf 'PTT_MODE=tap\n' > "$CONF"
+mkdir -p "$T/state"; : > "$T/state/tap.flag"; touch -d '10 minutes ago' "$T/state/tap.flag"
+runptt toggle; runptt toggle; runptt toggle
+check "tap: toggle drueckt jedes Mal, auch bei veralteter Markierung" 3 "$(presses)"
+
+# ------------------------------------------------------------------ auto mode: the mode of Claude Code
+modeis() { reset; printf '%s\n' "${2:-}" > "$CONF"; printf '%s' "$1" > "$PTT_CLAUDE_SETTINGS"; }
+modeis '{"voice":{"enabled":true,"mode":"tap"}}'
+runptt toggle; runptt toggle
+check "auto: Claude Code im Modus tap, toggle drueckt je einmal"        2 "$(presses)"
+check "auto: tap, kein Wiederholer"                                      idle "$(runptt status)"
+modeis '{"voice":{"enabled":true,"mode":"hold"}}' 'PTT_INTERVAL=20
+PTT_WARMUP=0'
+runptt toggle; sleep 0.4
+check "auto: Claude Code im Modus hold, toggle startet den Wiederholer" talking "$(runptt status)"
+check "auto: hold, die Taste wird wiederholt"                            ja "$([ "$(presses)" -ge 4 ] && echo ja || echo nein)"
+runptt toggle; sleep 0.2
+check "auto: hold, zweites toggle stoppt"                                idle "$(runptt status)"
+modeis '{"voice":{"enabled":true}}' 'PTT_INTERVAL=20'
+runptt start; sleep 0.3
+check "auto: ohne mode in den Einstellungen gilt hold"                   talking "$(runptt status)"
+runptt stop; sleep 0.2
+modeis 'kein json' 'PTT_INTERVAL=20'
+runptt start; sleep 0.3
+check "auto: kaputte Einstellungen, es gilt hold"                        talking "$(runptt status)"
+runptt stop; sleep 0.2
+reset; printf 'PTT_INTERVAL=20\n' > "$CONF"; rm -f "$PTT_CLAUDE_SETTINGS"
+runptt start; sleep 0.3
+check "auto: ohne Einstellungsdatei gilt hold"                           talking "$(runptt status)"
+runptt stop; sleep 0.2
+modeis '{"voice":{"mode":"tap"}}' 'PTT_MODE=hold
+PTT_INTERVAL=20'
+runptt start; sleep 0.3
+check "ausdruecklich hold gewinnt gegen Claudes tap"                     talking "$(runptt status)"
+runptt stop; sleep 0.2
+modeis '{"voice":{"mode":"hold"}}' 'PTT_MODE=tap'
+runptt start; runptt stop
+check "ausdruecklich tap gewinnt gegen Claudes hold (je ein Druck)"      2 "$(presses)"
+check "PTT_MODE=auto steht in der Konfig"                                auto "$(printf 'PTT_MODE=auto\n' > "$CONF"; . "$LIB"; ROOTBRIDGE_CONFIG="$CONF" rb_load_config; echo "$PTT_MODE")"
+rm -f "$PTT_CLAUDE_SETTINGS"
 
 # ------------------------------------------------------------------ install
 check "ptt ist ausfuehrbar"                               ja "$([ -x "$PTT" ] && echo ja || echo nein)"

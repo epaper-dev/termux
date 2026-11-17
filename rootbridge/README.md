@@ -69,7 +69,8 @@ The Termux:API of this repository, `api/`, shows them in the language of the pho
 * A working `su` (Magisk, KernelSU, ...) — without it, only the login features work
 * Termux packages: `tmux proot-distro python coreutils util-linux termux-api` and the Termux:API app: the dialog that asks
   you for every root request (without it every request is refused), the browser hand-off and the clipboard
-* Guest packages: `python3` (the guest's own, for the hooks), coreutils with `sha256sum`, `od`, `timeout`
+* Guest packages: `python3` (the guest's own, for the hooks), coreutils with `sha256sum`, `od`, `timeout`, `shellcheck` (for the
+  agents' shell scripts; `install.sh` installs it with `apt`)
 * Claude Code ≥ 2.1.295 (`onFailure: "block"` for hooks)
 * Codex (on by default, `--no-codex` leaves it out): `install.sh` installs it with the official installer; the Claude Code
   plugin and the pre-commit review also need `git` and `nodejs` (≥ 18.18) in the guest, and Codex needs `bubblewrap`
@@ -256,7 +257,8 @@ a new window.
   cap, the log is private (0600) and rotated and holds no command arguments, and what goes to Claude is cleaned of control
   characters, capped and marked as foreign text. Per device, the environment Claude Code starts with can set
   `CODEX_PRECOMMIT_TIMEOUT_S` (60-3000), `CODEX_PRECOMMIT_ATTEMPTS` (1-5), `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) and
-  `CODEX_PRECOMMIT_EFFORT` (`none` to `xhigh`); raise the hook timeout in the managed settings together with the budget.
+  `CODEX_PRECOMMIT_EFFORT` (`none` to `xhigh`, default `xhigh`) and `CODEX_PRECOMMIT_MODEL` (default: the newest Sol model with
+  that effort in Codex' own model list `~/.codex/models_cache.json`, else `gpt-6.1-sol`); raise the hook timeout in the managed settings together with the budget.
 * **Data.** The diff and whatever Codex reads in the working tree go to OpenAI, under the account you logged in with.
   Codex's sandbox restricts writing, not reading: it can read more of the guest than the repository.
 
@@ -292,9 +294,12 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   Android's "voice recognition" source is quiet). It starts with the session (`rootbridge start` / `attach`); a `default.pa` of your own stays.
 * **Claude Code's settings**: `~/.claude/keybindings.json` gets `meta+k` = `voice:pushToTalk`, and `~/.claude/settings.json` gets
   `"voice": {"enabled": true, "mode": "hold"}`. Both only where you have not decided yet (an existing binding for the action, or a `voice` value, stays).
-* **`ptt`**: `ptt start` presses the key for you, `ptt stop` lets go. In `hold` mode (default) it repeats Alt+K every 50 ms, like a held
-  key, so nothing but your own `stop` ends the recording (a held key is what an on-screen keyboard cannot do). Without a stop the repeats
-  end after `PTT_MAX` seconds (120). `ptt` only presses a key in a tmux window (`PTT_TARGET`, default `ubuntu:claude`; `PTT_KEY`,
+* **`ptt`**: `ptt start` presses the key for you, `ptt stop` lets go. `ptt toggle` starts or stops in one call (what the Home long press and the launcher icon run). `ptt` follows the mode of
+  Claude Code's `/voice` (`PTT_MODE=auto`, the default: it reads `voice.mode` from the settings of the guest). In `hold` mode it repeats Alt+K every
+  50 ms, like a held key (Claude Code takes the key for released when none comes for 200 ms, so each round starts only `tmux`; the repeats begin `PTT_WARMUP` ms, 1200, after the first
+  key, because Claude Code starts its recorder then and a release timer that runs into that moment ends the recording again and again; all keys go through one `tmux -C` client, and when Claude Code's recorder `rec` ends the repeats stop), and nothing but your own
+  `stop` ends the recording; without a stop the repeats end after `PTT_MAX` seconds (120). In `tap` mode `start`, `stop` and `toggle` press once and
+  Claude Code decides: the first press starts (the input has to be empty), the next one stops and sends. `ptt` only presses a key in a tmux window (`PTT_TARGET`, default `ubuntu:claude`; `PTT_KEY`,
   default `M-k`), so it fits any program that listens for one key.
 * **Android's microphone permission** for Termux (a runtime permission: it is gone with every new installation of the app; the Termux apps share
   one user id and only the **Termux:API app** declares `RECORD_AUDIO`, so it must be installed). It needs root:
@@ -304,11 +309,13 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
 
 **Triggers without root** (the Termux app of this repository, `app/`, shows "Termux push to talk" to Android; each one runs `ptt toggle`: one
 event, the first starts talking, the next stops):
-* **Long press on Home**: Settings, Apps, Default apps, Digital assistant app, "Termux push to talk" (the phone lists it in the settings of the
-  buttons too, where it has them).
-* **A key that can open an app**, for example the side key of the E-Ink phones in the accessibility settings of the E-Ink app: choose the app
-  "Termux push to talk".
-* **The icon "Termux push to talk"** in the launcher, also as a button on the home screen.
+* **Long press on Home**: Settings, Apps, Default apps, Digital assistant app, "Termux push to talk". Some phones do not show that choice (the
+  Hisense A9 does not); the app is a valid assistant all the same, and with root you set it yourself:
+  `su -c 'cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux'` (undo with `remove-role-holder`).
+* **The icon "Termux push to talk"** in the launcher, also as a button on the home screen, and for settings that let a key open an app.
+
+The accessibility settings of the A9 offer only fixed actions for its side key (clear screen, music, home, menu, backlight, nothing), no app: for the
+side key use `--sidekey` below.
 
 **Side key of the Hisense A9** (`--sidekey`, off by default, stored as `SIDEKEY`): hold the side key to record, let go to stop. The installer puts
 `sidekey-ptt` into `$PREFIX/bin`; it keeps a root `cat` on `/dev/input/event2` (the key, scan code 766) and calls `ptt start` / `ptt stop`.
@@ -331,7 +338,7 @@ Termux: `~/.config/termux-rootbridge/config` (parsed as data, never executed): `
 `ASK_TIMEOUT`, `GUEST_ISOLATE` (`on` / `off`), `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE`, `CLAUDE_UPDATE`, `CODEX_UPDATE`, `TOOL_CLAUDE` and `TOOL_CODEX` (all read by `install.sh`).
 Guest: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
-upgrade, default 1800), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `CODEX_UPDATE` (same values), `CODEX_ARGS` (extra arguments for Codex), `CODEX_PRECOMMIT` (`off` = no pre-commit review, set by `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (see below). `VOICE` / `SIDEKEY` (`on` / `off`). Termux config only: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), see `ptt help`.
+upgrade, default 1800), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `CODEX_UPDATE` (same values), `CODEX_ARGS` (extra arguments for Codex), `CODEX_PRECOMMIT` (`off` = no pre-commit review, set by `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (see below). `VOICE` / `SIDEKEY` (`on` / `off`). Termux config only: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`auto` / `hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), see `ptt help`.
 
 `NOFILE_LIMIT` (default `2048`, `0` = leave the limit alone) is the file-descriptor limit Claude Code is started with.
 Claude Code closes every descriptor up to that limit after each fork, and under proot every `close()` is a trapped

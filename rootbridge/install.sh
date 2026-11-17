@@ -342,7 +342,7 @@ AUTOSTART_DELAY=3
 # SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
 # PTT_TARGET=ubuntu:claude   # `ptt`: tmux window it presses its key in (default <SESSION>:claude)
 # PTT_KEY=M-k           # `ptt`: tmux key name (Claude Code: voice:pushToTalk is bound to meta+k)
-# PTT_MODE=hold         # `ptt`: hold (repeat the key until stop) | tap (one press each); PTT_INTERVAL=50 (ms), PTT_MAX=120 (s)
+# PTT_MODE=auto         # `ptt`: auto (the mode of Claude Code's /voice, read from its settings) | hold (repeat the key until stop) | tap (one press each); PTT_INTERVAL=50 (ms), PTT_WARMUP=1200 (ms before the first repeat), PTT_MAX=120 (s)
 EOF
     say "  neu: $CFG"
 fi
@@ -695,11 +695,12 @@ if [ "$DO_GUEST" = 1 ]; then
     STAGE="$GROOT/var/tmp/termux-rootbridge-install"
     rm -rf "$STAGE"; mkdir -p "$STAGE"
     cp -r "$REPO/guest/." "$STAGE/"
-    # Setup, part 3: python3 / curl / certificates and Claude Code in the guest. Looked up from outside
+    # Setup, part 3: python3 / curl / certificates / shellcheck and Claude Code in the guest. Looked up from outside
     # (a link that points outside the guest only counts as missing: setup-guest.sh then looks properly)
     guest_ready() {
         local h="${ROOTBRIDGE_GUEST_HOME:-/root}"
         { [ -e "$GROOT/usr/bin/python3" ] && [ -e "$GROOT/usr/bin/curl" ] && [ -s "$GROOT/etc/ssl/certs/ca-certificates.crt" ]; } || return 1
+        [ -e "$GROOT/usr/bin/shellcheck" ] || return 1      # the agents check their shell scripts with it
         if [ "$USE_CLAUDE" = yes ]; then
             { [ -x "$GROOT$h/.local/bin/claude" ] || [ -x "$GROOT/usr/local/bin/claude" ] || [ -x "$GROOT/usr/bin/claude" ]; } || return 1
         fi

@@ -71,7 +71,8 @@ La Termux:API de este repositorio, `api/`, los muestra en el idioma del teléfon
 * Un `su` que funcione (Magisk, KernelSU, ...); sin él, solo funcionan las funciones de inicio de sesión
 * Paquetes de Termux: `tmux proot-distro python coreutils util-linux`; opcional `termux-api` (+ la app Termux:API)
   para el portapapeles
-* Paquetes del invitado: `python3` (hooks), coreutils con `sha256sum`, `od`, `timeout`
+* Paquetes del invitado: `python3` (hooks), coreutils con `sha256sum`, `od`, `timeout`, `shellcheck` (para los scripts de shell de
+  los agentes; `install.sh` lo instala con `apt`)
 * Claude Code ≥ 2.1.295 (`onFailure: "block"` para los hooks)
 * Codex (activado por defecto, `--no-codex` lo omite): `install.sh` lo instala con el instalador oficial; el plugin de
   Claude Code y la revisión previa al commit necesitan además `git` y `nodejs` (≥ 18.18) en el invitado, y Codex necesita
@@ -259,7 +260,9 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
   un límite de tiempo y de tamaño, el registro es privado (0600), se rota y no contiene argumentos de comandos, y lo que
   llega a Claude se limpia de caracteres de control, se acorta y se marca como texto ajeno. Por dispositivo, el entorno con
   el que arranca Claude Code puede fijar `CODEX_PRECOMMIT_TIMEOUT_S` (60-3000), `CODEX_PRECOMMIT_ATTEMPTS` (1-5),
-  `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) y `CODEX_PRECOMMIT_EFFORT` (`none` a `xhigh`); sube el tiempo límite del hook en
+  `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) y `CODEX_PRECOMMIT_EFFORT` (`none` a `xhigh`, por defecto `xhigh`) y
+  `CODEX_PRECOMMIT_MODEL` (por defecto: el modelo Sol más nuevo con ese nivel de la lista de modelos de Codex
+  `~/.codex/models_cache.json`, si no `gpt-6.1-sol`); sube el tiempo límite del hook en
   los Managed Settings junto con el presupuesto.
 * **Datos.** El diff y lo que Codex lea en el árbol de trabajo van a OpenAI, con la cuenta con la que iniciaste sesión. El
   sandbox de Codex restringe la escritura, no la lectura: puede leer más del invitado que el repositorio.
@@ -296,9 +299,12 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   fuente «reconocimiento de voz» de Android suena baja). Arranca con la sesión (`rootbridge start` / `attach`); un `default.pa` propio se conserva.
 * **Ajustes de Claude Code**: `~/.claude/keybindings.json` recibe `meta+k` = `voice:pushToTalk` y `~/.claude/settings.json` recibe
   `"voice": {"enabled": true, "mode": "hold"}`. Ambos solo donde aún no has decidido nada (una asignación existente de la acción o un valor `voice` se conservan).
-* **`ptt`**: `ptt start` pulsa la tecla por ti, `ptt stop` la suelta. En el modo `hold` (por defecto) repite Alt+K cada 50 ms, como una tecla
-  mantenida, de modo que solo tu propio `stop` termina la grabación (un teclado en pantalla no puede mantener una tecla). Sin parada, las
-  repeticiones terminan tras `PTT_MAX` segundos (120). `ptt` solo pulsa una tecla en una ventana de tmux (`PTT_TARGET`, por defecto
+* **`ptt`**: `ptt start` pulsa la tecla por ti, `ptt stop` la suelta. `ptt toggle` inicia o detiene en una sola llamada (lo que ejecutan la pulsación larga de Inicio y el icono del lanzador). `ptt` sigue el modo de
+  `/voice` de Claude Code (`PTT_MODE=auto`, el valor por defecto: lee `voice.mode` de los ajustes del invitado). En el modo `hold` repite Alt+K cada
+  50 ms, como una tecla mantenida (Claude Code da la tecla por soltada si en 200 ms no llega nada, por eso cada ronda solo inicia `tmux`; las repeticiones empiezan `PTT_WARMUP` ms (1200) después de la primera
+  tecla, porque entonces Claude Code inicia su grabador, y un temporizador de liberación que cae en ese momento termina la grabación una y otra vez; todas las teclas pasan por un cliente `tmux -C`, y si termina el grabador `rec` de Claude Code, las repeticiones paran), y solo tu propio
+  `stop` termina la grabación; sin parada, las repeticiones terminan tras `PTT_MAX` segundos (120). En el modo `tap`, `start`, `stop` y `toggle` pulsan una vez
+  y Claude Code decide: la primera pulsación inicia (la entrada debe estar vacía), la siguiente detiene y envía. `ptt` solo pulsa una tecla en una ventana de tmux (`PTT_TARGET`, por defecto
   `ubuntu:claude`; `PTT_KEY`, por defecto `M-k`) y sirve para cualquier programa que escuche una tecla.
 * **Permiso de micrófono de Android** para Termux (un permiso en tiempo de ejecución: desaparece con cada nueva instalación de la app; las apps de Termux comparten
   un id de usuario y solo la **app Termux:API** declara `RECORD_AUDIO`, así que debe estar instalada). Necesita root:
@@ -308,11 +314,13 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
 
 **Disparadores sin root** (la app Termux de este repositorio, `app/`, muestra «Termux push to talk» a Android; cada uno ejecuta `ptt toggle`: un
 solo evento, el primero empieza a hablar y el siguiente lo detiene):
-* **Pulsación larga de Inicio**: Ajustes, Apps, Apps predeterminadas, Asistente digital, «Termux push to talk» (el teléfono también lo lista en
-  los ajustes de los botones, donde los tiene).
-* **Una tecla que puede abrir una app**, por ejemplo la tecla lateral de los teléfonos E-Ink en los ajustes de accesibilidad de la app E-Ink:
-  elegir la app «Termux push to talk».
-* **El icono «Termux push to talk»** en el lanzador, también como botón en la pantalla de inicio.
+* **Pulsación larga de Inicio**: Ajustes, Apps, Apps predeterminadas, Asistente digital, «Termux push to talk». Algunos teléfonos no muestran esa
+  opción (el Hisense A9 no); la app es un asistente válido de todos modos, y con root lo configuras tú mismo:
+  `su -c 'cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux'` (se deshace con `remove-role-holder`).
+* **El icono «Termux push to talk»** en el lanzador, también como botón en la pantalla de inicio y para ajustes que asignan una app a una tecla.
+
+Los ajustes de accesibilidad del A9 solo ofrecen acciones fijas para su tecla lateral (borrar pantalla, música, inicio, menú, luz de fondo,
+nada), ninguna app: para la tecla lateral usa `--sidekey` (abajo).
 
 **Tecla lateral del Hisense A9** (`--sidekey`, desactivada por defecto, se guarda como `SIDEKEY`): mantener la tecla lateral = grabar, soltar = parar. El instalador coloca
 `sidekey-ptt` en `$PREFIX/bin`; mantiene un `cat` de root sobre `/dev/input/event2` (la tecla, código 766) y llama a `ptt start` / `ptt stop`.
@@ -337,7 +345,7 @@ Termux: `~/.config/termux-rootbridge/config` (se interpreta como datos, nunca se
 Invitado: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
 la actualización, por defecto 1800), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
-`daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (ver abajo). `VOICE` / `SIDEKEY` (`on` / `off`). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
+`daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (ver abajo). `VOICE` / `SIDEKEY` (`on` / `off`). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`auto` / `hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
 
 `NOFILE_LIMIT` (por defecto `2048`, `0` = dejar el límite como está) es el límite de descriptores de archivo con el que
 se inicia Claude Code. Claude Code cierra todos los descriptores hasta ese límite tras cada fork, y bajo proot cada

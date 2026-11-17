@@ -246,9 +246,8 @@
                 <action android:name="android.intent.action.ASSIST" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- Also an app of its own in the list of installed apps, so that a key can be assigned to it: the settings of
-                 a key or button that offer "open an app" (for example the accessibility settings of the E-Ink phones for
-                 the side key) list it as "Termux push to talk". A tap on its icon toggles push to talk as well. -->
+            <!-- Also an app of its own in the launcher list: its icon toggles push to talk (a home-screen button), and
+                 settings that let a key open an app list it as "Termux push to talk". -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

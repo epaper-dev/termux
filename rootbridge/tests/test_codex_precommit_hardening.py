@@ -235,20 +235,20 @@ class Hardening(unittest.TestCase):
             "import importlib.util, sys\n"
             f"spec = importlib.util.spec_from_file_location('m', {SCRIPT!r})\n"
             "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
-            "print(m.TIMEOUT_S, m.ATTEMPTS, m.GIT_TIMEOUT_S, m.REVIEW_EFFORT)\n"
+            "print(m.TIMEOUT_S, m.ATTEMPTS, m.GIT_TIMEOUT_S, m.REVIEW_EFFORT, m.REVIEW_MODEL)\n"
         )
-        r = subprocess.run([sys.executable, "-I", "-c", code], env={**env, "PATH": os.environ.get("PATH", "")},
+        r = subprocess.run([sys.executable, "-I", "-c", code], env={"HOME": self.tmp, **env, "PATH": os.environ.get("PATH", "")},
                            capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout.split()
 
     def test_defaults_without_any_setting(self):
-        self.assertEqual(self.values(), ["1500", "2", "60", "high"])
+        self.assertEqual(self.values(), ["1500", "2", "60", "xhigh", "gpt-6.1-sol"])
 
     def test_settings_are_taken_and_clamped(self):
         self.assertEqual(self.values(CODEX_PRECOMMIT_TIMEOUT_S="1200", CODEX_PRECOMMIT_ATTEMPTS="3",
                                      CODEX_PRECOMMIT_GIT_TIMEOUT_S="120", CODEX_PRECOMMIT_EFFORT="Medium"),
-                         ["1200", "3", "120", "medium"])
+                         ["1200", "3", "120", "medium", "gpt-6.1-sol"])
         self.assertEqual(self.values(CODEX_PRECOMMIT_TIMEOUT_S="999999", CODEX_PRECOMMIT_ATTEMPTS="0",
                                      CODEX_PRECOMMIT_GIT_TIMEOUT_S="0")[:3], ["3000", "1", "1"])
         self.assertEqual(self.values(CODEX_PRECOMMIT_TIMEOUT_S="1")[0], "60")
@@ -256,19 +256,52 @@ class Hardening(unittest.TestCase):
     def test_invalid_settings_fall_back_to_the_defaults(self):
         self.assertEqual(
             self.values(CODEX_PRECOMMIT_TIMEOUT_S="viel", CODEX_PRECOMMIT_ATTEMPTS="", CODEX_PRECOMMIT_GIT_TIMEOUT_S="1.5",
-                        CODEX_PRECOMMIT_EFFORT="ultra"),
-            ["1500", "2", "60", "high"],
+                        CODEX_PRECOMMIT_EFFORT="ultra", CODEX_PRECOMMIT_MODEL="sol; rm -rf /"),
+            ["1500", "2", "60", "xhigh", "gpt-6.1-sol"],
         )
 
-    def test_xhigh_can_still_be_chosen(self):
-        self.assertEqual(self.values(CODEX_PRECOMMIT_EFFORT="xhigh")[3], "xhigh")
+    def test_high_can_still_be_chosen(self):
+        self.assertEqual(self.values(CODEX_PRECOMMIT_EFFORT="high")[3], "high")
+
+    def test_another_model_can_be_chosen(self):
+        self.assertEqual(self.values(CODEX_PRECOMMIT_MODEL="gpt-6-sol")[4], "gpt-6-sol")
+
+    def models_cache(self, *models):
+        home = os.path.join(self.tmp, "codex-home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "models_cache.json"), "w", encoding="utf-8") as fh:
+            json.dump({"models": [{"slug": slug, "visibility": vis,
+                                   "supported_reasoning_levels": [{"effort": e} for e in levels]}
+                                  for slug, vis, levels in models]}, fh)
+        return home
+
+    def test_the_newest_sol_model_is_taken(self):
+        all_levels = ["low", "medium", "high", "xhigh"]
+        home = self.models_cache(("gpt-6.1-sol", "list", all_levels), ("gpt-7-terra", "list", all_levels),
+                                 ("gpt-6.10-sol", "list", all_levels), ("gpt-5.6-sol", "list", all_levels),
+                                 ("gpt-8-sol", "hide", all_levels), ("gpt-7-sol", "list", ["low", "high"]))
+        # 6.10 > 6.1 (Zahlen, keine Zeichenketten); versteckt und ohne xhigh zählen nicht, Terra ist kein Sol
+        self.assertEqual(self.values(CODEX_HOME=home)[4], "gpt-6.10-sol")
+        # mit high zählt auch das Modell, das nur high kann
+        self.assertEqual(self.values(CODEX_HOME=home, CODEX_PRECOMMIT_EFFORT="high")[4], "gpt-7-sol")
+        # eine ausdrückliche Einstellung gewinnt
+        self.assertEqual(self.values(CODEX_HOME=home, CODEX_PRECOMMIT_MODEL="gpt-6-sol")[4], "gpt-6-sol")
+
+    def test_without_a_usable_model_list_the_fallback_is_taken(self):
+        self.assertEqual(self.values(CODEX_HOME=os.path.join(self.tmp, "nothing-here"))[4], "gpt-6.1-sol")
+        home = os.path.join(self.tmp, "broken")
+        os.makedirs(home)
+        with open(os.path.join(home, "models_cache.json"), "w") as fh:
+            fh.write("kein json")
+        self.assertEqual(self.values(CODEX_HOME=home)[4], "gpt-6.1-sol")
+        self.assertEqual(self.values(CODEX_HOME=self.models_cache(("gpt-6-luna", "list", ["xhigh"])))[4], "gpt-6.1-sol")
 
     def test_the_effort_setting_reaches_codex(self):
         for effort in ("low", "xhigh"):
             with self.subTest(effort):
                 self.run_hook(reply="BLOCK: x", CODEX_PRECOMMIT_EFFORT=effort)    # BLOCK merkt sich nichts: jede Runde ruft Codex
                 with open(self.prompt_file + ".args") as fh:
-                    self.assertEqual(fh.read().split(), ["task", "--json", "--effort", effort])
+                    self.assertEqual(fh.read().split(), ["task", "--json", "--effort", effort, "--model", "gpt-6.1-sol"])
 
     def test_the_attempts_setting_limits_the_retries(self):
         r = self.run_hook(FAKE_FAIL="1", CODEX_PRECOMMIT_ATTEMPTS="1")

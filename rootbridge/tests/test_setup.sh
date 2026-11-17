@@ -82,7 +82,7 @@ exit 0
 EOF
 cat > "$AV/apt-get" <<'EOF'
 #!/bin/bash
-# fake apt-get: logs the call; `install` lets python3 / curl / the certificate bundle appear
+# fake apt-get: logs the call; `install` lets python3 / curl / the certificate bundle / shellcheck appear
 echo "apt-get $* [DEBIAN_FRONTEND=${DEBIAN_FRONTEND:-}]" >> "$STUB_LOG"
 case "${1:-}" in
     update)  [ "${STUB_APT_FAIL:-}" != update ] || exit 100 ;;
@@ -95,6 +95,7 @@ case "${1:-}" in
                 ca-certificates) mkdir -p "$(dirname "$ROOTBRIDGE_CA_BUNDLE")"; echo cert > "$ROOTBRIDGE_CA_BUNDLE" ;;
                 git) printf '#!/bin/bash\nexit 0\n' > "$STUB_BIN/git" ;;
                 bubblewrap) printf '#!/bin/bash\nexit 0\n' > "$STUB_BIN/bwrap" ;;
+                shellcheck) printf '#!/bin/bash\nexit 0\n' > "$STUB_BIN/shellcheck" ;;
                 nodejs) printf '#!/bin/bash\n[ "${1:-}" = --version ] && echo "${STUB_NODE_VERSION:-v22.22.1}"\nexit 0\n' > "$STUB_BIN/node" ;;
             esac
         done ;;
@@ -155,7 +156,7 @@ SHIM="$T/shim"; mkdir -p "$SHIM"
     done
 } | tr '\0' '\n' | awk -F/ '
     { n = $NF }
-    n ~ /^(tmux|proot-distro|termux-open-url|termux-dialog|python3|setsid|curl|claude|codex|git|bwrap|node|nodejs|apt-get|pkg)$/ { next }
+    n ~ /^(tmux|proot-distro|termux-open-url|termux-dialog|python3|setsid|curl|claude|codex|git|bwrap|node|nodejs|apt-get|pkg|shellcheck)$/ { next }
     !(n in seen) { seen[n] = 1; print }' | tr '\n' '\0' | xargs -0 ln -s -t "$SHIM" 2>/dev/null
 [ -e "$SHIM/bash" ] && [ -e "$SHIM/sed" ] || { echo "ABBRUCH: Shim-PATH unvollständig" >&2; exit 1; }
 
@@ -174,6 +175,7 @@ newenv() {
     for c in "$@"; do
         case "$c" in
             python3) ln -sf "$REAL_PYTHON" "$E/bin/python3" ;;
+            shellcheck) printf '#!/bin/bash\nexit 0\n' > "$E/bin/shellcheck" ;;
             setsid) if [ -n "$REAL_SETSID" ]; then ln -sf "$REAL_SETSID" "$E/bin/setsid"; else printf '#!/bin/bash\nexec "$@"\n' > "$E/bin/setsid"; fi ;;
             *) cp "$AV/$c" "$E/bin/$c" ;;
         esac
@@ -225,7 +227,7 @@ check "A2 zweiter Lauf: keine Paket-Einrichtung gemeldet"       0 "$(count "$E/o
 # the guest holds everything (python3, curl, certificates, claude): setup-guest.sh is not even started
 G="$E/prefix/var/lib/proot-distro/containers/ubuntu/rootfs"
 mkdir -p "$G/usr/bin" "$G/etc/ssl/certs" "$G/root/.local/bin"
-printf '#!/bin/bash\n' > "$G/usr/bin/python3"; printf '#!/bin/bash\n' > "$G/usr/bin/curl"; echo cert > "$G/etc/ssl/certs/ca-certificates.crt"
+printf '#!/bin/bash\n' > "$G/usr/bin/python3"; printf '#!/bin/bash\n' > "$G/usr/bin/curl"; printf '#!/bin/bash\n' > "$G/usr/bin/shellcheck"; echo cert > "$G/etc/ssl/certs/ca-certificates.crt"
 printf '#!/bin/bash\n' > "$G/root/.local/bin/claude"; chmod +x "$G/root/.local/bin/claude"
 for b in git node bwrap; do printf '#!/bin/bash\n' > "$G/usr/bin/$b"; done
 ln -sf /root/.codex/packages/standalone/current/bin/codex "$G/root/.local/bin/codex"   # target only inside the guest
@@ -240,6 +242,11 @@ rm -f "$G/usr/bin/bwrap"
 ROOTBRIDGE_GUEST_HOME=/root rinstall
 check "A2d nur bwrap fehlt im Gast: setup-guest.sh läuft"       1 "$(count "$LOG" '^staged setup-guest.sh$')"
 printf '#!/bin/bash\n' > "$G/usr/bin/bwrap"
+rm -f "$G/usr/bin/shellcheck"
+: > "$LOG"
+ROOTBRIDGE_GUEST_HOME=/root rinstall
+check "A2e nur shellcheck fehlt im Gast: setup-guest.sh läuft"  1 "$(count "$LOG" '^staged setup-guest.sh$')"
+printf '#!/bin/bash\n' > "$G/usr/bin/shellcheck"
 rm -f "$G/root/.local/bin/claude"
 : > "$LOG"
 rinstall
@@ -334,7 +341,7 @@ newenv b1
 gsetup
 check "B1 frisch: läuft durch"                                  0 "$?"
 check "B1 apt-get update vor install"                           ja "$([ "$(lineno "$LOG" '^apt-get update')" -lt "$(lineno "$LOG" '^apt-get install')" ] && echo ja || echo nein)"
-check "B1 apt-get install: genau die fehlenden Pakete"          "apt-get install -y --no-install-recommends python3 curl ca-certificates [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
+check "B1 apt-get install: genau die fehlenden Pakete"          "apt-get install -y --no-install-recommends python3 curl ca-certificates shellcheck [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
 check "B1 apt-get update: nicht interaktiv"                     "apt-get update [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get update' "$LOG")"
 check "B1 curl lädt den offiziellen Installer"                  "curl -fsSL https://claude.ai/install.sh -o $(sed -n 's/^curl .* -o //p' "$LOG")" "$(grep '^curl' "$LOG")"
 check "B1 Installer lief mit dem Gast-HOME"                     "installer: ran with HOME=$E/ghome" "$(grep '^installer:' "$LOG")"
@@ -349,33 +356,33 @@ check "B2 zweiter Lauf: kein apt-get"                           0 "$(count "$LOG
 check "B2 zweiter Lauf: kein curl"                              0 "$(count "$LOG" '^curl')"
 check "B2 zweiter Lauf: meldet 'schon installiert'"             1 "$(count "$E/out.log" 'claude ist schon installiert')"
 
-newenv b3 python3
+newenv b3 python3 shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 gsetup
 check "B3 nur curl fehlt: läuft durch"                          0 "$?"
 check "B3 nur curl fehlt: apt-get installiert nur curl"         "apt-get install -y --no-install-recommends curl [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
 
-newenv b4 python3 curl
+newenv b4 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 envrun env CLAUDE_INSTALL_URL=https://example.invalid/i.sh bash "$SETUP_GUEST" --codex no > "$E/out.log" 2>&1
 check "B4 alles da, nur claude fehlt: läuft durch"              0 "$?"
 check "B4 kein apt-get"                                         0 "$(count "$LOG" '^apt-get')"
 check "B4 CLAUDE_INSTALL_URL wird benutzt"                      1 "$(count "$LOG" 'curl -fsSL https://example.invalid/i.sh')"
 
-newenv b5 python3 curl
+newenv b5 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 envrun env STUB_CURL_FAIL=1 bash "$SETUP_GUEST" --codex no > "$E/out.log" 2>&1
 check "B5 curl schlägt fehl: Abbruch"                           1 "$?"
 check "B5 curl schlägt fehl: Meldung mit Hinweis"               1 "$(count "$E/out.log" 'Download von https://claude.ai/install.sh ist fehlgeschlagen')"
 check "B5 curl schlägt fehl: kein claude"                       nein "$([ -e "$E/ghome/.local/bin/claude" ] && echo ja || echo nein)"
 
-newenv b6 python3 curl
+newenv b6 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 envrun env STUB_INSTALLER_FAIL=1 bash "$SETUP_GUEST" --codex no > "$E/out.log" 2>&1
 check "B6 Installer schlägt fehl: Abbruch"                      1 "$?"
 check "B6 Installer schlägt fehl: Meldung"                      1 "$(count "$E/out.log" 'Claude-Code-Installer ist fehlgeschlagen')"
 
-newenv b7 python3 curl
+newenv b7 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 envrun env STUB_INSTALLER_NOBINARY=1 bash "$SETUP_GUEST" --codex no > "$E/out.log" 2>&1
 check "B7 Installer ohne claude danach: Abbruch"                1 "$?"
@@ -391,7 +398,7 @@ envrun env STUB_APT_FAIL=install bash "$SETUP_GUEST" --codex no > "$E/out.log" 2
 check "B9 apt-get install schlägt fehl: Abbruch"                1 "$?"
 check "B9 apt-get install schlägt fehl: kein curl"              0 "$(count "$LOG" '^curl')"
 
-newenv b10 python3 curl
+newenv b10 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 printf '#!/bin/bash\nexit 0\n' > "$E/bin/claude"; chmod +x "$E/bin/claude"
 gsetup
@@ -404,7 +411,7 @@ has_link() { [ -L "$1" ] && echo ja || echo nein; }
 newenv d1
 gx bash "$SETUP_GUEST"
 check "D1 frisch, beide Tools: läuft durch"                     0 "$?"
-check "D1 apt-get install: auch git, bubblewrap und nodejs"     "apt-get install -y --no-install-recommends python3 curl ca-certificates git bubblewrap nodejs [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
+check "D1 apt-get install: auch git, bubblewrap und nodejs"     "apt-get install -y --no-install-recommends python3 curl ca-certificates shellcheck git bubblewrap nodejs [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
 check "D1 zwei Installer geladen (Claude Code und Codex)"       2 "$(count "$LOG" '^curl')"
 check "D1 Codex-Installer: die offizielle URL"                  1 "$(count "$LOG" '^curl -fsSL https://chatgpt.com/codex/install.sh -o ')"
 check "D1 Codex-Installer läuft nicht-interaktiv mit dem Gast-HOME" "codex-installer: ran with HOME=$E/ghome NON_INTERACTIVE=1" "$(grep '^codex-installer: ' "$LOG")"
@@ -429,13 +436,13 @@ check "D2 zweiter Lauf: beide Tools 'schon installiert'"        "1 1" "$(count "
 newenv d3
 gx bash "$SETUP_GUEST" --claude no
 check "D3 --claude no: läuft durch"                             0 "$?"
-check "D3 --claude no: apt-get mit bubblewrap, ohne nodejs"     "apt-get install -y --no-install-recommends python3 curl ca-certificates git bubblewrap [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
+check "D3 --claude no: apt-get mit bubblewrap, ohne nodejs"     "apt-get install -y --no-install-recommends python3 curl ca-certificates shellcheck git bubblewrap [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
 check "D3 --claude no: nur der Codex-Installer"                 "1 0" "$(count "$LOG" '^curl') $(count "$LOG" '^installer: ran')"
 check "D3 --claude no: codex da, claude nicht"                  "ja nein" "$(has_link "$E/ghome/.local/bin/codex") $([ -e "$E/ghome/.local/bin/claude" ] && echo ja || echo nein)"
 check "D3 --claude no: kein Plugin-Aufruf"                      0 "$(count "$LOG" '^claude')"
 
 # only the plugin is missing: nothing else is touched
-newenv d4 python3 curl
+newenv d4 python3 curl shellcheck
 mkdir -p "$E/ca" "$E/ghome/.local/bin"; echo cert > "$E/ca/ca-certificates.crt"
 cp "$AV/claude-real" "$E/ghome/.local/bin/claude"; chmod +x "$E/ghome/.local/bin/claude"
 ln -s /root/.codex/packages/standalone/current/bin/codex "$E/ghome/.local/bin/codex"
@@ -467,22 +474,22 @@ gx env STUB_NODE_VERSION=v18.18.0 bash "$SETUP_GUEST"
 check "D7 node 18.18: kein Hinweis"                             0 "$(count "$E/out.log" 'ist älter als 18.18')"
 
 # URLs and failures
-newenv d8 python3 curl
+newenv d8 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 gx env CODEX_INSTALL_URL=https://example.invalid/codex.sh bash "$SETUP_GUEST" --claude no
 check "D8 CODEX_INSTALL_URL wird benutzt"                       1 "$(count "$LOG" 'curl -fsSL https://example.invalid/codex.sh')"
 
-newenv d9 python3 curl
+newenv d9 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 gx env STUB_CODEX_CURL_FAIL=1 bash "$SETUP_GUEST" --claude no
 check "D9 Codex-Download schlägt fehl: Abbruch"                 1 "$?"
 check "D9 Codex-Download: Meldung nennt --no-codex"             1 "$(count "$E/out.log" 'Download von https://chatgpt.com/codex/install.sh ist fehlgeschlagen.*--no-codex')"
-newenv d10 python3 curl
+newenv d10 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 gx env STUB_CODEX_INSTALLER_FAIL=1 bash "$SETUP_GUEST" --claude no
 check "D10 Codex-Installer schlägt fehl: Abbruch"               1 "$?"
 check "D10 Codex-Installer: Meldung"                            1 "$(count "$E/out.log" 'Der Codex-Installer ist fehlgeschlagen')"
-newenv d11 python3 curl
+newenv d11 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 gx env STUB_CODEX_NOBINARY=1 bash "$SETUP_GUEST" --claude no
 check "D11 Codex-Installer ohne codex danach: Abbruch"          1 "$?"

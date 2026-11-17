@@ -23,8 +23,9 @@ SIDEKEY="off"           # on | off: side key of the Hisense A9 as push to talk (
 AUTOSTART_DELAY=3
 PTT_TARGET=""           # tmux target that `ptt` presses its key in (empty = "<SESSION>:claude")
 PTT_KEY="M-k"           # tmux key name; Claude Code: "voice:pushToTalk" bound to meta+k in ~/.claude/keybindings.json
-PTT_MODE="hold"         # hold | tap: `ptt start` repeats the key until `ptt stop` (hold), or presses it once (tap)
+PTT_MODE="auto"         # auto | hold | tap: the mode of Claude Code's /voice (auto reads it from the settings of the guest); hold: `ptt start` repeats the key until `ptt stop`, tap: it presses the key once
 PTT_INTERVAL=50         # milliseconds between the repeats of hold mode
+PTT_WARMUP=1200         # milliseconds between the first key and the repeats of hold mode (Claude Code starts its recorder with the first key; under 2000)
 PTT_MAX=120             # seconds after which hold mode / tap mode stop waiting for `ptt stop`
 THEME_FOLLOW="on"       # on | off: "Auto epaper" follows light/dark (rootbridge theme)
 THEME_RESTART="off"     # on | off: fallback, restart Claude Code (--continue) after a change
@@ -67,9 +68,11 @@ rb_load_config() {
             PTT_KEY)
                 [[ "$val" =~ ^[A-Za-z0-9-]{1,16}$ ]] && PTT_KEY="$val" ;;
             PTT_MODE)
-                case "$val" in hold|tap) PTT_MODE="$val" ;; esac ;;
+                case "$val" in auto|hold|tap) PTT_MODE="$val" ;; esac ;;
             PTT_INTERVAL)
                 [[ "$val" =~ ^[0-9]{2,4}$ ]] && [ "$val" -ge 20 ] && PTT_INTERVAL="$val" ;;
+            PTT_WARMUP)
+                [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -le 1500 ] && PTT_WARMUP="$val" ;;
             PTT_MAX)
                 [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -ge 1 ] && PTT_MAX="$val" ;;
             THEME_FOLLOW|THEME_RESTART|GUEST_ISOLATE|TOOL_CLAUDE|TOOL_CODEX|VOICE|SIDEKEY)
