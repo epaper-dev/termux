@@ -31,7 +31,7 @@ done
 . "$lib"
 rb_load_config
 
-VERSION="2.1.0-dev"
+VERSION="2.1.1-dev"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 GUEST_BIN="/usr/local/bin"
 

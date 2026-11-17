@@ -4,7 +4,7 @@
 
 [English](README.md) · [Deutsch](README.de.md) · [Comparación con otros proyectos](docs/COMPARISON.md) · [Inicio de sesión y MCP](docs/LOGIN.md) · [Seguridad](SECURITY.md)
 
-> **Estado: v2.1.0-dev.** Las pruebas unitarias y de integración pasan (hook de guardia, hook de inicio de sesión,
+> **Estado: v2.1.1-dev.** Las pruebas unitarias y de integración pasan (hook de guardia, hook de inicio de sesión,
 > daemon, instaladores). Confirmado en un dispositivo (Hisense A9): la confirmación de root también en modo bypass, un
 > inicio de sesión completo con la redirección automática a `localhost`, la apertura del navegador desde el invitado y
 > la copia de enlaces al portapapeles de Android (mediante el daemon y con la tecla `c` a través de tmux). Pendiente de
