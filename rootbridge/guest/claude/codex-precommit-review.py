@@ -28,7 +28,8 @@ Notausgang (nur vom Nutzer zu setzen): CODEX_PRECOMMIT=off
 Je Gerät einstellbar (Umgebung des Hooks, z. B. "env" in den Einstellungen; Werte außerhalb des Bereichs werden
 begrenzt, ungültige ignoriert): CODEX_PRECOMMIT_TIMEOUT_S (60-3000, Standard 1500; Gesamtbudget des Hooks ab Start;
 muss unter dem Hook-Timeout in den Einstellungen liegen, dort 1560 s statt der früheren 900 s eintragen), CODEX_PRECOMMIT_ATTEMPTS (1-5), CODEX_PRECOMMIT_GIT_TIMEOUT_S (1-300,
-Zeitlimit je git-Aufruf), CODEX_PRECOMMIT_EFFORT (none, minimal, low, medium, high, xhigh; Standard high).
+Zeitlimit je git-Aufruf), CODEX_PRECOMMIT_EFFORT (none, minimal, low, medium, high, xhigh; Standard xhigh),
+CODEX_PRECOMMIT_MODEL (Codex-Modell; Standard: das neueste Sol-Modell aus Codex' Modellliste, sonst gpt-6.1-sol).
 
 Härtung: Jeder git-Aufruf hat ein Zeitlimit und eine Byte-Kappe (ein hängendes git hielte den Hook sonst bis zum Abbruch
 durch Claude Code fest, und der ließe den Commit ungeprüft durch). Log und Zustand liegen privat (0600, Ordner 0700),
@@ -70,12 +71,40 @@ MAX_GIT_BYTES = 64 * 1024 * 1024
 LOG_MAX_BYTES = 256 * 1024
 MAX_FINDINGS_CHARS = 6000
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh")
-# Denkaufwand des Reviews, Standard high. Gemessen (gpt-6.1-sol): mit xhigh Median 146 s, aber bis 847 s ab Hook-Start; reicht
-# TIMEOUT_S nicht, wird der Commit blockiert (fail-closed). Ohne --effort nähme Codex den Wert aus ~/.codex/config.toml
-# (dort xhigh). Mit CODEX_PRECOMMIT_EFFORT=xhigh geht es wieder gründlicher und langsamer.
+# Denkaufwand und Modell des Reviews, Standard xhigh mit dem neuesten Sol-Modell (Wunsch des Nutzers). Gemessen (gpt-6.1-sol, xhigh):
+# Median 146 s, aber bis 847 s ab Hook-Start; das passt in TIMEOUT_S, reicht es nicht, wird der Commit blockiert
+# (fail-closed). Beides wird immer mitgegeben, sonst nähme Codex die Werte aus ~/.codex/config.toml oder sein Modell-
+# Standard (gpt-6.1-sol: low). Schneller: CODEX_PRECOMMIT_EFFORT=high.
 REVIEW_EFFORT = os.environ.get("CODEX_PRECOMMIT_EFFORT", "").strip().lower()
 if REVIEW_EFFORT not in EFFORTS:
-    REVIEW_EFFORT = "high"
+    REVIEW_EFFORT = "xhigh"
+FALLBACK_MODEL = "gpt-6.1-sol"
+
+
+def newest_sol_model():
+    """Das Sol-Modell mit der höchsten Version (gpt-<Version>-sol) aus der Modellliste, die Codex selbst pflegt
+    ($CODEX_HOME/models_cache.json); nur sichtbare Modelle, die REVIEW_EFFORT können. Sonst FALLBACK_MODEL."""
+    path = os.path.join(os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex"), "models_cache.json")
+    best = None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            models = json.load(fh).get("models", [])
+        for m in models:
+            match = re.fullmatch(r"gpt-(\d+(?:\.\d+)*)-sol", str(m.get("slug", "")))
+            levels = [lv.get("effort") for lv in m.get("supported_reasoning_levels", []) if isinstance(lv, dict)]
+            if not match or m.get("visibility") == "hide" or REVIEW_EFFORT not in levels:
+                continue
+            version = tuple(int(x) for x in match.group(1).split("."))
+            if best is None or version > best[0]:
+                best = (version, match.group(0))
+    except (OSError, ValueError, AttributeError, TypeError):
+        best = None
+    return best[1] if best else FALLBACK_MODEL
+
+
+REVIEW_MODEL = os.environ.get("CODEX_PRECOMMIT_MODEL", "").strip()
+if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", REVIEW_MODEL):
+    REVIEW_MODEL = newest_sol_model()
 STATE_DIR = os.path.expanduser("~/.claude/codex-precommit")
 # Rückfall, wenn sich ein Befehl nicht zerlegen lässt (offene Anführungszeichen o. Ä.): die Textsuche.
 COMMIT_RE = re.compile(r"(?:^|[;&|(\s])git\s+(?:-[Cc]\s+\S+\s+)*commit\b")
@@ -742,7 +771,8 @@ def main():
         if remaining < 30:
             return fail(f"Zeitbudget von {TIMEOUT_S}s aufgebraucht (Versuch {attempt}/{ATTEMPTS}).")
         try:
-            result = run([node, companion, "task", "--json", "--effort", REVIEW_EFFORT, build_prompt(untracked)],
+            result = run([node, companion, "task", "--json", "--effort", REVIEW_EFFORT, "--model", REVIEW_MODEL,
+                          build_prompt(untracked)],
                          root, timeout=remaining)
         except subprocess.TimeoutExpired:
             return fail(f"Timeout nach {TIMEOUT_S}s (Versuch {attempt}/{ATTEMPTS}).")

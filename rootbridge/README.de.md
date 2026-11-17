@@ -284,7 +284,9 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
   eine Größenkappe, das Log ist privat (0600), wird rotiert und enthält keine Befehlsargumente, und was an Claude geht,
   wird von Steuerzeichen befreit, gekürzt und als Fremdtext gekennzeichnet. Pro Gerät lassen sich in der Umgebung, mit der
   Claude Code startet, `CODEX_PRECOMMIT_TIMEOUT_S` (60-3000), `CODEX_PRECOMMIT_ATTEMPTS` (1-5),
-  `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) und `CODEX_PRECOMMIT_EFFORT` (`none` bis `xhigh`) setzen; das Hook-Timeout in den
+  `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) und `CODEX_PRECOMMIT_EFFORT` (`none` bis `xhigh`, Standard `xhigh`) und
+  `CODEX_PRECOMMIT_MODEL` (Standard: das neueste Sol-Modell mit dieser Stufe aus Codex' eigener Modellliste
+  `~/.codex/models_cache.json`, sonst `gpt-6.1-sol`) setzen; das Hook-Timeout in den
   Managed Settings ist zusammen mit dem Budget anzuheben.
 * **Daten.** Der Diff und alles, was Codex im Arbeitsbaum liest, gehen an OpenAI, unter dem Konto, mit dem du dich angemeldet
   hast. Die Sandbox von Codex beschränkt das Schreiben, nicht das Lesen: Es kann mehr vom Gast lesen als das Repository.

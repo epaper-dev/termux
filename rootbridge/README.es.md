@@ -260,7 +260,9 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
   un límite de tiempo y de tamaño, el registro es privado (0600), se rota y no contiene argumentos de comandos, y lo que
   llega a Claude se limpia de caracteres de control, se acorta y se marca como texto ajeno. Por dispositivo, el entorno con
   el que arranca Claude Code puede fijar `CODEX_PRECOMMIT_TIMEOUT_S` (60-3000), `CODEX_PRECOMMIT_ATTEMPTS` (1-5),
-  `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) y `CODEX_PRECOMMIT_EFFORT` (`none` a `xhigh`); sube el tiempo límite del hook en
+  `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) y `CODEX_PRECOMMIT_EFFORT` (`none` a `xhigh`, por defecto `xhigh`) y
+  `CODEX_PRECOMMIT_MODEL` (por defecto: el modelo Sol más nuevo con ese nivel de la lista de modelos de Codex
+  `~/.codex/models_cache.json`, si no `gpt-6.1-sol`); sube el tiempo límite del hook en
   los Managed Settings junto con el presupuesto.
 * **Datos.** El diff y lo que Codex lea en el árbol de trabajo van a OpenAI, con la cuenta con la que iniciaste sesión. El
   sandbox de Codex restringe la escritura, no la lectura: puede leer más del invitado que el repositorio.

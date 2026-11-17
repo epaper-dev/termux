@@ -257,7 +257,8 @@ a new window.
   cap, the log is private (0600) and rotated and holds no command arguments, and what goes to Claude is cleaned of control
   characters, capped and marked as foreign text. Per device, the environment Claude Code starts with can set
   `CODEX_PRECOMMIT_TIMEOUT_S` (60-3000), `CODEX_PRECOMMIT_ATTEMPTS` (1-5), `CODEX_PRECOMMIT_GIT_TIMEOUT_S` (1-300) and
-  `CODEX_PRECOMMIT_EFFORT` (`none` to `xhigh`); raise the hook timeout in the managed settings together with the budget.
+  `CODEX_PRECOMMIT_EFFORT` (`none` to `xhigh`, default `xhigh`) and `CODEX_PRECOMMIT_MODEL` (default: the newest Sol model with
+  that effort in Codex' own model list `~/.codex/models_cache.json`, else `gpt-6.1-sol`); raise the hook timeout in the managed settings together with the budget.
 * **Data.** The diff and whatever Codex reads in the working tree go to OpenAI, under the account you logged in with.
   Codex's sandbox restricts writing, not reading: it can read more of the guest than the repository.
 
