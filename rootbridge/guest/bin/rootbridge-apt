@@ -65,9 +65,12 @@ if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 262144 ]; then
     tail -n 2000 "$LOG" > "$LOG.new.$$" && mv -f "$LOG.new.$$" "$LOG"
 fi
 
-# run_logged <cmd...>: show the output and append it to the log; returns the command's exit code
+# run_logged <cmd...>: show the output and append it to the log; returns the command's exit code.
+# stdin is /dev/null: at the session start it is the tmux terminal, and `timeout` runs apt-get in a
+# background process group; apt-get resetting the terminal after dpkg then gets SIGTTOU and stops
+# until the timeout kills it (seen on a new install: hung after "Setting up libc-bin" for 1800 s).
 run_logged() {
-    "$@" 2>&1 | tee -a "$LOG"
+    "$@" < /dev/null 2>&1 | tee -a "$LOG"
     return "${PIPESTATUS[0]}"
 }
 

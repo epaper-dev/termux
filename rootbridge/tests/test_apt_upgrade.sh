@@ -24,6 +24,7 @@ cat > "$T/stubs/apt-get" <<'EOF'
 #!/bin/bash
 echo "apt-get $*" >> "$STUB_LOG"
 echo "env DEBIAN_FRONTEND=${DEBIAN_FRONTEND:-} LISTCHANGES=${APT_LISTCHANGES_FRONTEND:-}" >> "$STUB_LOG"
+echo "stdin $(readlink /proc/self/fd/0)" >> "$STUB_LOG"
 echo "stub apt-get: $*"
 for a in "$@"; do
     case "$a" in
@@ -97,6 +98,11 @@ check "vier coreutils-Pakete auf hold"                4 "$(calls '^apt-mark hold
 check "hold: rust-coreutils"                          1 "$(calls '^apt-mark hold rust-coreutils$')"
 check "Stempel geschrieben"                           ja "$(stamp_exists)"
 check "Stempel ist eine Zahl"                         1 "$([[ "$(cat "$T/state/apt-last-success")" =~ ^[0-9]{9,12}$ ]] && echo 1 || echo 0)"
+reset_state; mkconf "APT_UPGRADE=daily"
+run_apt < "$CONF"
+check "apt-get liest nie vom Terminal (stdin /dev/null)" 2 "$(calls '^stdin /dev/null$')"
+reset_state; mkconf "APT_UPGRADE=daily"
+run_apt
 check "Log: ein Lauf-Kopf"                            1 "$(grep -c '^=== .* apt (mode=daily)$' "$T/apt.log")"
 check "Log: apt-Ausgabe steht drin"                   1 "$(grep -c '^stub apt-get: .*update$' "$T/apt.log")"
 check "Log: hold-Meldung steht drin"                  1 "$(grep -c '^apt: rust-coreutils auf hold gesetzt' "$T/apt.log")"
