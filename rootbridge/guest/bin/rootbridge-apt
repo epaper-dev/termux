@@ -7,7 +7,7 @@
 #   APT_UPGRADE=6h|<N>h|daily|always|off
 #                                  6h (default): at most once per 6 h after a success; <N>h: the same with
 #                                  N hours (1-999); daily: same as 24h; always: at every start; off: do nothing
-#   APT_TIMEOUT=1800                seconds allowed for `apt-get upgrade` (60-3600)
+#   APT_TIMEOUT=600                 seconds allowed for `apt-get upgrade` (60-3600)
 #   APT_HOLD="rust-coreutils ..."  installed packages that are held back from the upgrade
 #                                  (default: the uutils/GNU coreutils packages; empty = none)
 # Log: /var/log/termux-rootbridge-apt.log        Last success: /var/lib/termux-rootbridge/apt-last-success
@@ -50,7 +50,7 @@ if [ "$interval" -gt 0 ] && age="$(stamp_age "$STAMP")" && [ "$age" -lt "$interv
 fi
 
 tmo="$(conf_raw APT_TIMEOUT || true)"
-if ! { [[ "$tmo" =~ ^[0-9]{2,4}$ ]] && [ "$tmo" -ge 60 ] && [ "$tmo" -le 3600 ]; }; then tmo=1800; fi
+if ! { [[ "$tmo" =~ ^[0-9]{2,4}$ ]] && [ "$tmo" -ge 60 ] && [ "$tmo" -le 3600 ]; }; then tmo=600; fi
 
 hold_re='^[a-z0-9.+ -]*$'
 if hold="$(conf_raw APT_HOLD)"; then
@@ -65,9 +65,12 @@ if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 262144 ]; then
     tail -n 2000 "$LOG" > "$LOG.new.$$" && mv -f "$LOG.new.$$" "$LOG"
 fi
 
-# run_logged <cmd...>: show the output and append it to the log; returns the command's exit code
+# run_logged <cmd...>: show the output and append it to the log; returns the command's exit code.
+# stdin is /dev/null: at the session start it is the tmux terminal, and `timeout` runs apt-get in a
+# background process group; apt-get resetting the terminal after dpkg then gets SIGTTOU and stops
+# until the timeout kills it (seen on a new install: hung after "Setting up libc-bin" for 1800 s).
 run_logged() {
-    "$@" 2>&1 | tee -a "$LOG"
+    "$@" < /dev/null 2>&1 | tee -a "$LOG"
     return "${PIPESTATUS[0]}"
 }
 

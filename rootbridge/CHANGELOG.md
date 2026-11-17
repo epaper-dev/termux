@@ -5,6 +5,11 @@
 Push to talk holds without flicker, ShellCheck in the guest, the Codex pre-commit review at `xhigh` with the newest Sol model.
 
 ### Fixed
+* **The apt upgrade at the session start no longer hangs until its timeout.** `rootbridge-apt` runs in the tmux terminal, and
+  `timeout` starts `apt-get` in a background process group. When packages were really upgraded, `apt-get` reset the terminal after
+  dpkg, got `SIGTTOU` and stopped: the log ended with `Setting up libc-bin`, dpkg was done, and the start waited the whole
+  `APT_TIMEOUT` (1800 s on a new install). `apt-get` now reads from `/dev/null`. Reproduced in the guest in tmux: 120 s and exit 124
+  before, 12 s and exit 0 after. Tests: `tests/test_apt_upgrade.sh`.
 * **`ptt` is reliable on the phone and follows Claude Code.** Claude Code takes a held key for released when no key event comes for 200 ms
   (`useVoice`: release timer), and the old repeater started `tmux`, `cat` in a subshell and `sleep` in every round: gaps of up to 220 ms, mean 160 to
   180 ms at an interval of 50 ms, which showed as "listening" flickering on and off. A round now starts only `tmux` (token read with `read`,
@@ -28,6 +33,9 @@ Push to talk holds without flicker, ShellCheck in the guest, the Codex pre-commi
   highest version that is listed and supports the effort, read from Codex' own model list (`$CODEX_HOME/models_cache.json`,
   refreshed by Codex), or else `gpt-6.1-sol`. Measured with `gpt-6.1-sol` and `xhigh`: median 146 s, at most 847 s, inside the
   budget of 1500 s. Tests: `tests/test_codex_precommit*.py`.
+* **`APT_TIMEOUT` is 600 s again (was 1800 s).** The longer limit did not help: when dpkg hangs under proot (seen after
+  `Setting up libc-bin`), it hangs past 1800 s as well and only delays the start by half an hour. The installer sets the former default
+  `APT_TIMEOUT=1800` back to 600; other values stay. Tests: `tests/test_apt_upgrade.sh`.
 
 ## 2.1.0-dev (in release set set-20261116-20)
 

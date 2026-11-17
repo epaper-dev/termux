@@ -24,6 +24,7 @@ cat > "$T/stubs/apt-get" <<'EOF'
 #!/bin/bash
 echo "apt-get $*" >> "$STUB_LOG"
 echo "env DEBIAN_FRONTEND=${DEBIAN_FRONTEND:-} LISTCHANGES=${APT_LISTCHANGES_FRONTEND:-}" >> "$STUB_LOG"
+echo "stdin $(readlink /proc/self/fd/0)" >> "$STUB_LOG"
 echo "stub apt-get: $*"
 for a in "$@"; do
     case "$a" in
@@ -92,11 +93,16 @@ check "upgrade mit DPkg::Path inkl. /usr/local/bin"   1 "$(calls 'apt-get .*DPkg
 check "upgrade mit --force-confold"                   1 "$(calls 'apt-get .*--force-confold .* upgrade$')"
 check "noninteractive gesetzt"                        2 "$(calls '^env DEBIAN_FRONTEND=noninteractive LISTCHANGES=none')"
 check "Netz-Timeouts beim update"                     1 "$(calls 'apt-get .*Acquire::http::Timeout=15 .* update$')"
-check "Timeouts: 120 s update, 1800 s upgrade"         "timeout 120|timeout 1800" "$(grep '^timeout ' "$STUB_LOG" | tr '\n' '|' | sed 's/|$//')"
+check "Timeouts: 120 s update, 600 s upgrade"         "timeout 120|timeout 600" "$(grep '^timeout ' "$STUB_LOG" | tr '\n' '|' | sed 's/|$//')"
 check "vier coreutils-Pakete auf hold"                4 "$(calls '^apt-mark hold ')"
 check "hold: rust-coreutils"                          1 "$(calls '^apt-mark hold rust-coreutils$')"
 check "Stempel geschrieben"                           ja "$(stamp_exists)"
 check "Stempel ist eine Zahl"                         1 "$([[ "$(cat "$T/state/apt-last-success")" =~ ^[0-9]{9,12}$ ]] && echo 1 || echo 0)"
+reset_state; mkconf "APT_UPGRADE=daily"
+run_apt < "$CONF"
+check "apt-get liest nie vom Terminal (stdin /dev/null)" 2 "$(calls '^stdin /dev/null$')"
+reset_state; mkconf "APT_UPGRADE=daily"
+run_apt
 check "Log: ein Lauf-Kopf"                            1 "$(grep -c '^=== .* apt (mode=daily)$' "$T/apt.log")"
 check "Log: apt-Ausgabe steht drin"                   1 "$(grep -c '^stub apt-get: .*update$' "$T/apt.log")"
 check "Log: hold-Meldung steht drin"                  1 "$(grep -c '^apt: rust-coreutils auf hold gesetzt' "$T/apt.log")"
@@ -257,7 +263,7 @@ run_apt
 check "APT_HOLD mit Sonderzeichen: Standardliste"     4 "$(calls '^apt-mark hold ')"
 
 # --- APT_TIMEOUT
-for pair in "900:900" "60:60" "3600:3600" "5:1800" "99999:1800" "abc:1800" "-1:1800"; do
+for pair in "900:900" "60:60" "3600:3600" "5:600" "99999:600" "abc:600" "-1:600"; do
     reset_state; mkconf "APT_UPGRADE=daily" "APT_TIMEOUT=${pair%%:*}"
     run_apt
     check "APT_TIMEOUT=${pair%%:*} -> ${pair##*:} s"  "timeout 120|timeout ${pair##*:}" "$(grep '^timeout ' "$STUB_LOG" | tr '\n' '|' | sed 's/|$//')"
@@ -302,7 +308,7 @@ S="$T/g1"
 ginstall "$S"
 check "Gast ohne Option: Installer läuft"             0 "$?"
 check "Gast: APT_UPGRADE=6h als Standard"             "APT_UPGRADE=6h" "$(gval "$S" APT_UPGRADE)"
-check "Gast: APT_TIMEOUT=1800"                         "APT_TIMEOUT=1800" "$(gval "$S" APT_TIMEOUT)"
+check "Gast: APT_TIMEOUT=600"                          "APT_TIMEOUT=600" "$(gval "$S" APT_TIMEOUT)"
 check "Gast: APT_HOLD mit den coreutils-Paketen"      "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" "$(gval "$S" APT_HOLD)"
 check "Gast: rootbridge-apt installiert"              ja "$([ -x "$S/usr/local/bin/rootbridge-apt" ] && echo ja || echo nein)"
 check "Gast: rootbridge-apt hat Gast-Shebang"         "#!/bin/bash" "$(head -n 1 "$S/usr/local/bin/rootbridge-apt")"
@@ -334,9 +340,9 @@ check "Gast --apt-upgrade 6h"                         "APT_UPGRADE=6h" "$(gval "
 check "Gast --apt-upgrade 6h: genau eine Zeile"       1 "$(gcount "$S" APT_UPGRADE)"
 
 S="$T/old-timeout"; mkdir -p "$S/etc"
-printf '%s\n' "APT_TIMEOUT=600" > "$(gconf "$S")"
+printf '%s\n' "APT_TIMEOUT=1800" > "$(gconf "$S")"
 ginstall "$S"
-check "Alter Standard: 600 -> 1800 Sekunden"           "APT_TIMEOUT=1800" "$(gval "$S" APT_TIMEOUT)"
+check "Alter Standard: 1800 -> 600 Sekunden"           "APT_TIMEOUT=600" "$(gval "$S" APT_TIMEOUT)"
 before="$(cksum < "$(gconf "$S")")"; b0="$(cbak "$S")"
 ginstall "$S"
 check "Timeout-Migration zweiter Lauf: unverändert"    "$before" "$(cksum < "$(gconf "$S")")"

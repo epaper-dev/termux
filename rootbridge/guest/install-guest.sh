@@ -488,17 +488,17 @@ mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"
 for kv in "BRIDGE_DIR=$BRIDGE_DIR" "WORKDIR=/root/work" \
           "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" \
-          "APT_UPGRADE=6h" "APT_TIMEOUT=1800" "CLAUDE_UPDATE=6h" "CODEX_UPDATE=6h" "NOFILE_LIMIT=2048" \
+          "APT_UPGRADE=6h" "APT_TIMEOUT=600" "CLAUDE_UPDATE=6h" "CODEX_UPDATE=6h" "NOFILE_LIMIT=2048" \
           "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" \
           "TOOL_CLAUDE=$(onoff "$CLAUDE_ON")" \
           "TOOL_CODEX=$(onoff "$CODEX_ON")"; do
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"
 done
-# Raise the previous 10-minute default for slow first upgrades under proot.
+# Lower the former default 1800 back to 600: a longer limit did not help when dpkg hangs under proot.
 # Other timeout values remain as configured.
-if grep -qx 'APT_TIMEOUT=600' "$ROOT$CONF"; then
-    conf_set APT_TIMEOUT 1800 "APT_TIMEOUT: 600 -> 1800 Sekunden"
+if grep -qx 'APT_TIMEOUT=1800' "$ROOT$CONF"; then
+    conf_set APT_TIMEOUT 600 "APT_TIMEOUT: 1800 -> 600 Sekunden"
 fi
 # APT_UPGRADE / CLAUDE_UPDATE / CODEX_UPDATE from the options: replace the line (an existing value stays without the option)
 if [ "$APT_MODE_SET" = 1 ]; then conf_set APT_UPGRADE "$APT_MODE" "APT_UPGRADE=$APT_MODE"; fi
