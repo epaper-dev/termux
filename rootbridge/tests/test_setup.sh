@@ -202,6 +202,7 @@ check "A1 frisch: ohne Option läuft die Einrichtung durch"                     
 check "A1 genau ein pkg install"                                1 "$(count "$LOG" '^pkg install')"
 pk="$(grep '^pkg install' "$LOG")"
 check "A1 pkg: -y und nicht interaktiv"                         1 "$(printf '%s' "$pk" | grep -c -- 'pkg install -y .*DEBIAN_FRONTEND=noninteractive')"
+check "A1 pkg: ohne empfohlene Pakete (kein python-pip, kein clang)"  1 "$(printf '%s' "$pk" | grep -c -- '-o APT::Install-Recommends=false')"
 for p in tmux proot-distro python termux-api util-linux; do
     check "A1 pkg installiert $p (genau einmal)"                1 "$(printf '%s\n' "$pk" | tr ' ' '\n' | grep -c -x -- "$p")"
 done
@@ -277,13 +278,13 @@ check "A11 --setup: dieselbe Einrichtung wie ohne Option"       1 "$(count "$LOG
 newenv a3 tmux proot-distro python3 setsid
 rinstall --no-guest
 check "A3 nur termux-api fehlt: läuft durch"                    0 "$?"
-check "A3 nur termux-api wird installiert"                      "pkg install -y -o Dpkg::Options::=--force-confold termux-api [DEBIAN_FRONTEND=noninteractive]" "$(grep '^pkg ' "$LOG")"
+check "A3 nur termux-api wird installiert"                      "pkg install -y -o Dpkg::Options::=--force-confold -o APT::Install-Recommends=false termux-api [DEBIAN_FRONTEND=noninteractive]" "$(grep '^pkg ' "$LOG")"
 
 # stat, timeout and sha256sum all come from coreutils: named once
 HIDE="stat timeout sha256sum" newenv a10 tmux proot-distro python3 setsid termux-open-url termux-dialog
 rinstall --no-guest
 check "A10 coreutils fehlt: läuft durch"                        0 "$?"
-check "A10 coreutils wird genau einmal genannt"                 "pkg install -y -o Dpkg::Options::=--force-confold coreutils [DEBIAN_FRONTEND=noninteractive]" "$(grep '^pkg ' "$LOG")"
+check "A10 coreutils wird genau einmal genannt"                 "pkg install -y -o Dpkg::Options::=--force-confold -o APT::Install-Recommends=false coreutils [DEBIAN_FRONTEND=noninteractive]" "$(grep '^pkg ' "$LOG")"
 
 # --no-guest: packages yes, guest no
 newenv a4
