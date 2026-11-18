@@ -346,8 +346,12 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
 Ereignis, das erste startet das Sprechen, das nächste stoppt es):
 * **Langer Druck auf Home**: Einstellungen, Apps, Standard-Apps, Digitaler Assistent, „Termux push to talk“. Manche Telefone zeigen diese Auswahl
   nicht (das Hisense A9 nicht); die App ist trotzdem ein gültiger Assistent, und mit Root setzt du ihn selbst:
-  `su -c 'cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux'` (zurück mit `remove-role-holder`).
+  `rootbridge voice assistant on` (zurück mit `off`, prüfen mit `status`). „Beenden erzwingen“ von Termux in den App-Infos nimmt Termux die
+  Rolle, danach tut der lange Druck nichts mehr: wieder `rootbridge voice assistant on`.
 * **Das Symbol „Termux push to talk“** im Launcher, auch als Knopf auf dem Homescreen und für Einstellungen, die einer Taste eine App zuweisen.
+
+**„Listening“, aber kein Text:** Ein Recorder (`rec`), den Claude Code liegen gelassen hat (anthropics/claude-code#110732), behält den
+Ton, und jede neue Aufnahme bekommt Stille. `ptt start` beendet im Modus hold einen solchen Recorder vor der ersten Taste.
 
 Die Bedienungshilfen des A9 bieten für die Seitentaste nur feste Aktionen (Bildschirm leeren, Musik, Home, Menü, Hintergrundlicht, nichts), keine
 App: Für die Seitentaste nimm `--sidekey` (unten).

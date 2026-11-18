@@ -87,6 +87,7 @@ echo "su $*" >> "$STUB_LOG"
 [ "${STUB_SU_FAIL:-0}" = 1 ] && exit 1
 # no Termux:API: pm grant refuses its package
 [ "${STUB_SU_NOAPI:-0}" = 1 ] && case "$*" in *com.termux.api*) exit 1 ;; esac
+case "$*" in *voice_interaction_service*) printf '%s\n' "${STUB_ASSISTANT:-null}"; exit 0 ;; esac
 touch "$STUB_STATE/perm"
 exit 0
 EOF
@@ -146,6 +147,25 @@ check "voice grant ohne Termux:API: Rückfall auf com.termux" "0 1 1" "$RC $(cal
 reset_pa
 rb env RB_SU="$T/gibt-es-nicht" bash "$T/bin/rootbridge" voice grant
 check "voice grant ohne su: Fehler"                       1 "$RC"
+# assistant: Termux push to talk as Android's digital assistant (root)
+rb bash "$T/bin/rootbridge" voice assistant on
+check "voice assistant on: su -c cmd role add-role-holder"  "0 1" "$RC $(calls '^su -c cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux$')"
+check "voice assistant on: Meldung"                       1 "$(count "$T/out.txt" 'jetzt der digitale Assistent')"
+rb bash "$T/bin/rootbridge" voice assistant off
+check "voice assistant off: su -c cmd role remove-role-holder" "0 1" "$RC $(calls '^su -c cmd role remove-role-holder --user 0 android.app.role.ASSISTANT com.termux$')"
+rb env STUB_ASSISTANT=com.termux/.app.assist.PttVoiceInteractionService bash "$T/bin/rootbridge" voice assistant
+check "voice assistant (status): Termux ist Assistent"    "0 1" "$RC $(count "$T/out.txt" 'Assistent: *Termux push to talk')"
+check "voice assistant status: liest voice_interaction_service" 1 "$(calls '^su -c settings get secure voice_interaction_service$')"
+rb env STUB_ASSISTANT= bash "$T/bin/rootbridge" voice assistant status
+check "voice assistant status: keiner, mit Hinweis"       "0 1" "$RC $(count "$T/out.txt" 'Assistent: *keiner - rootbridge voice assistant on')"
+rb env "STUB_ASSISTANT=com.google.android.googlequicksearchbox/com.google.android.voiceinteraction.GsaVoiceInteractionService" bash "$T/bin/rootbridge" voice assistant status
+check "voice assistant status: ein anderer Assistent"     1 "$(count "$T/out.txt" 'Assistent: *com.google.android.googlequicksearchbox - rootbridge')"
+rb env STUB_SU_FAIL=1 bash "$T/bin/rootbridge" voice assistant on
+check "voice assistant on: su verweigert, Fehler"         "1 1" "$RC $(count "$T/out.txt" 'ließ sich nicht setzen')"
+rb env RB_SU="$T/gibt-es-nicht" bash "$T/bin/rootbridge" voice assistant on
+check "voice assistant ohne su: Fehler"                   1 "$RC"
+rb bash "$T/bin/rootbridge" voice assistant nope
+check "voice assistant: unbekannter Befehl"               "1 1" "$RC $(count "$T/out.txt" 'voice assistant: on')"
 rb bash "$T/bin/rootbridge" voice nope
 check "voice: unbekannter Befehl"                         "1 1" "$RC $(count "$T/out.txt" 'voice: start')"
 

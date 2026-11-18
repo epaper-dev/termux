@@ -13,6 +13,7 @@
 #   rootbridge guard-off | guard-on  emergency switch for the Claude Code hooks
 #   rootbridge theme light|dark      Claude Code theme "Auto epaper" follows (tmux hook)
 #   rootbridge voice start|stop|status|grant   microphone for /voice: PulseAudio, source, Android permission
+#   rootbridge voice assistant [on|off|status]   Termux push to talk as Android's digital assistant (long press on Home; root)
 #   rootbridge daemon-start | daemon-stop
 #   rootbridge version
 
@@ -250,6 +251,35 @@ voice_grant() {
     voice_start
 }
 
+# The digital assistant of Android is "Termux push to talk": a long press on Home runs `ptt toggle`. Settings, Apps, Default
+# apps, Digital assistant sets it; devices that do not offer the choice get it here. Android drops the role when Termux is
+# force-stopped (Settings, App info), and the long press then does nothing. Setting and reading the role need root.
+voice_assistant() {
+    local role=android.app.role.ASSISTANT holders
+    command -v "$RB_SU" >/dev/null 2>&1 || die "kein su gefunden - die Assistenten-Rolle braucht Root: ${RB_SU}"
+    # shellcheck disable=SC2086   # SU_ARGS is "-c" or "-mm -c" on purpose
+    case "${1:-status}" in
+        on)
+            timeout 60 "$RB_SU" $SU_ARGS "cmd role add-role-holder --user 0 $role com.termux" </dev/null \
+                || die "Die Assistenten-Rolle ließ sich nicht setzen (Root verweigert? Termux-App mit Termux push to talk installiert?)"
+            echo "Termux push to talk ist jetzt der digitale Assistent (langer Druck auf Home)." ;;
+        off)
+            timeout 60 "$RB_SU" $SU_ARGS "cmd role remove-role-holder --user 0 $role com.termux" </dev/null \
+                || die "Die Assistenten-Rolle ließ sich nicht entfernen (Root verweigert?)"
+            echo "Termux ist nicht mehr der digitale Assistent." ;;
+        status)   # the service a long press on Home starts (cmd role get-role-holders is missing on Android 11)
+            holders="$(timeout 60 "$RB_SU" $SU_ARGS "settings get secure voice_interaction_service" </dev/null)" \
+                || die "Der Assistent ließ sich nicht lesen (Root verweigert?)"
+            holders="${holders//[$'\r\n']/}"
+            case "$holders" in
+                com.termux/*) echo "Assistent:     Termux push to talk (langer Druck auf Home)" ;;
+                ''|null) echo "Assistent:     keiner - rootbridge voice assistant on" ;;
+                *) echo "Assistent:     ${holders%%/*} - rootbridge voice assistant on" ;;
+            esac ;;
+        *) die "voice assistant: on | off | status" ;;
+    esac
+}
+
 voice_status() {
     command -v pulseaudio >/dev/null 2>&1 || { echo "PulseAudio:    nicht installiert (pkg install pulseaudio)"; return 0; }
     if voice_running; then echo "PulseAudio:    läuft"; else echo "PulseAudio:    gestoppt (rootbridge voice start)"; return 0; fi
@@ -262,7 +292,8 @@ cmd_voice() {
         stop)   pulseaudio --kill >/dev/null 2>&1 || true; echo "PulseAudio gestoppt." ;;
         status) voice_status ;;
         grant)  voice_grant ;;
-        *) die "voice: start | stop | status | grant" ;;
+        assistant) voice_assistant "${2:-status}" ;;
+        *) die "voice: start | stop | status | grant | assistant" ;;
     esac
 }
 

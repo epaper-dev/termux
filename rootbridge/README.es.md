@@ -323,8 +323,12 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
 solo evento, el primero empieza a hablar y el siguiente lo detiene):
 * **Pulsación larga de Inicio**: Ajustes, Apps, Apps predeterminadas, Asistente digital, «Termux push to talk». Algunos teléfonos no muestran esa
   opción (el Hisense A9 no); la app es un asistente válido de todos modos, y con root lo configuras tú mismo:
-  `su -c 'cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux'` (se deshace con `remove-role-holder`).
+  `rootbridge voice assistant on` (se deshace con `off`, se comprueba con `status`). «Forzar detención» de Termux en la información de la
+  app le quita el rol, y la pulsación larga ya no hace nada: vuelve a ejecutar `rootbridge voice assistant on`.
 * **El icono «Termux push to talk»** en el lanzador, también como botón en la pantalla de inicio y para ajustes que asignan una app a una tecla.
+
+**«Listening» pero sin texto:** un grabador (`rec`) que Claude Code dejó abierto (anthropics/claude-code#110732) se queda con el sonido,
+y cada grabación nueva recibe silencio. `ptt start` en modo hold termina ese grabador antes de su primera tecla.
 
 Los ajustes de accesibilidad del A9 solo ofrecen acciones fijas para su tecla lateral (borrar pantalla, música, inicio, menú, luz de fondo,
 nada), ninguna app: para la tecla lateral usa `--sidekey` (abajo).
