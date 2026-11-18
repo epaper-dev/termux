@@ -5,6 +5,13 @@
 Push to talk holds without flicker, ShellCheck in the guest, the Codex pre-commit review at `xhigh` with the newest Sol model.
 
 ### Fixed
+* **Voice: "listening", but no text.** Claude Code can leave a recorder (`rec`) running (anthropics/claude-code#110732). On the A9 it
+  kept the sound: PulseAudio in Termux gave it to that one client, and every new recording got silence (measured: the old `rec` wrote
+  98 KB in 3 s, the new one 4 bytes). `ptt start` in hold mode now ends such a recorder before its first key, when it runs below the pane
+  process of the target window (a recording in another session stays, without the window nothing is ended) and ptt sent its last key at
+  least 3 s before (a hold recording lives only while keys come, so a quick stop and start leaves the recording that is still ending).
+  Tap mode leaves recorders alone (a recording started by hand may run there). Tests: `tests/test_ptt.sh`,
+  which now looks for recorders only in its own `PTT_PROC`, so it can never end a real recording.
 * **The apt upgrade at the session start no longer hangs until its timeout.** `rootbridge-apt` runs in the tmux terminal, and
   `timeout` starts `apt-get` in a background process group. When packages were really upgraded, `apt-get` reset the terminal after
   dpkg, got `SIGTTOU` and stopped: the log ended with `Setting up libc-bin`, dpkg was done, and the start waited the whole
@@ -25,6 +32,10 @@ Push to talk holds without flicker, ShellCheck in the guest, the Codex pre-commi
   recordings (the first one cold), 3 of 3 with a forced stall of 0.5 s, no recorder left behind. Tests: `tests/test_ptt.sh`.
 
 ### Changed
+* **`rootbridge voice assistant [on|off|status]`** sets, removes or shows "Termux push to talk" as Android's digital assistant (long press
+  on Home; root, `cmd role`). "Force stop" of Termux in the app info drops the role (seen on the A9), and the long press then does nothing;
+  this brings it back in one command. `status` reads `voice_interaction_service`, the service the long press starts (`cmd role
+  get-role-holders` is missing on Android 11); reading needs root as well, so `rootbridge status` does not show it. Tests: `tests/test_voice.sh`.
 * **ShellCheck in the guest.** `setup-guest.sh` installs `shellcheck` (`apt`) with or without Claude Code and Codex, so the agents can
   check their shell scripts the way the CI of this repository does; `install.sh` runs the guest setup again when it is missing.
   Tests: `tests/test_setup.sh` (A2e and the package lists).

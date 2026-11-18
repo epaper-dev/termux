@@ -311,8 +311,12 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
 event, the first starts talking, the next stops):
 * **Long press on Home**: Settings, Apps, Default apps, Digital assistant app, "Termux push to talk". Some phones do not show that choice (the
   Hisense A9 does not); the app is a valid assistant all the same, and with root you set it yourself:
-  `su -c 'cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux'` (undo with `remove-role-holder`).
+  `rootbridge voice assistant on` (undo with `off`, check with `status`). "Force stop" of Termux in the app info drops the role, and the
+  long press then does nothing: run `rootbridge voice assistant on` again.
 * **The icon "Termux push to talk"** in the launcher, also as a button on the home screen, and for settings that let a key open an app.
+
+**"Listening" but no text:** a recorder (`rec`) that Claude Code left behind (anthropics/claude-code#110732) keeps the sound, and every
+new recording gets silence. `ptt start` in hold mode ends such a recorder before its first key.
 
 The accessibility settings of the A9 offer only fixed actions for its side key (clear screen, music, home, menu, backlight, nothing), no app: for the
 side key use `--sidekey` below.

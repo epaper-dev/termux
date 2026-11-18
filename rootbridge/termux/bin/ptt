@@ -16,6 +16,8 @@
 #                    no key comes for 200 ms, so the repeater must never be late: one tmux client for all keys.
 #                    When Claude Code ends the recording itself (its recorder `rec` is gone), the repeater stops
 #                    instead of starting a new one; it also stops when no recorder starts (hold mode is for Claude Code).
+#                    A recorder of Claude Code that still runs at `start` was left behind and would keep the sound
+#                    from the new recording: `start` ends it first.
 #                    The repeats begin PTT_WARMUP ms after the first key: Claude Code starts its recorder with the first key
 #                    (checks of sox, then rec), which blocks it for half a second or more on a phone, and its 200 ms release
 #                    timer only starts with the second key. A second key into that stall ended the recording again and again
@@ -52,6 +54,7 @@ TARGET="${PTT_TARGET:-$SESSION:claude}"
 STATE="${PTT_STATE_DIR:-$HOME/.cache/ptt}"
 PIDFILE="$STATE/hold.pid"
 FLAG="$STATE/tap.flag"
+KEYS_END="$STATE/hold.end"   # written when the repeater stops sending keys (stop, or its own end)
 PROC="${PTT_PROC:-/proc}"
 
 usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$self"; }
@@ -95,9 +98,41 @@ find_recorders() {   # REC_PIDS: the running recorders of Claude Code, read from
     local d args
     REC_PIDS=()
     for d in "$PROC"/[0-9]*; do
-        mapfile -d '' -t args < "$d/cmdline" 2>/dev/null || continue
+        mapfile -d '' -t args 2>/dev/null < "$d/cmdline" || continue   # 2> first: a process can be gone by now
         if [[ ${args[0]-} == *rec && " ${args[*]} " == *" --buffer 1024 -t raw "* ]]; then REC_PIDS+=("${d##*/}"); fi
     done
+}
+
+# end_left_recorders: before ptt starts a recording in hold mode it is idle, so no recording of Claude Code should run in the
+# target window. A recorder that still runs there was left behind by Claude Code (a superseded start,
+# anthropics/claude-code#110732) and keeps the sound: PulseAudio in Termux gave it to that one client, and every new
+# recording got silence ("listening", no text). Only recorders below the pane process of the target window are ended
+# (a recording in another session stays); without that window nothing is ended. Proof that a recorder is left: in hold
+# mode a recording lives only while keys come (Claude Code ends it 200 ms after the last one), so when ptt sent its last
+# key at least 3 s ago, no recording can be in use. A quick stop and start (Claude Code may still be ending the recording
+# of the stop) ends nothing.
+end_left_recorders() {
+    local p pane age
+    if age="$(file_age "$KEYS_END")" && [ "$age" -lt 3 ]; then return 0; fi
+    find_recorders
+    [ "${#REC_PIDS[@]}" -gt 0 ] || return 0
+    pane="$("$TMUX_BIN" display-message -p -t "$TARGET" '#{pane_pid}' 2>/dev/null)" || return 0
+    [[ $pane =~ ^[0-9]+$ ]] || return 0
+    for p in "${REC_PIDS[@]}"; do
+        if under_pane "$p" "$pane"; then kill -TERM "$p" 2>/dev/null; fi
+    done
+}
+
+under_pane() {   # under_pane <pid> <pane pid>: the pane process is an ancestor of the process (read from $PROC/*/stat)
+    local pid="$1" st
+    for _ in {1..40}; do   # at most 40 steps up
+        [ "$pid" = "$2" ] && return 0
+        [ "$pid" -gt 1 ] 2>/dev/null || return 1
+        { st="$(< "$PROC/$pid/stat")"; } 2>/dev/null || return 1
+        st="${st##*) }"           # the name in brackets may hold spaces; then: state, ppid
+        pid="${st#* }"; pid="${pid%% *}"
+    done
+    return 1
 }
 
 tm_open() {   # start the control client and skip everything it says before the answer to our first command
@@ -146,6 +181,7 @@ hold_loop() {   # hold_loop <token>
         read -r -t "$delay" -u 3 _ || true
     done
     if [ -n "${TM_PID:-}" ]; then kill "$TM_PID" 2>/dev/null; fi
+    : > "$KEYS_END"
     cur=""; read -r cur < "$PIDFILE" 2>/dev/null || true
     if [ "$cur" = "$token" ]; then rm -f "$PIDFILE"; fi
     return 0
@@ -178,6 +214,7 @@ active() {
 do_start() {
     mkdir -p "$STATE"
     active && return 0
+    if [ "$MODE" = hold ]; then end_left_recorders; fi   # tap: a recording started by hand may run, the press ends it
     press || return 0            # no such window: nothing to do
     if [ "$MODE" = hold ]; then
         local token="$$.$RANDOM.$SECONDS"
@@ -192,6 +229,7 @@ do_start() {
 do_stop() {
     if [ "$MODE" = hold ]; then
         rm -f "$PIDFILE"         # the repeater sees this at its next round and ends
+        mkdir -p "$STATE"; : > "$KEYS_END"
     else
         tap_active && press
         rm -f "$FLAG"

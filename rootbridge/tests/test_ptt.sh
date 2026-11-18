@@ -29,6 +29,7 @@ cat > "$T/tmux" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >> "$PTT_TEST_LOG"
 [ "${PTT_TEST_NOWINDOW:-0}" = 1 ] && exit 1
+[ "$1" = display-message ] && [ "${*: -1}" = '#{pane_pid}' ] && echo "${PTT_TEST_PANE:-}"
 exit 0
 EOF
 chmod +x "$T/tmux"
@@ -40,6 +41,8 @@ export ROOTBRIDGE_LIB="$LIB"
 export PTT_TMUX="$T/tmux"
 export PTT_STATE_DIR="$T/state"
 export PTT_CLAUDE_SETTINGS="$T/claude-settings.json"      # never the real settings of the guest
+export PTT_PROC="$T/proc"                                  # only the fake recorders below: ptt start ends recorders it finds
+mkdir -p "$PTT_PROC"
 
 reset() { rm -rf "$T/state" "$LOG"; : > "$LOG"; unset PTT_TEST_NOWINDOW; }
 presses() { grep -c '^send-keys' "$LOG"; }
@@ -117,7 +120,7 @@ check "warmup: stop in der Pause, danach keine Wiederholung" 1 "$(presses)"
 
 # the recorder of Claude Code: the repeater keeps going while the recorder that started after it runs, stops when that
 # recorder ends, and stops when none comes (an older recorder does not count)
-fake_rec() { bash -c 'exec -a rec python3 -c "import time; time.sleep(30)" --buffer 1024 -t raw' & FAKE=$!; }
+fake_rec() { bash -c 'exec -a rec python3 -c "import time; time.sleep(30)" --buffer 1024 -t raw' & FAKE=$!; ln -s "/proc/$FAKE" "$PTT_PROC/$FAKE"; }
 reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\n' > "$CONF"
 runptt start; sleep 0.2; fake_rec; sleep 0.6
 check "rec: mit Recorder wird wiederholt"                talking "$(runptt status)"
@@ -125,11 +128,26 @@ kill "$FAKE"; wait "$FAKE" 2>/dev/null; sleep 0.4
 check "rec: Recorder beendet, Wiederholer stoppt"        idle "$(runptt status)"
 n4="$(presses)"; sleep 0.4
 check "rec: danach keine Taste mehr"                      "$n4" "$(presses)"
-reset; fake_rec; sleep 0.3; runptt start; sleep 0.8
-check "rec: alter Recorder, zunaechst wird gewartet"      talking "$(runptt status)"
+# a recorder left in the target window (below its pane process: here the test shell) is ended at start; one elsewhere stays
+ln -s "/proc/$$" "$PTT_PROC/$$"
+reset; fake_rec; sleep 0.3; PTT_TEST_PANE=999999 runptt start; sleep 0.3
+check "rec: Recorder in einem anderen Fenster bleibt"     laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+runptt stop; sleep 0.2; kill "$FAKE"; wait "$FAKE" 2>/dev/null
+reset; fake_rec; sleep 0.3; PTT_TEST_NOWINDOW=1 PTT_TEST_PANE=$$ runptt start; sleep 0.3
+check "rec: ohne Zielfenster wird nichts beendet"         laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+kill "$FAKE"; wait "$FAKE" 2>/dev/null
+reset; fake_rec; mkdir -p "$T/state"; : > "$T/state/hold.end"; PTT_TEST_PANE=$$ runptt start; sleep 0.3
+check "rec: gleich nach stop (Claude beendet noch) bleibt er" laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+runptt stop; sleep 0.2; kill "$FAKE"; wait "$FAKE" 2>/dev/null
+reset; fake_rec; sleep 0.3; PTT_TEST_PANE=$$ runptt start; sleep 0.8
+check "rec: liegengebliebener Recorder wird beim Start beendet" weg "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+wait "$FAKE" 2>/dev/null
+check "rec: danach wird auf den neuen gewartet"           talking "$(runptt status)"
 sleep 4.5
 check "rec: kein neuer Recorder, Wiederholer stoppt"      idle "$(runptt status)"
-kill "$FAKE"; wait "$FAKE" 2>/dev/null
+reset; printf 'PTT_MODE=tap\n' > "$CONF"; fake_rec; sleep 0.3; PTT_TEST_PANE=$$ runptt start; sleep 0.3
+check "rec: im Modus tap bleibt ein laufender Recorder"   laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+runptt stop; kill "$FAKE"; wait "$FAKE" 2>/dev/null
 
 # ------------------------------------------------------------------ settings
 reset; printf 'PTT_TARGET=work:codex\nPTT_KEY=C-g\nPTT_INTERVAL=20\n' > "$CONF"
