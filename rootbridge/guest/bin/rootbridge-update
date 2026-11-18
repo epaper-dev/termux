@@ -77,7 +77,53 @@ update_codex() {
     return 0
 }
 
-# --- main (not run when the functions are cut out for the tests) ---------------------------------------------
+# prune_versions <label> <link> <folder> <file|release>: Claude Code and Codex keep every version they downloaded
+# (350 to 470 MB each). <link> points to the version in use, which must lie in <folder>, the tool's own folder of
+# versions; of the others only the newest one stays (a way back). Only entries that are a version of the tool are
+# deleted: "file" = a file named like 2.1.326 (Claude Code), "release" = a folder <version>-<target> with
+# codex-package.json and bin/codex (Codex). A version that a running process uses (its program, or a helper such
+# as codex-code-mode-host from its folder) stays. When that cannot be told for every process (a program that
+# cannot be read and may be one of the tools, or the loader of another proot session), nothing is deleted.
+# Codex' own installer prunes the same way but gives up under proot. Anything else is left alone.
+prune_versions() {
+    local label="$1" kind="$4" target dir cur v p exe in_use=$'\n' old=()
+    [ -L "$2" ] && target="$(readlink -f "$2")" && dir="$(readlink -f "$3")" || return 0
+    [ "${target%/*}" = "$dir" ] && [ -e "$target" ] || return 0
+    cur="${target##*/}"
+    for p in "$dir"/*; do
+        v="${p##*/}"
+        [ "$v" != "$cur" ] || continue
+        case "$kind" in
+            file) [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ -f "$p" ] && [ ! -L "$p" ] ;;
+            release) [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[a-z0-9_]+(-[a-z0-9_]+)+$ ]] && [ -d "$p" ] && [ ! -L "$p" ] \
+                     && [ -f "$p/codex-package.json" ] && [ -f "$p/bin/codex" ] ;;
+            *) false ;;
+        esac && old+=("$v")
+    done
+    [ "${#old[@]}" -gt 1 ] || return 0
+    mapfile -t old < <(printf '%s\n' "${old[@]}" | sort -V)
+    for p in "${ROOTBRIDGE_PROC:-/proc}"/[0-9]*; do
+        if exe="$(readlink "$p/exe" 2>/dev/null)"; then
+            case "$exe" in */libexec/proot/*|*/loader|*/loader32|*/loader-*) return 0 ;; esac
+            in_use+="$exe"$'\n'
+        elif [ -d "$p" ]; then
+            case "$(cat "$p/comm" 2>/dev/null || echo unbekannt)" in
+                claude*|codex*|rg|bwrap|unbekannt)
+                    [ -d "$p" ] || continue
+                    grep -qs '^State:[[:space:]]*Z' "$p/status" || return 0 ;;
+            esac
+        fi
+    done
+    for v in "${old[@]:0:${#old[@]}-1}"; do
+        case "$in_use" in
+            *$'\n'"$dir/$v"$'\n'*|*$'\n'"$dir/$v/"*) echo "$label: alte Version $v läuft noch - bleibt"; continue ;;
+        esac
+        rm -rf -- "${dir:?}/$v" && echo "$label: alte Version $v gelöscht"
+    done
+    return 0
+}
+
+# --- main (not run when the functions are cut out for the tests)---------------------------------------------
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     # (the tests set ROOTBRIDGE_UPDATE_KEEP_PATH and ROOTBRIDGE_{CLAUDE,CODEX}_BIN to run it with stubs)
     [ -n "${ROOTBRIDGE_UPDATE_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
@@ -107,5 +153,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 
     [ "$use_claude" = 1 ] && update_claude
     [ "$use_codex" = 1 ] && update_codex
+    [ "$use_claude" = 1 ] && prune_versions "Claude Code" "$claude_bin" "$HOME/.local/share/claude/versions" file
+    codex_pkgs="${CODEX_HOME:-$HOME/.codex}/packages/standalone"
+    [ "$use_codex" = 1 ] && prune_versions "Codex" "$codex_pkgs/current" "$codex_pkgs/releases" release
     exit 0
 fi

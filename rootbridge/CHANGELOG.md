@@ -25,6 +25,11 @@ Push to talk holds without flicker, ShellCheck in the guest, the Codex pre-commi
   recordings (the first one cold), 3 of 3 with a forced stall of 0.5 s, no recorder left behind. Tests: `tests/test_ptt.sh`.
 
 ### Changed
+* **The guest is about 2.7 GB smaller.** Claude Code and Codex keep every version they downloaded (350 to 470 MB each);
+  `rootbridge-update` now deletes the old ones at every start and keeps the version in use and the newest other one. Under
+  proot the hard links of `rust-coreutils` were unpacked as about 115 copies of one 10 MB program (1.2 GB); the guest
+  installer turns every name GNU coreutils has as well into a link to the GNU program (uutils refuses links to its own
+  multicall program). Measured on the Hisense A9: 1.4 GB Codex, 1.05 GB Claude Code, 1.2 GB uutils. Tests: `tests/test_guest_slim.sh`.
 * **ShellCheck in the guest.** `setup-guest.sh` installs `shellcheck` (`apt`) with or without Claude Code and Codex, so the agents can
   check their shell scripts the way the CI of this repository does; `install.sh` runs the guest setup again when it is missing.
   Tests: `tests/test_setup.sh` (A2e and the package lists).
