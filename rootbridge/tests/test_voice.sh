@@ -330,6 +330,7 @@ sinst() {   # sinst [env VAR=..] [args]: install.sh with real setup, no guest; t
 sinst bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot
 check "Setup: läuft"                                       0 "$IRC"
 check "Setup: pkg install -y pulseaudio"                   1 "$(count "$ILOG" '^pkg install -y .*pulseaudio$')"
+check "Setup: pulseaudio ohne empfohlene Pakete"          1 "$(count "$ILOG" '^pkg install -y .*-o APT::Install-Recommends=false pulseaudio$')"
 check "Setup am Terminal: Mikrofon fehlt, su -c pm grant"  1 "$(count "$ILOG" '^su -c pm grant com.termux.api android.permission.RECORD_AUDIO$')"
 check "Setup am Terminal: Quelle ist danach da"            ja "$(has "$T/state/source")"
 sinst bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot --no-voice

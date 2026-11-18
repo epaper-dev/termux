@@ -2,7 +2,14 @@
 
 ## 2.1.2-dev (unreleased)
 
-The microphone goes off after a push-to-talk stop.
+The microphone goes off after a push-to-talk stop; Termux without clang.
+
+### Changed
+* **Termux packages without their recommendations.** `install.sh` passes `-o APT::Install-Recommends=false` to `pkg install`. `python`
+  recommends `python-pip`, which recommends `clang`, `make` and `pkg-config`: on the A9 that brought `clang` with `libllvm`, `llvm`, `lld`,
+  `libcompiler-rt` and `ndk-sysroot`, about 500 MB that nothing used (all auto-installed, no package depended on them; removed there with
+  `apt remove --autoremove clang`). rootbridge needs none of them; `pkg install clang` brings them back for `pip install` of packages with
+  C code. Tests: `tests/test_setup.sh`, `tests/test_voice.sh`.
 
 ### Fixed
 * **The microphone no longer stays on after `ptt stop`.** Seen on the A9: the first recording after `install.sh` gave no text, and after

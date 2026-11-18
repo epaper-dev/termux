@@ -204,6 +204,9 @@ if [ -z "${ROOTBRIDGE_ALLOW_GUEST:-}" ] && [ "$(id -u)" -eq 0 ] \
 fi
 
 # Setup, part 1: the Termux packages that are missing. pkg_for maps a command to its Termux package.
+# Without recommended packages: python recommends python-pip, which recommends clang, make and pkg-config (about 500 MB with
+# LLVM on the A9); rootbridge needs none of them.
+PKG_OPTS=(-y -o Dpkg::Options::=--force-confold -o APT::Install-Recommends=false)
 pkg_for() {
     case "$1" in
         python3) echo python ;;
@@ -224,7 +227,7 @@ if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; the
         say "== 0/5 Einrichtung: Termux-Pakete"
         say "  pkg install -y$need_pkgs"
         # shellcheck disable=SC2086   # $need_pkgs is a list of package names on purpose
-        DEBIAN_FRONTEND=noninteractive pkg install -y -o Dpkg::Options::=--force-confold $need_pkgs \
+        DEBIAN_FRONTEND=noninteractive pkg install "${PKG_OPTS[@]}" $need_pkgs \
             || die "pkg install$need_pkgs ist fehlgeschlagen (Netz? pkg update?). Erneut starten: bash install.sh"
         hash -r
         SETUP_DID=1
@@ -588,7 +591,7 @@ if [ "$VOICE_ON" = yes ]; then
     if [ ! -x "$PREFIX/bin/pulseaudio" ]; then
         if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; then
             say "  pkg install -y pulseaudio"
-            if DEBIAN_FRONTEND=noninteractive pkg install -y -o Dpkg::Options::=--force-confold pulseaudio; then
+            if DEBIAN_FRONTEND=noninteractive pkg install "${PKG_OPTS[@]}" pulseaudio; then
                 hash -r; SETUP_DID=1
             else
                 say "  Hinweis: pkg install pulseaudio ist fehlgeschlagen - ohne PulseAudio kein Mikrofon. Erneut starten: bash install.sh"
