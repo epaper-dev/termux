@@ -167,6 +167,13 @@ if you add them; global packages from `npm -g` are not. Claude Code itself is a 
 replaces, no npm involved. A value already in `/etc/termux-rootbridge.conf` stays when you run the installer without
 the option; switch an older `daily` once with `bash install.sh --apt-upgrade 6h --claude-update 6h`.
 
+**Disk space in the guest.** Claude Code and Codex keep every version they downloaded (350 to 470 MB each):
+`rootbridge-update` deletes the old ones at every start and keeps the version in use and the newest other one (a way
+back). And under proot the hard links of `rust-coreutils` were unpacked as about 115 copies of one 10 MB program
+(1.2 GB): the guest installer turns every name that GNU coreutils has as well into a link to the GNU program (the 11
+uutils-only names such as `b3sum` keep their copy). `apt-get install --reinstall rust-coreutils` brings the copies back.
+Together this frees about 2.7 GB on a guest that has had a few updates.
+
 **`claude update`.** Same rules as the package updates (`CLAUDE_UPDATE=6h|<N>h|daily|always|off`, default `6h`): the session
 start runs `claude update` at most once per 6 h after a success (stamp
 `/var/lib/termux-rootbridge/claude-update-last-success` in the guest). A failed or aborted update leaves no stamp, prints a

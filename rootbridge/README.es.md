@@ -166,6 +166,13 @@ añades; los paquetes globales de `npm -g` no. Claude Code es un binario nativo 
 valor que ya está en `/etc/termux-rootbridge.conf` se conserva al instalar sin la opción; cambia un `daily` anterior una
 vez con `bash install.sh --apt-upgrade 6h --claude-update 6h`.
 
+**Espacio en disco en el invitado.** Claude Code y Codex conservan cada versión descargada (de 350 a 470 MB cada una):
+`rootbridge-update` borra las antiguas en cada arranque y conserva la versión en uso y la otra más reciente (vuelta
+atrás). Además, bajo proot los enlaces duros de `rust-coreutils` se desempaquetaron como unas 115 copias de un programa
+de 10 MB (1,2 GB): el instalador del invitado convierte cada nombre que también tiene GNU coreutils en un enlace al
+programa GNU (los 11 nombres solo de uutils, como `b3sum`, conservan su copia). `apt-get install --reinstall
+rust-coreutils` recupera las copias. En total se liberan unos 2,7 GB en un invitado con algunas actualizaciones.
+
 **`claude update`.** Mismas reglas que las actualizaciones de paquetes (`CLAUDE_UPDATE=6h|<N>h|daily|always|off`, por defecto
 `6h`): el inicio de la sesión ejecuta `claude update` como máximo una vez cada 6 h tras un éxito (marca
 `/var/lib/termux-rootbridge/claude-update-last-success` en el invitado). Una actualización fallida o interrumpida no

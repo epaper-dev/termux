@@ -32,6 +32,11 @@ Push to talk holds without flicker, ShellCheck in the guest, the Codex pre-commi
   recordings (the first one cold), 3 of 3 with a forced stall of 0.5 s, no recorder left behind. Tests: `tests/test_ptt.sh`.
 
 ### Changed
+* **The guest is about 2.7 GB smaller.** Claude Code and Codex keep every version they downloaded (350 to 470 MB each);
+  `rootbridge-update` now deletes the old ones at every start and keeps the version in use and the newest other one. Under
+  proot the hard links of `rust-coreutils` were unpacked as about 115 copies of one 10 MB program (1.2 GB); the guest
+  installer turns every name GNU coreutils has as well into a link to the GNU program (uutils refuses links to its own
+  multicall program). Measured on the Hisense A9: 1.4 GB Codex, 1.05 GB Claude Code, 1.2 GB uutils. Tests: `tests/test_guest_slim.sh`.
 * **`rootbridge voice assistant [on|off|status]`** sets, removes or shows "Termux push to talk" as Android's digital assistant (long press
   on Home; root, `cmd role`). "Force stop" of Termux in the app info drops the role (seen on the A9), and the long press then does nothing;
   this brings it back in one command. `status` reads `voice_interaction_service`, the service the long press starts (`cmd role
