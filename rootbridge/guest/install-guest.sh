@@ -483,6 +483,21 @@ else
     say "  Hinweis: $BINDIR/xdg-open existiert bereits und bleibt unverändert."
 fi
 
+# uutils: rust-coreutils is one 10 MB multicall program, hard-linked under about 115 names. Unpacked under proot
+# every name became a copy of its own (1.2 GB). A name that GNU coreutils has as well (gnu-coreutils, which
+# coreutils-from-uutils depends on) becomes a link to the GNU program; uutils itself refuses links to its
+# multicall program ("Security violation"). Only single copies (one link) are touched. The package is on
+# hold (APT_HOLD); `apt-get install --reinstall rust-coreutils` brings the copies back.
+UU_DIR=/usr/lib/cargo/bin/coreutils
+if [ -d "$ROOT$UU_DIR" ]; then
+    n=0
+    while IFS= read -r -d '' f; do
+        gnu="/usr/bin/gnu${f##*/}"
+        [ -x "$ROOT$gnu" ] && ln -s "$gnu" "$f.rb-link.$$" && mv -f "$f.rb-link.$$" "$f" && n=$((n + 1))
+    done < <(find "$ROOT$UU_DIR" -maxdepth 1 -type f -links 1 -print0)
+    [ "$n" = 0 ] || say "  uutils: $n Kopien durch Links auf GNU coreutils ersetzt (je etwa 10 MB frei)"
+fi
+
 # configuration (keep user edits, add missing keys)
 mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"

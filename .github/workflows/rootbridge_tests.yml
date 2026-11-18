@@ -54,6 +54,8 @@ jobs:
         run: bash tests/test_voice.sh
       - name: Guest library of the guest scripts (config reader, update intervals, session helpers; a missing library stops every script)
         run: bash tests/test_guest_lib.sh
+      - name: Guest stays small (old Claude Code / Codex versions pruned, uutils copies become GNU links; fake folders, staged root)
+        run: bash tests/test_guest_slim.sh
       - name: ShellCheck
         run: |
           sudo apt-get install -y shellcheck
