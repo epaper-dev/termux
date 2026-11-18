@@ -4,7 +4,7 @@
 
 [English](README.md) · [Deutsch](README.de.md) · [Comparación con otros proyectos](docs/COMPARISON.md) · [Inicio de sesión y MCP](docs/LOGIN.md) · [Seguridad](SECURITY.md)
 
-> **Estado: v2.1.1-dev.** Las pruebas unitarias y de integración pasan (hook de guardia, hook de inicio de sesión,
+> **Estado: v2.1.2-dev.** Las pruebas unitarias y de integración pasan (hook de guardia, hook de inicio de sesión,
 > daemon, instaladores). Confirmado en un dispositivo (Hisense A9): la confirmación de root también en modo bypass, un
 > inicio de sesión completo con la redirección automática a `localhost`, la apertura del navegador desde el invitado y
 > la copia de enlaces al portapapeles de Android (mediante el daemon y con la tecla `c` a través de tmux). Pendiente de
@@ -328,7 +328,8 @@ solo evento, el primero empieza a hablar y el siguiente lo detiene):
 * **El icono «Termux push to talk»** en el lanzador, también como botón en la pantalla de inicio y para ajustes que asignan una app a una tecla.
 
 **«Listening» pero sin texto:** un grabador (`rec`) que Claude Code dejó abierto (anthropics/claude-code#110732) se queda con el sonido,
-y cada grabación nueva recibe silencio. `ptt start` en modo hold termina ese grabador antes de su primera tecla.
+y cada grabación nueva recibe silencio. `ptt start` en modo hold termina ese grabador antes de su primera tecla, y `ptt stop` vuelve a mirar
+3,5 s después, para que el micrófono no se quede encendido tras detener.
 
 Los ajustes de accesibilidad del A9 solo ofrecen acciones fijas para su tecla lateral (borrar pantalla, música, inicio, menú, luz de fondo,
 nada), ninguna app: para la tecla lateral usa `--sidekey` (abajo).

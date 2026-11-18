@@ -4,7 +4,7 @@
 
 [Deutsch](README.de.md) · [Español](README.es.md) · [Comparison with other projects](docs/COMPARISON.md) · [Login & MCP details](docs/LOGIN.md) · [Security](SECURITY.md)
 
-> **Status: v2.1.1-dev.** Unit and integration tests pass (notice hook, login hook, daemon, installers).
+> **Status: v2.1.2-dev.** Unit and integration tests pass (notice hook, login hook, daemon, installers).
 > Confirmed on a device (Hisense A9): the root prompt also in bypass mode, a complete `/login` including the automatic
 > `localhost` redirect, opening the browser from the guest and copying links into the Android clipboard (through the
 > daemon and with the `c` key through tmux). Still to check: the exact `tool_response` format of MCP login tools.
@@ -323,7 +323,8 @@ event, the first starts talking, the next stops):
 * **The icon "Termux push to talk"** in the launcher, also as a button on the home screen, and for settings that let a key open an app.
 
 **"Listening" but no text:** a recorder (`rec`) that Claude Code left behind (anthropics/claude-code#110732) keeps the sound, and every
-new recording gets silence. `ptt start` in hold mode ends such a recorder before its first key.
+new recording gets silence. `ptt start` in hold mode ends such a recorder before its first key, and `ptt stop` looks again 3.5 s later, so
+the microphone does not stay on after a stop.
 
 The accessibility settings of the A9 offer only fixed actions for its side key (clear screen, music, home, menu, backlight, nothing), no app: for the
 side key use `--sidekey` below.

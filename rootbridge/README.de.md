@@ -4,7 +4,7 @@
 
 [English](README.md) · [Español](README.es.md) · [Vergleich mit anderen Projekten](docs/COMPARISON.md) · [Login & MCP](docs/LOGIN.md) · [Sicherheit](SECURITY.md)
 
-> **Stand: v2.1.1-dev.** Unit- und Integrationstests laufen (Guard-Hook, Login-Hook, Daemon, Installer).
+> **Stand: v2.1.2-dev.** Unit- und Integrationstests laufen (Guard-Hook, Login-Hook, Daemon, Installer).
 > Auf einem Gerät bestätigt (Hisense A9): die Root-Rückfrage auch im Bypass-Modus, ein vollständiger Login mit
 > automatischem `localhost`-Redirect, Browser-Öffnen aus dem Gast und Kopieren von Links in die Android-Zwischenablage
 > (über den Daemon und mit der Taste `c` durch tmux). Noch zu prüfen: das genaue `tool_response`-Format der
@@ -351,7 +351,8 @@ Ereignis, das erste startet das Sprechen, das nächste stoppt es):
 * **Das Symbol „Termux push to talk“** im Launcher, auch als Knopf auf dem Homescreen und für Einstellungen, die einer Taste eine App zuweisen.
 
 **„Listening“, aber kein Text:** Ein Recorder (`rec`), den Claude Code liegen gelassen hat (anthropics/claude-code#110732), behält den
-Ton, und jede neue Aufnahme bekommt Stille. `ptt start` beendet im Modus hold einen solchen Recorder vor der ersten Taste.
+Ton, und jede neue Aufnahme bekommt Stille. `ptt start` beendet im Modus hold einen solchen Recorder vor der ersten Taste, und `ptt stop`
+schaut 3,5 s später noch einmal nach, damit das Mikrofon nach dem Stoppen nicht an bleibt.
 
 Die Bedienungshilfen des A9 bieten für die Seitentaste nur feste Aktionen (Bildschirm leeren, Musik, Home, Menü, Hintergrundlicht, nichts), keine
 App: Für die Seitentaste nimm `--sidekey` (unten).
