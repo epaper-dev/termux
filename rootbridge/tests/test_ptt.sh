@@ -145,6 +145,24 @@ wait "$FAKE" 2>/dev/null
 check "rec: danach wird auf den neuen gewartet"           talking "$(runptt status)"
 sleep 4.5
 check "rec: kein neuer Recorder, Wiederholer stoppt"      idle "$(runptt status)"
+# stop: a recorder left behind by the stop is ended 3.5 s later, unless a new start came
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\n' > "$CONF"
+PTT_TEST_PANE=$$ runptt start; sleep 0.2; fake_rec; sleep 0.3; PTT_TEST_PANE=$$ runptt stop; sleep 1
+check "stop: Recorder läuft zunächst weiter (Claude beendet noch)" laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+sleep 3.5
+check "stop: liegengebliebener Recorder nach 3,5 s beendet" weg "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+wait "$FAKE" 2>/dev/null
+reset; PTT_TEST_PANE=$$ runptt start; sleep 0.2; fake_rec; sleep 0.3; PTT_TEST_PANE=$$ runptt stop; sleep 1
+PTT_TEST_PANE=$$ runptt start; sleep 3.5
+check "stop: neuer Start dazwischen, Recorder bleibt"     laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+runptt stop; kill "$FAKE"; wait "$FAKE" 2>/dev/null; sleep 4
+reset; PTT_TEST_PANE=$$ runptt start; sleep 0.3; PTT_TEST_PANE=$$ runptt stop; sleep 0.3; fake_rec; sleep 4
+check "stop: von Hand gestartete Aufnahme danach bleibt"   laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+kill "$FAKE"; wait "$FAKE" 2>/dev/null
+reset; fake_rec; sleep 0.3; PTT_TEST_PANE=$$ runptt stop; sleep 4
+check "stop ohne Sitzung: laufende Aufnahme bleibt"       laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
+check "stop ohne Sitzung: kein hold.end, kein hold.recs"  "nein nein" "$([ -e "$T/state/hold.end" ] && echo ja || echo nein) $([ -e "$T/state/hold.recs" ] && echo ja || echo nein)"
+kill "$FAKE"; wait "$FAKE" 2>/dev/null
 reset; printf 'PTT_MODE=tap\n' > "$CONF"; fake_rec; sleep 0.3; PTT_TEST_PANE=$$ runptt start; sleep 0.3
 check "rec: im Modus tap bleibt ein laufender Recorder"   laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
 runptt stop; kill "$FAKE"; wait "$FAKE" 2>/dev/null

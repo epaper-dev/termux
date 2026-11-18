@@ -1,6 +1,19 @@
 # Changelog
 
-## 2.1.1-dev (unreleased)
+## 2.1.2-dev (unreleased)
+
+The microphone goes off after a push-to-talk stop.
+
+### Fixed
+* **The microphone no longer stays on after `ptt stop`.** Seen on the A9: the first recording after `install.sh` gave no text, and after
+  the stop "listening" went off but Android's microphone indicator stayed on: Claude Code had left a recorder behind
+  (anthropics/claude-code#110732), which `ptt start` only ended at the next start. `ptt stop` (hold mode) now looks again 3.5 s later,
+  unless a new start came, and ends the recorders of the stopped session that still run: only those new since the session started, as
+  they are at the stop (`hold.recs`; the repeater keeps the ones from before in `hold.old`), so a recording started by hand (Alt+K) after
+  the stop stays. The same guards as at `start` apply (below the pane process of the target window, no key for at least 3 s; a repeater
+  ended by `stop` no longer rewrites the time of its last key). Tests: `tests/test_ptt.sh`.
+
+## 2.1.1-dev (not released; installed from main on the Hisense A9)
 
 Push to talk holds without flicker, ShellCheck in the guest, the Codex pre-commit review at `xhigh` with the newest Sol model.
 

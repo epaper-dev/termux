@@ -17,7 +17,8 @@
 #                    When Claude Code ends the recording itself (its recorder `rec` is gone), the repeater stops
 #                    instead of starting a new one; it also stops when no recorder starts (hold mode is for Claude Code).
 #                    A recorder of Claude Code that still runs at `start` was left behind and would keep the sound
-#                    from the new recording: `start` ends it first.
+#                    from the new recording: `start` ends it first. `stop` looks again 3.5 s later (when no new start
+#                    came), so a recorder left behind by the stop does not keep the microphone on until the next start.
 #                    The repeats begin PTT_WARMUP ms after the first key: Claude Code starts its recorder with the first key
 #                    (checks of sox, then rec), which blocks it for half a second or more on a phone, and its 200 ms release
 #                    timer only starts with the second key. A second key into that stall ended the recording again and again
@@ -55,6 +56,8 @@ STATE="${PTT_STATE_DIR:-$HOME/.cache/ptt}"
 PIDFILE="$STATE/hold.pid"
 FLAG="$STATE/tap.flag"
 KEYS_END="$STATE/hold.end"   # written when the repeater stops sending keys (stop, or its own end)
+SESSION_RECS="$STATE/hold.recs"   # the recorders that started in the session, written by `stop`
+SESSION_OLD="$STATE/hold.old"     # the recorders that ran before the session, written by the repeater at its start
 PROC="${PTT_PROC:-/proc}"
 
 usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$self"; }
@@ -111,6 +114,15 @@ find_recorders() {   # REC_PIDS: the running recorders of Claude Code, read from
 # mode a recording lives only while keys come (Claude Code ends it 200 ms after the last one), so when ptt sent its last
 # key at least 3 s ago, no recording can be in use. A quick stop and start (Claude Code may still be ending the recording
 # of the stop) ends nothing.
+session_recorders() {   # the running recorders that were not there when the repeater started (hold.old)
+    local p old
+    [ -r "$SESSION_OLD" ] || return 0   # without the baseline of a session no recorder counts as its own
+    old=" $(tr '\n' ' ' < "$SESSION_OLD")"
+    find_recorders
+    for p in "${REC_PIDS[@]}"; do [[ $old == *" $p "* ]] || printf '%s\n' "$p"; done
+}
+
+# end_left_recorders [pid...]: with pids, only those of them that still are recorders (the ones of a stopped session).
 end_left_recorders() {
     local p pane age
     if age="$(file_age "$KEYS_END")" && [ "$age" -lt 3 ]; then return 0; fi
@@ -119,6 +131,7 @@ end_left_recorders() {
     pane="$("$TMUX_BIN" display-message -p -t "$TARGET" '#{pane_pid}' 2>/dev/null)" || return 0
     [[ $pane =~ ^[0-9]+$ ]] || return 0
     for p in "${REC_PIDS[@]}"; do
+        if [ $# -gt 0 ] && [[ " $* " != *" $p "* ]]; then continue; fi
         if under_pane "$p" "$pane"; then kill -TERM "$p" 2>/dev/null; fi
     done
 }
@@ -158,6 +171,7 @@ hold_loop() {   # hold_loop <token>
     trap '' PIPE                                                # a control client that is gone must not end the loop
     delay="$(printf '%d.%03d' $((PTT_INTERVAL / 1000)) $((PTT_INTERVAL % 1000)))"
     find_recorders; old=" ${REC_PIDS[*]} "
+    printf '%s\n' "${REC_PIDS[@]}" > "$SESSION_OLD"
     mkfifo "$nap" || return 0
     exec 3<> "$nap"
     rm -f "$nap"
@@ -181,9 +195,10 @@ hold_loop() {   # hold_loop <token>
         read -r -t "$delay" -u 3 _ || true
     done
     if [ -n "${TM_PID:-}" ]; then kill "$TM_PID" 2>/dev/null; fi
-    : > "$KEYS_END"
     cur=""; read -r cur < "$PIDFILE" 2>/dev/null || true
-    if [ "$cur" = "$token" ]; then rm -f "$PIDFILE"; fi
+    # ended by itself (recorder gone, no recorder, PTT_MAX): its last key is now. Ended by `stop`: that wrote the time, and
+    # no key went out after it (the token is checked before every key; during the warmup the loop only waits)
+    if [ "$cur" = "$token" ]; then rm -f "$PIDFILE"; : > "$KEYS_END"; fi
     return 0
 }
 
@@ -214,7 +229,7 @@ active() {
 do_start() {
     mkdir -p "$STATE"
     active && return 0
-    if [ "$MODE" = hold ]; then end_left_recorders; fi   # tap: a recording started by hand may run, the press ends it
+    if [ "$MODE" = hold ]; then end_left_recorders; rm -f "$SESSION_RECS" "$SESSION_OLD"; fi   # tap: a recording started by hand may run, the press ends it
     press || return 0            # no such window: nothing to do
     if [ "$MODE" = hold ]; then
         local token="$$.$RANDOM.$SECONDS"
@@ -228,8 +243,17 @@ do_start() {
 
 do_stop() {
     if [ "$MODE" = hold ]; then
+        hold_alive && [ -r "$SESSION_OLD" ] || { rm -f "$PIDFILE"; return 0; }   # no session of ptt: nothing to look after
         rm -f "$PIDFILE"         # the repeater sees this at its next round and ends
-        mkdir -p "$STATE"; : > "$KEYS_END"
+        : > "$KEYS_END"
+        # a recorder of this session that Claude Code leaves behind at this stop would keep the microphone on: once no key
+        # came for 3 s (and no new start), end it. Only the recorders new since the session started, as they are at this
+        # stop (hold.recs): a recording started by hand (Alt+K) after the stop stays.
+        session_recorders > "$SESSION_RECS"
+        ( sleep 3.5; active && exit 0
+          mapfile -t recs < "$SESSION_RECS" 2>/dev/null || exit 0
+          [ "${#recs[@]}" -gt 0 ] && end_left_recorders "${recs[@]}" ) </dev/null >/dev/null 2>&1 &
+        disown 2>/dev/null || true
     else
         tap_active && press
         rm -f "$FLAG"
