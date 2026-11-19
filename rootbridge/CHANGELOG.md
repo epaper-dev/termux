@@ -2,7 +2,19 @@
 
 ## 2.1.2-dev (unreleased)
 
-The microphone goes off after a push-to-talk stop; Termux without clang.
+Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
+
+### Added
+* **Reading aloud (part of `--voice`).** `setup-guest.sh` installs Piper (pip `piper-tts` in a venv, `/opt/piper`) and the voice
+  `de_DE-kerstin-medium`; `python3-venv` comes from apt when the guest cannot make a venv. `install-guest.sh` installs
+  `guest/claude/speak.py` and `rootbridge-speak` and adds two hooks to the managed settings: Stop reads `last_assistant_message` aloud
+  (without code blocks, tables, URLs and Markdown marks, in a detached process group, a new answer ends the old one), UserPromptSubmit ends
+  it. The switch is the file `~/.rootbridge/speak-off` (on by default), set with `rootbridge voice speak on|off|toggle|stop|status` and the
+  widgets `tasks/Vorlesen` (toggle, toast) and `tasks/Stopp`. `ptt start` and `ptt toggle` (long press on Home, side key) end what is being
+  read before the microphone starts. Termux ends the player through `speak.pid`, only when that pid really is the player (`speak.py --run`
+  in its command line; the guest can write the file). `--no-voice` removes the command, the hooks and the widgets; Piper stays in the
+  guest. `install.sh` runs `setup-guest.sh` again when Piper or the voice is missing. Tests: `tests/test_speak.py` (new),
+  `tests/test_voice.sh`, `tests/test_ptt.sh`, `tests/test_codex.sh`.
 
 ### Changed
 * **Termux packages without their recommendations.** `install.sh` passes `-o APT::Install-Recommends=false` to `pkg install`. `python`

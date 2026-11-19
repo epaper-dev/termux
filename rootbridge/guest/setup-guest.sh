@@ -8,17 +8,21 @@
 #      agents' shell scripts (the CI of this repository checks them with it)
 #   2. Claude Code with the official installer (only when there is no claude yet)
 #   3. Codex with the official standalone installer (only when there is no codex yet)
+#   4. Piper for the speech output (with Claude Code and voice): pip package piper-tts in a venv (PIPER_DIR) and the
+#      German voice de_DE-kerstin-medium (only what is missing; python3-venv from apt when venv cannot be made)
 # The hooks and Codex plugin declaration are written by install-guest.sh. Claude Code fetches the plugin at
 # session start; setup never invokes `claude plugin ...`.
 # Idempotent: with everything in place it changes nothing and does not touch the network.
 #
 #   setup-guest.sh [--claude yes|no] [--codex yes|no] [--voice yes|no]       (all default to yes)
-#     --voice: sox with the PulseAudio plugin (apt-get), which Claude Code's /voice records through; only with Claude Code
+#     --voice: sox with the PulseAudio plugin (apt-get), which Claude Code's /voice records through, and Piper (step 4),
+#              which reads the answers aloud; only with Claude Code
 #
 #   CLAUDE_INSTALL_URL        installer script of Claude Code (default https://claude.ai/install.sh)
 #   CODEX_INSTALL_URL         installer script of Codex (default https://chatgpt.com/codex/install.sh)
 #   ROOTBRIDGE_GUEST_HOME     home of the guest user (default /root, like install-guest.sh)
 #   ROOTBRIDGE_CA_BUNDLE      certificate bundle to look for (default /etc/ssl/certs/ca-certificates.crt)
+#   PIPER_DIR                 venv of Piper (default /opt/piper; the voices in its voices/)
 
 set -eu
 
@@ -26,6 +30,8 @@ HOME_DIR="${ROOTBRIDGE_GUEST_HOME:-/root}"
 CA_BUNDLE="${ROOTBRIDGE_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 INSTALL_URL="${CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CODEX_URL="${CODEX_INSTALL_URL:-https://chatgpt.com/codex/install.sh}"
+PIPER_DIR="${PIPER_DIR:-/opt/piper}"
+PIPER_VOICE_NAME=de_DE-kerstin-medium   # speak.py reads this voice
 CLAUDE_ON=yes; CODEX_ON=yes; VOICE_ON=yes
 
 say() { printf '%s\n' "$*"; }
@@ -71,6 +77,10 @@ if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
 fi
 if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
     guest_has rec || pkgs="$pkgs sox libsox-fmt-pulse"
+    # Piper goes into a venv; Ubuntu's python3 makes one only with python3-venv (ensurepip)
+    if [ ! -x "$PIPER_DIR/bin/piper" ] && ! python3 -I -c 'import ensurepip' >/dev/null 2>&1; then
+        pkgs="$pkgs python3-venv"
+    fi
 fi
 if [ -n "$pkgs" ]; then
     say "  apt-get install:$pkgs"
@@ -126,5 +136,35 @@ if [ "$CODEX_ON" = yes ]; then
         codex_present \
             || die "Der Codex-Installer lief durch, aber es gibt kein codex ($HOME_DIR/.local/bin/codex)."
         say "  codex installiert: $HOME_DIR/.local/bin/codex"
+    fi
+fi
+
+# ------------------------------------------------------------------ 4. Piper (speech output)
+if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
+    say "== Gast: Piper (Vorlesen)"
+    if [ -x "$PIPER_DIR/bin/piper" ]; then
+        say "  piper ist schon installiert"
+    else
+        say "  pip install piper-tts in $PIPER_DIR"
+        { python3 -m venv "$PIPER_DIR" && "$PIPER_DIR/bin/pip" install -q piper-tts; } \
+            || die "Piper ließ sich nicht installieren (Netz?). Erneut starten: bash install.sh --setup (ohne Sprache: --no-voice)"
+    fi
+    voice="$PIPER_DIR/voices/$PIPER_VOICE_NAME"
+    if [ -s "$voice.onnx" ] && [ -s "$voice.onnx.json" ]; then
+        say "  Stimme $PIPER_VOICE_NAME ist da"
+    else
+        # into a fresh staging folder first (Piper's downloader keeps a partial file it finds), checked, then both moved
+        # into place: an interrupted download never looks like a voice
+        say "  lade die Stimme $PIPER_VOICE_NAME"
+        stage="$PIPER_DIR/voices/.download"
+        rm -rf "$stage"; mkdir -p "$stage"
+        "$PIPER_DIR/bin/python3" -m piper.download_voices --download-dir "$stage" "$PIPER_VOICE_NAME" \
+            && [ -s "$stage/$PIPER_VOICE_NAME.onnx" ] \
+            && "$PIPER_DIR/bin/python3" -I -c 'import json, sys; int(json.load(open(sys.argv[1]))["audio"]["sample_rate"])' \
+                "$stage/$PIPER_VOICE_NAME.onnx.json" \
+            || { rm -rf "$stage"; die "Die Stimme $PIPER_VOICE_NAME ließ sich nicht laden (Netz?). Erneut starten: bash install.sh --setup"; }
+        mv -f "$stage/$PIPER_VOICE_NAME.onnx.json" "$voice.onnx.json"
+        mv -f "$stage/$PIPER_VOICE_NAME.onnx" "$voice.onnx"
+        rm -rf "$stage"
     fi
 fi

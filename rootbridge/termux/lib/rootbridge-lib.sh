@@ -214,3 +214,17 @@ rb_url_host() {
     h="${h%%[/?#]*}"
     printf '%s' "${h%%:*}"
 }
+
+# --- speech output (guest/claude/speak.py) -------------------------------------
+# rb_speak_stop: end what the guest is reading aloud. Its player writes the id of its process group to speak.pid in the
+# bridge directory (no pid namespace under proot). The guest can write there, so the pid only counts when that process is
+# really the player ("speak.py --run"); the same check as player_pid() in speak.py. Only a regular file, read with a time
+# limit: a FIFO there must not hold up `ptt start` before its key.
+rb_speak_stop() {
+    local pid f="$BRIDGE_DIR/speak.pid"
+    [ -f "$f" ] && [ ! -L "$f" ] || return 0
+    pid="$(timeout 1 head -c 16 "$f" 2>/dev/null | tr -d '[:space:]')"
+    [[ "$pid" =~ ^[0-9]{1,9}$ ]] || return 0
+    tr '\0' ' ' < "$RB_PROC_DIR/$pid/cmdline" 2>/dev/null | grep -q 'speak\.py --run' || return 0
+    kill -TERM -- "-$pid" 2>/dev/null || true
+}

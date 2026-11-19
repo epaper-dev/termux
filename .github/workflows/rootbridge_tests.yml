@@ -50,7 +50,7 @@ jobs:
         run: bash tests/test_codex.sh
       - name: ptt, push to talk through a tmux key (hold and tap mode, settings; stub tmux)
         run: bash tests/test_ptt.sh
-      - name: Voice dictation (microphone, PulseAudio, sox, /voice settings) and the side key reader (stubs for pulseaudio / pactl / su / pkg)
+      - name: Voice dictation (microphone, PulseAudio, sox, /voice settings), reading aloud (Piper, switch, widgets) and the side key reader (stubs for pulseaudio / pactl / su / pkg)
         run: bash tests/test_voice.sh
       - name: Guest library of the guest scripts (config reader, update intervals, session helpers; a missing library stops every script)
         run: bash tests/test_guest_lib.sh
@@ -62,5 +62,5 @@ jobs:
           shellcheck -x -S warning \
             install.sh uninstall.sh \
             termux/bin/rootbridge termux/bin/rootbridge-daemon termux/bin/ptt termux/lib/rootbridge-lib.sh \
-            guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude guest/bin/rootbridge-codex guest/bin/rootbridge-update guest/bin/rootbridge-apt \
+            guest/bin/androidsu guest/bin/rootbridge-open guest/bin/rootbridge-claude guest/bin/rootbridge-codex guest/bin/rootbridge-update guest/bin/rootbridge-apt guest/bin/rootbridge-speak \
             guest/install-guest.sh guest/setup-guest.sh tests/*.sh

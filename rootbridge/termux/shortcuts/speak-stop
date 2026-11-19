@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Termux:Widget (tasks/, runs in the background): end what is being read aloud now (reading aloud stays on).
+exec rootbridge voice speak stop

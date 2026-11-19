@@ -316,6 +316,7 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
 | `rootbridge codex-off` / `codex-on` | Notschalter für die Codex-Pre-Commit-Review (Claude Code neu starten) |
 | `ptt start` / `stop` / `toggle` / `status` | Push-to-Talk: drückt im Claude-Code-Fenster eine Taste für `/voice` (siehe unten) |
 | `rootbridge voice start\|stop\|status\|grant` | PulseAudio und Mikrofon für `/voice`; `grant` gibt Termux die Mikrofon-Berechtigung von Android (Root) |
+| `rootbridge voice speak on\|off\|toggle\|stop\|status` | Vorlesen der Antworten an oder aus (`off` beendet auch, was gerade gelesen wird), `stop` nur das Lesen jetzt |
 
 In Claude Code ändert sich nichts: Du sagst, was du willst. Braucht Claude Root, ruft es `androidsu '<befehl>'`
 auf, und du siehst eine Rückfrage mit genau diesem Befehl. Jede Entscheidung steht in `~/.rootbridge/audit.log`.
@@ -341,6 +342,14 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   auf einem Terminal fragt der Installer danach (der Root-Manager meldet sich) und überspringt es, wenn das Mikrofon schon geht; in einem
   Skriptlauf gibt er nur den Hinweis aus. `rootbridge voice grant` holt sie jederzeit, `rootbridge voice status` zeigt PulseAudio und Mikrofon,
   `rootbridge voice start|stop` steuern den Audio-Server von Hand.
+* **Vorlesen**: Claudes Antworten liest **Piper** vor, eine lokale Sprachausgabe ohne Netz (im Gast in `/opt/piper`, Stimme
+  `de_DE-kerstin-medium`). Ein Stop-Hook in den Managed Settings gibt jede Antwort weiter, ohne Codeblöcke, Tabellen und URLs und ohne
+  Markdown-Zeichen; der Ton geht über dasselbe PulseAudio wie das Mikrofon. Eine neue Antwort beendet die alte. Still wird es sofort, wenn du
+  etwas abschickst (UserPromptSubmit-Hook) und wenn `ptt` startet (Home-Langdruck, Seitentaste), sonst nähme das Mikrofon die Stimme auf.
+  Nach der Installation ist das Vorlesen an. Schalten: Widget **Vorlesen** (an/aus, mit Toast; aus beendet auch das laufende Lesen) und
+  Widget **Stopp** (nur jetzt still), beide in `~/.shortcuts/tasks/` (sie laufen im Hintergrund), oder `rootbridge voice speak on|off|toggle|stop`.
+  Im Gast liest `rootbridge-speak "Text"` beliebigen Text vor, `rootbridge-speak --stop` beendet ihn. Eine andere Piper-Stimme: `PIPER_VOICE`
+  (Pfad zur `.onnx`-Datei, die `.onnx.json` daneben). Auf dem A9 braucht Piper etwa so lange, wie der Text dauert; es liefert satzweise.
 
 **Auslöser ohne Root** (die Termux-App dieses Repositorys, `app/`, zeigt Android „Termux push to talk“ an; jeder führt `ptt toggle` aus: ein
 Ereignis, das erste startet das Sprechen, das nächste stoppt es):
@@ -381,7 +390,7 @@ Kurzfassung (Details: [docs/LOGIN.md](docs/LOGIN.md)):
 | Login-Hook (19 Tests: Antwortformen, URL-Regeln, Modi) | — |
 | Installer: Staging-Root, Idempotenz, v1-Migration, Deinstallation | — |
 | Codex neben Claude Code: Installationsoptionen und gespeicherte Wahl, Update-Schritte mit Stempeln und Sperre, tmux-Fenster, `codex-login` / `codex-off` / `status`, die Pre-Commit-Schleife (Stub-`node`) | `codex-login` und das Widget **Codex** auf einem Gerät; `claude plugin update`, `codex update` und `onFailure: "block"` nach einem Absturz des Hooks; `bwrap` auf anderen Geräten |
-| Sprache und Seitentaste: Installationsoptionen und gespeicherte Wahl, `default.pa` (unsere, deine, Update mit Backup), `rootbridge voice`, Einstellungen und Tastenbelegung im Gast ohne deine zu überschreiben, `sox` nur mit Claude Code, Deinstallation (Stubs für `pulseaudio` / `pactl` / `su` / `pkg`) | das Mikrofon mit echter Hardware, `pm grant` mit echtem Root (Magisk-Rückfrage), `sidekey-ptt` an der echten Taste, die Mikrofon-Berechtigung nach einer Neuinstallation von Termux |
+| Sprache und Seitentaste: Installationsoptionen und gespeicherte Wahl, `default.pa` (unsere, deine, Update mit Backup), `rootbridge voice`, Einstellungen und Tastenbelegung im Gast ohne deine zu überschreiben, `sox` und Piper nur mit Claude Code, Vorlesen (Schalter, Stopp eines echten Prozesses, Widgets, Hooks; `tests/test_speak.py` mit Stubs für `piper` / `play`), Deinstallation (Stubs für `pulseaudio` / `pactl` / `su` / `pkg`) | das Mikrofon mit echter Hardware, der Ton von Piper am Lautsprecher, `pm grant` mit echtem Root (Magisk-Rückfrage), `sidekey-ptt` an der echten Taste, die Mikrofon-Berechtigung nach einer Neuinstallation von Termux |
 
 Auf einem Gerät bestätigt (Hisense A9, 04.11.2026): Installer, Farben und Theme, apt-Upgrade, `claude update`, das
 Dateideskriptor-Limit, Widgets, Sitzungsende mit `/exit`, die Root-Rückfrage im Bypass-Modus (der Hook fragte in Claude Code, `androidsu` lief erst nach

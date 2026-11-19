@@ -56,6 +56,11 @@ for n in "Claude" "Claude Neu" "Codex" "Ubuntu" "Claude >_" "Ubuntu >_" "Claude 
         rm -f "$HOME/.shortcuts/$n"
     fi
 done
+for n in "Vorlesen" "Stopp"; do
+    if [ -f "$HOME/.shortcuts/tasks/$n" ] && grep -q 'rootbridge voice speak' "$HOME/.shortcuts/tasks/$n" 2>/dev/null; then
+        rm -f "$HOME/.shortcuts/tasks/$n"
+    fi
+done
 # icons: only the default ones this project installed (an icon you chose stays)
 for name in "Claude" "Claude Neu" "Codex" "Claude >_" "Ubuntu" "Ubuntu >_"; do
     icon="$HOME/.shortcuts/icons/$name.png"

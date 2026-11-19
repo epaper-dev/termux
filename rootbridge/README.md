@@ -287,6 +287,7 @@ a new window.
 | `rootbridge codex-off` / `codex-on` | emergency switch for the Codex pre-commit review (restart Claude Code) |
 | `ptt start` / `stop` / `toggle` / `status` | push to talk: presses a key in the Claude Code window for `/voice` (see below) |
 | `rootbridge voice start\|stop\|status\|grant` | PulseAudio and the microphone for `/voice`; `grant` gives Termux Android's microphone permission (root) |
+| `rootbridge voice speak on\|off\|toggle\|stop\|status` | reading the answers aloud on or off (`off` also ends what is being read), `stop` only ends it now |
 
 Inside Claude Code, nothing changes: ask for what you want. When Claude needs root it runs
 `androidsu '<command>'` and you get a prompt showing exactly that command. Every decision lands in
@@ -313,6 +314,14 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   on a terminal the installer asks for it (your root manager prompts) and skips it when the microphone already works; in a script run it
   prints the hint instead. `rootbridge voice grant` does it any time, `rootbridge voice status` shows PulseAudio and the microphone,
   `rootbridge voice start|stop` run the audio server by hand.
+* **Reading aloud**: **Piper**, a local speech output without network (in the guest in `/opt/piper`, voice `de_DE-kerstin-medium`), reads
+  Claude's answers. A Stop hook in the managed settings hands over every answer, without code blocks, tables, URLs and Markdown marks; the
+  sound goes through the same PulseAudio as the microphone. A new answer ends the old one. It goes quiet at once when you send something
+  (UserPromptSubmit hook) and when `ptt` starts (long press on Home, side key), or the microphone would record the voice. Reading aloud is on
+  after the installation. Switch it with the widget **Vorlesen** (on/off, with a toast; off also ends what is being read) and the widget
+  **Stopp** (quiet now), both in `~/.shortcuts/tasks/` (they run in the background), or `rootbridge voice speak on|off|toggle|stop`. In the
+  guest `rootbridge-speak "text"` reads any text, `rootbridge-speak --stop` ends it. Another Piper voice: `PIPER_VOICE` (path of the `.onnx`
+  file, its `.onnx.json` next to it). On the A9 Piper takes about as long as the text lasts; it delivers sentence by sentence.
 
 **Triggers without root** (the Termux app of this repository, `app/`, shows "Termux push to talk" to Android; each one runs `ptt toggle`: one
 event, the first starts talking, the next stops):
@@ -373,7 +382,7 @@ out for `-p`, `--version` and `--help`.
 | Login hook (19 tests: response shapes, URL rules, modes) | — |
 | Installers: staging root, idempotence, v1 migration, uninstall | — |
 | Codex next to Claude Code: install options and the stored choice, update steps with stamps and lock, tmux windows, `codex-login` / `codex-off` / `status`, the pre-commit review loop (stub `node`) | `codex-login` and the **Codex** widget on a device; `claude plugin update`, `codex update` and `onFailure: "block"` after a crash of the hook; `bwrap` on other devices |
-| Voice and side key: install options and the stored choice, `default.pa` (ours, yours, update with backup), `rootbridge voice`, the guest settings and key binding without overwriting yours, `sox` only with Claude Code, uninstall (stubs for `pulseaudio` / `pactl` / `su` / `pkg`) | the microphone with real hardware, `pm grant` with real root (Magisk prompt), `sidekey-ptt` on the real key, Android's microphone permission after a new installation of Termux |
+| Voice and side key: install options and the stored choice, `default.pa` (ours, yours, update with backup), `rootbridge voice`, the guest settings and key binding without overwriting yours, `sox` and Piper only with Claude Code, reading aloud (switch, stopping a real process, widgets, hooks; `tests/test_speak.py` with stubs for `piper` / `play`), uninstall (stubs for `pulseaudio` / `pactl` / `su` / `pkg`) | the microphone with real hardware, Piper's sound on the speaker, `pm grant` with real root (Magisk prompt), `sidekey-ptt` on the real key, Android's microphone permission after a new installation of Termux |
 
 Confirmed on a device (Hisense A9, 2026-11-04): installer, colours and theme, apt upgrade, `claude update`, the
 file-descriptor limit, widgets, ending the session with `/exit`, the root prompt in bypass mode (the hook asked inside Claude Code and `androidsu` ran only

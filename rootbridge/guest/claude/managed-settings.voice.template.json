@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@PYTHON@ -I @LIBDIR@/speak.py --hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@PYTHON@ -I @LIBDIR@/speak.py --stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

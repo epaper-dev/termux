@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Termux:Widget (tasks/, runs in the background): reading Claude's answers aloud on or off; off also ends what is being read.
+msg="$(rootbridge voice speak toggle 2>&1)"
+if command -v termux-toast >/dev/null 2>&1; then termux-toast -s "$msg"; fi

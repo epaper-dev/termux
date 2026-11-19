@@ -246,6 +246,26 @@ check "ausdruecklich tap gewinnt gegen Claudes hold (je ein Druck)"      2 "$(pr
 check "PTT_MODE=auto steht in der Konfig"                                auto "$(printf 'PTT_MODE=auto\n' > "$CONF"; . "$LIB"; ROOTBRIDGE_CONFIG="$CONF" rb_load_config; echo "$PTT_MODE")"
 rm -f "$PTT_CLAUDE_SETTINGS"
 
+# ------------------------------------------------------------------ reading aloud ends before the microphone starts
+# the player of the guest (speak.py --run) is stood in for by a process group leader with that command line; its pid in speak.pid
+export BRIDGE_DIR="$T/bridge"; mkdir -p "$BRIDGE_DIR"
+player() {
+    setsid bash -c 'exec -a "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run" sleep 30' < /dev/null > /dev/null 2>&1 &
+    echo $! > "$BRIDGE_DIR/speak.pid"; sleep 0.3
+}
+alive() { kill -0 "$(cat "$BRIDGE_DIR/speak.pid")" 2>/dev/null && echo laeuft || echo beendet; }
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\nPTT_MODE=hold\n' > "$CONF"; player
+runptt start; sleep 0.3
+check "hold: start beendet das Vorlesen"                  beendet "$(alive)"
+runptt stop; sleep 0.2
+reset; printf 'PTT_MODE=tap\n' > "$CONF"; player
+runptt toggle
+check "tap: toggle (Home-Langdruck) beendet das Vorlesen" beendet "$(alive)"
+reset; printf 'PTT_MODE=tap\n' > "$CONF"; player
+PTT_TEST_NOWINDOW=1 runptt start
+check "start ohne Fenster beendet das Vorlesen trotzdem"  beendet "$(alive)"
+unset BRIDGE_DIR
+
 # ------------------------------------------------------------------ install
 check "ptt ist ausfuehrbar"                               ja "$([ -x "$PTT" ] && echo ja || echo nein)"
 check "ptt hat den Termux-Shebang-Platz (env bash)"       "#!/usr/bin/env bash" "$(head -n 1 "$PTT")"

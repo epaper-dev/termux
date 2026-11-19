@@ -27,7 +27,9 @@
 #   --root DIR        install below DIR instead of / (staging, tests)
 #   --voice yes|no    voice dictation for Claude Code (default yes; needs Claude Code): ~/.claude/keybindings.json gets
 #                     meta+k = voice:pushToTalk (Chat context; an existing binding for that action stays), and
-#                     ~/.claude/settings.json "voice": {"enabled": true, "mode": "hold"} where you have not set it yet
+#                     ~/.claude/settings.json "voice": {"enabled": true, "mode": "hold"} where you have not set it yet;
+#                     speech output: rootbridge-speak and two hooks in the managed settings (Stop reads Claude's answer
+#                     aloud with Piper, UserPromptSubmit ends it). no removes the command and the hooks again.
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
 #                     (no warning dialog for bypass mode) and, if settings.json has no default mode yet,
 #                     permissions.defaultMode = bypassPermissions (Claude Code starts in bypass mode; every
@@ -402,7 +404,7 @@ PY
 if [ "$UNINSTALL" = 1 ]; then
     say "== Gast: Deinstallation"
     unmerge_managed
-    for f in androidsu rootbridge-open rootbridge-claude rootbridge-codex rootbridge-update rootbridge-apt; do rm -f "$ROOT$BINDIR/$f"; done
+    for f in androidsu rootbridge-open rootbridge-claude rootbridge-codex rootbridge-update rootbridge-apt rootbridge-speak; do rm -f "$ROOT$BINDIR/$f"; done
     [ -L "$ROOT$BINDIR/xdg-open" ] && rm -f "$ROOT$BINDIR/xdg-open"
     rm -rf "$ROOT$LIBDIR" "$ROOT/var/lib/termux-rootbridge"
     # the managed Codex hook: only our block (a requirements.toml of your own stays)
@@ -463,6 +465,13 @@ if [ "$CODEX_ON" = yes ]; then
     put "$SRC/bin/rootbridge-codex" "$BINDIR/rootbridge-codex"
 else
     rm -f "$ROOT$BINDIR/rootbridge-codex"
+fi
+# speech output (part of voice, Claude Code only): reads Claude's answers aloud (Piper, installed by setup-guest.sh)
+if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
+    put "$SRC/claude/speak.py"       "$LIBDIR/speak.py"
+    put "$SRC/bin/rootbridge-speak"  "$BINDIR/rootbridge-speak"
+else
+    rm -f "$ROOT$LIBDIR/speak.py" "$ROOT$BINDIR/rootbridge-speak"
 fi
 # rootbridge-hook.py hands the refusals of the Termux daemon to the agent that asked (Claude Code and Codex)
 put "$SRC/claude/rootbridge-hook.py" "$LIBDIR/rootbridge-hook.py"
@@ -697,6 +706,7 @@ mkdir -p "$ROOT$BRIDGE_DIR" 2>/dev/null || say "  Hinweis: $BRIDGE_DIR nicht anl
 if [ "$CLAUDE_ON" = yes ]; then
     templates=("$SRC/claude/managed-settings.template.json")
     [ "$CODEX_ON" = yes ] && templates+=("$SRC/claude/managed-settings.codex.template.json")
+    [ "$VOICE_ON" = yes ] && templates+=("$SRC/claude/managed-settings.voice.template.json")
     mkdir -p "$ROOT$MANAGED_DIR"
     merge_managed "$ROOT$MANAGED" "$ROOT$MANAGED.new.$$" "$PYTHON" "$LIBDIR" "${templates[@]}"
     commit_file "$ROOT$MANAGED.new.$$" "$ROOT$MANAGED"
@@ -704,6 +714,9 @@ if [ "$CLAUDE_ON" = yes ]; then
     if [ "$CODEX_ON" = yes ]; then
         say "  Codex-Review vor dem Commit: Hook in den Managed Settings (Notausgang: rootbridge codex-off)"
         say "  Codex-Plugin: Claude Code lädt codex@openai-codex beim Start automatisch (Netz nötig)."
+    fi
+    if [ "$VOICE_ON" = yes ]; then
+        say "  Vorlesen: Hook in den Managed Settings (an/aus in Termux: rootbridge voice speak on|off)"
     fi
 else
     unmerge_managed

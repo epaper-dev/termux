@@ -14,6 +14,7 @@
 #   rootbridge theme light|dark      Claude Code theme "Auto epaper" follows (tmux hook)
 #   rootbridge voice start|stop|status|grant   microphone for /voice: PulseAudio, source, Android permission
 #   rootbridge voice assistant [on|off|status]   Termux push to talk as Android's digital assistant (long press on Home; root)
+#   rootbridge voice speak [on|off|toggle|stop|status]   reading Claude's answers aloud (off also ends what is being read)
 #   rootbridge daemon-start | daemon-stop
 #   rootbridge version
 
@@ -286,6 +287,24 @@ voice_status() {
     if voice_source; then echo "Mikrofon:      ok ($VOICE_SOURCE)"; else echo "Mikrofon:      FEHLT (rootbridge voice grant, dann voice start)"; fi
 }
 
+# voice_speak <on|off|toggle|stop|status>: the switch for reading aloud is the file speak-off in the bridge directory
+# (the Stop hook in the guest looks for it); on is the default. The guest can write there: off makes the file in Termux'
+# own temp folder and puts it in place with mv -T (replaces a link, also one to a folder, instead of following it); on
+# removes whatever is there.
+voice_speak() {
+    local off="$BRIDGE_DIR/speak-off" tmp
+    case "$1" in
+        on)     rm -f "$off" || die "voice speak on: $off ließ sich nicht entfernen"; echo "Vorlesen: an" ;;
+        off)    mkdir -p "$BRIDGE_DIR" && tmp="$(mktemp)" && mv -fT "$tmp" "$off" \
+                    || { rm -f "${tmp:-}"; die "voice speak off: $off ließ sich nicht anlegen"; }
+                rb_speak_stop; echo "Vorlesen: aus" ;;
+        toggle) if [ -e "$off" ]; then voice_speak on; else voice_speak off; fi ;;
+        stop)   rb_speak_stop ;;
+        status) if [ -e "$off" ]; then echo "Vorlesen: aus"; else echo "Vorlesen: an"; fi ;;
+        *) die "voice speak: on | off | toggle | stop | status" ;;
+    esac
+}
+
 cmd_voice() {
     case "${1:-}" in
         start)  voice_start; voice_status ;;
@@ -293,7 +312,8 @@ cmd_voice() {
         status) voice_status ;;
         grant)  voice_grant ;;
         assistant) voice_assistant "${2:-status}" ;;
-        *) die "voice: start | stop | status | grant | assistant" ;;
+        speak)  voice_speak "${2:-status}" ;;
+        *) die "voice: start | stop | status | grant | assistant | speak" ;;
     esac
 }
 
@@ -349,6 +369,7 @@ cmd_status() {
         echo "Sprache (/voice):"
         voice_status | sed 's/^/  /'
         command -v ptt >/dev/null 2>&1 && echo "  ptt:           ok" || echo "  ptt:           FEHLT"
+        voice_speak status | sed 's/^Vorlesen: /  Vorlesen:      /'
     else
         echo "Sprache:      nicht Teil der Installation (--no-voice)"
     fi
