@@ -103,6 +103,10 @@ class TestPlayer(unittest.TestCase):
         except OSError:
             return None
 
+    def read_log(self):
+        with open(self.log, encoding="utf-8") as fh:
+            return fh.read()
+
     def pidfile(self):
         return os.path.join(self.bridge, "speak.pid")
 
@@ -154,7 +158,7 @@ class TestPlayer(unittest.TestCase):
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, b"", b""))
         time.sleep(0.5)
         self.assertFalse(os.path.exists(self.pidfile()))
-        self.assertIn("Piper fehlt", open(self.log).read())
+        self.assertIn("Piper fehlt", self.read_log())
 
     def test_without_the_voice_the_command_line_says_so(self):
         r = self.run_speak(["Hallo"], PIPER_VOICE=os.path.join(self.tmp.name, "keine.onnx"))
@@ -165,8 +169,8 @@ class TestPlayer(unittest.TestCase):
         self.play = self.stub("play", 'cat > /dev/null; echo "kein PulseAudio" >&2; exit 2\n')
         self.run_speak(["Hallo"])
         self.assertTrue(self.wait_for(lambda: os.path.exists(self.log)), "nichts protokolliert")
-        self.assertTrue(self.wait_for(lambda: "kein PulseAudio" in open(self.log).read()))
-        self.assertIn("piper Exit 0, play Exit 2", open(self.log).read())
+        self.assertTrue(self.wait_for(lambda: "kein PulseAudio" in self.read_log()))
+        self.assertIn("piper Exit 0, play Exit 2", self.read_log())
 
     def test_a_stop_is_not_logged_as_a_failure(self):
         self.run_speak(["lang"], SLOW="1")
