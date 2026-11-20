@@ -65,8 +65,10 @@ cmds = [h for e in pre for h in e.get("hooks", [])]
 codex = [h for h in cmds if "codex-precommit-review.py" in h.get("command", "")]
 hooks = d.get("hooks", {})
 notice = [h for event in hooks.values() for e in event for h in e.get("hooks", []) if "rootbridge-hook.py" in h.get("command", "")]
+# the hook that ends reading aloud (voice, test_voice.sh) is not counted here
+prompt = [e for e in hooks.get("UserPromptSubmit", []) if not any("speak.py" in h.get("command", "") for h in e.get("hooks", []))]
 print("pre=%d codex=%d notice=%d post=%d prompt=%d timeout=%s onFailure=%s" % (
-    len(pre), len(codex), len(notice), len(hooks.get("PostToolUse", [])), len(hooks.get("UserPromptSubmit", [])),
+    len(pre), len(codex), len(notice), len(hooks.get("PostToolUse", [])), len(prompt),
     codex[0].get("timeout") if codex else "-", codex[0].get("onFailure") if codex else "-"))
 PY
 }
@@ -710,6 +712,13 @@ rm -f "$H/.config/termux-rootbridge/config"
 ROOTBRIDGE_GUEST_HOME=/root irun --setup --no-voice
 check "Gast ohne sox, --no-voice: setup-guest.sh läuft nicht" 0 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
 printf '#!/bin/bash\n' > "$GROOT/usr/bin/rec"
+rm -f "$H/.config/termux-rootbridge/config"
+ROOTBRIDGE_GUEST_HOME=/root irun --setup
+check "Gast ohne Piper, Voice an: setup-guest.sh läuft"   1 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
+mkdir -p "$GROOT/opt/piper/bin" "$GROOT/opt/piper/voices"
+printf '#!/bin/bash\n' > "$GROOT/opt/piper/bin/piper"
+echo x > "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx"
+echo x > "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx.json"
 rm -f "$H/.config/termux-rootbridge/config"
 ROOTBRIDGE_GUEST_HOME=/root irun --setup
 check "Gast komplett: setup-guest.sh läuft nicht"          0 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"

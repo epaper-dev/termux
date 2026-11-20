@@ -57,7 +57,10 @@
 #   the guest's ~/.claude/keybindings.json (meta+k = voice:pushToTalk) and "voice": {"enabled": true, "mode": "hold"} in
 #   ~/.claude/settings.json (both only where you have not decided yet), and `ptt` (start / stop). Android's microphone
 #   permission for Termux needs root: on a terminal the installer asks for it (the root manager prompts), otherwise run
-#   `rootbridge voice grant` once. The choice is stored in the Termux config (VOICE).
+#   `rootbridge voice grant` once. Reading aloud belongs to it: Piper with the voice de_DE-kerstin-medium in the guest
+#   (/opt/piper), a Stop hook that reads Claude's answers (without code, tables and URLs) and ends with your next prompt or
+#   `ptt start`, `rootbridge voice speak on|off|toggle|stop` and the widgets "Vorlesen" (on/off) and "Stopp" in
+#   ~/.shortcuts/tasks. Reading aloud is on after the installation. The choice is stored in the Termux config (VOICE).
 # --sidekey / --no-sidekey: the side key of the Hisense A9 as push to talk (hold = record, release = stop): installs sidekey-ptt,
 #   which keeps a root `cat` on /dev/input/event2 running, and starts it with the session. Off by default, stored as SIDEKEY.
 #   Set the long press of the E-Ink app to "Nothing". A bridge until the E-Ink app does it itself.
@@ -523,6 +526,9 @@ if [[ $- == *i* ]] && [ -z "${TMUX:-}" ]; then
 fi
 EOF
 set_block "$HOME/.bashrc" "$TMP_RC"; rm -f "$TMP_RC"
+# Voice dictation (/voice of Claude Code) and reading aloud work only with Claude Code: without it there is nothing to talk to.
+VOICE_ON=no
+if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then VOICE_ON=yes; fi
 if [ "$DO_WIDGETS" = 1 ]; then
     SC="$HOME/.shortcuts"
     mkdir -p "$SC/icons" "$BRIDGE_DIR/backups"
@@ -575,6 +581,16 @@ if [ "$DO_WIDGETS" = 1 ]; then
             say "  Icon: $icon"
         fi
     done
+    # reading aloud (voice): two widgets in tasks/, which Termux:Widget runs in the background (no terminal opens)
+    for pair in "speak:Vorlesen" "speak-stop:Stopp"; do
+        src="${pair%%:*}"; name="${pair#*:}"
+        if [ "$VOICE_ON" = yes ]; then
+            inst "$REPO/termux/shortcuts/$src" "$SC/tasks/$name"
+        elif [ -f "$SC/tasks/$name" ] && grep -q 'rootbridge voice speak' "$SC/tasks/$name" 2>/dev/null; then
+            rm -f "$SC/tasks/$name"
+            say "  Widget entfernt: tasks/$name (Sprache abgewählt)"
+        fi
+    done
 else
     say "  Widgets übersprungen (--no-widgets)"
 fi
@@ -582,9 +598,6 @@ if [ "$DO_BOOT" = 1 ] && [ -d "$HOME/.termux/boot" ]; then
     inst "$REPO/termux/boot/10-rootbridge.sh" "$HOME/.termux/boot/10-rootbridge.sh"
 fi
 
-# Voice dictation (/voice of Claude Code) works only with Claude Code: without it there is nothing to talk to.
-VOICE_ON=no
-if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then VOICE_ON=yes; fi
 say "== Sprache (/voice) und Seitentaste"
 if [ "$VOICE_ON" = yes ]; then
     # PulseAudio in Termux: the guest records from it (sox in the guest, PULSE_SERVER=127.0.0.1)
@@ -715,6 +728,9 @@ if [ "$DO_GUEST" = 1 ]; then
         fi
         if [ "$VOICE_ON" = yes ]; then
             [ -e "$GROOT/usr/bin/rec" ] || return 1      # sox: Claude Code records through it
+            [ -e "$GROOT/opt/piper/bin/piper" ] || return 1   # Piper reads the answers aloud
+            [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx" ] || return 1
+            [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx.json" ] || return 1
         fi
         if [ "$USE_CLAUDE" = yes ] && [ "$USE_CODEX" = yes ]; then
             { [ -e "$GROOT/usr/bin/node" ] || [ -e "$GROOT/usr/bin/nodejs" ]; } || return 1
@@ -783,6 +799,7 @@ if [ "$USE_CODEX" = yes ] && [ "$USE_BYPASS" = yes ]; then
 fi
 if [ "$VOICE_ON" = yes ]; then
     say "Sprache: /voice in Claude Code (Modus hold, Alt+K); 'ptt start' / 'ptt stop' halten die Taste für dich (rootbridge voice status prüft das Mikrofon)."
+    say "Vorlesen: Claudes Antworten liest Piper vor; aus/an mit dem Widget 'Vorlesen' oder 'rootbridge voice speak off|on', sofort still mit 'Stopp' oder einem Start von ptt."
     if [ "$USE_SIDEKEY" = yes ]; then
         say "Seitentaste: Langdruck = aufnehmen, loslassen = stoppen. In den E-Ink-Einstellungen den Langdruck auf 'Nothing' stellen."
     fi

@@ -169,6 +169,71 @@ check "voice assistant: unbekannter Befehl"               "1 1" "$RC $(count "$T
 rb bash "$T/bin/rootbridge" voice nope
 check "voice: unbekannter Befehl"                         "1 1" "$RC $(count "$T/out.txt" 'voice: start')"
 
+# speak: the switch for reading aloud (the file speak-off in the bridge directory) and stopping the player of the guest
+rm -rf "$BRIDGE_DIR"
+rb bash "$T/bin/rootbridge" voice speak
+check "voice speak (status): standardmäßig an"            "0 Vorlesen: an" "$RC $(cat "$T/out.txt")"
+rb bash "$T/bin/rootbridge" voice speak off
+check "voice speak off: Schalterdatei, Meldung"           "0 ja Vorlesen: aus" "$RC $(has "$BRIDGE_DIR/speak-off") $(cat "$T/out.txt")"
+rb bash "$T/bin/rootbridge" voice speak toggle
+check "voice speak toggle (aus): wieder an"               "nein Vorlesen: an" "$(has "$BRIDGE_DIR/speak-off") $(cat "$T/out.txt")"
+rb bash "$T/bin/rootbridge" voice speak toggle
+check "voice speak toggle (an): aus"                      "ja Vorlesen: aus" "$(has "$BRIDGE_DIR/speak-off") $(cat "$T/out.txt")"
+rb bash "$T/bin/rootbridge" voice speak status
+check "voice speak status: aus"                           "Vorlesen: aus" "$(cat "$T/out.txt")"
+rb bash "$T/bin/rootbridge" status
+check "status zeigt den Schalter fürs Vorlesen"           1 "$(count "$T/out.txt" '^  Vorlesen: *aus$')"
+rb bash "$T/bin/rootbridge" voice speak on
+check "voice speak on: Schalterdatei weg"                 "nein Vorlesen: an" "$(has "$BRIDGE_DIR/speak-off") $(cat "$T/out.txt")"
+# the guest can write the bridge directory: a link there must not let `off` write into a file of Termux
+echo wertvoll > "$T/termux-datei"; ln -s "$T/termux-datei" "$BRIDGE_DIR/speak-off"
+rb bash "$T/bin/rootbridge" voice speak off
+check "voice speak off über einem Link: Ziel unberührt, Schalter ist eine eigene Datei" "0 wertvoll ja nein" \
+    "$RC $(cat "$T/termux-datei") $([ -f "$BRIDGE_DIR/speak-off" ] && echo ja || echo nein) $([ -L "$BRIDGE_DIR/speak-off" ] && echo ja || echo nein)"
+rb bash "$T/bin/rootbridge" voice speak on
+mkdir -p "$T/boot"; ln -s "$T/boot" "$BRIDGE_DIR/speak-off"
+rb bash "$T/bin/rootbridge" voice speak off
+check "voice speak off über einem Link auf einen Ordner: nichts landet darin" "0 0 ja" \
+    "$RC $(find "$T/boot" -mindepth 1 | wc -l | tr -d ' ') $([ -f "$BRIDGE_DIR/speak-off" ] && [ ! -L "$BRIDGE_DIR/speak-off" ] && echo ja || echo nein)"
+rb bash "$T/bin/rootbridge" voice speak on
+# a FIFO in place of speak.pid must not hold up a stop (ptt start runs it before its key)
+mkfifo "$BRIDGE_DIR/speak.pid"
+s=$SECONDS; rb bash "$T/bin/rootbridge" voice speak stop
+check "voice speak stop: eine FIFO als speak.pid hält nicht auf" "0 ja" "$RC $([ $((SECONDS - s)) -le 2 ] && echo ja || echo nein)"
+rm -f "$BRIDGE_DIR/speak.pid"
+rb bash "$T/bin/rootbridge" voice speak nope
+check "voice speak: unbekannter Befehl"                   "1 1" "$RC $(count "$T/out.txt" 'voice speak: on')"
+# a stand-in for the player of the guest: a process group leader whose command line says "speak.py --run"
+player() {   # player <argv0>: starts it, its pid in $PLAYER
+    setsid bash -c 'exec -a "$1" sleep 30' _ "$1" < /dev/null > /dev/null 2>&1 &
+    PLAYER=$!
+    sleep 0.3
+}
+alive() { kill -0 "$1" 2>/dev/null && echo läuft || echo beendet; }
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
+rb bash "$T/bin/rootbridge" voice speak stop
+sleep 0.3
+check "voice speak stop: beendet den Abspieler, Exit 0"  "0 beendet" "$RC $(alive "$PLAYER")"
+player "sleep-ohne-kennung"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
+rb bash "$T/bin/rootbridge" voice speak stop
+sleep 0.3
+check "voice speak stop: ein fremder Prozess in speak.pid bleibt" "0 läuft" "$RC $(alive "$PLAYER")"
+kill "$PLAYER" 2>/dev/null
+echo "1; rm -rf /" > "$BRIDGE_DIR/speak.pid"
+rb bash "$T/bin/rootbridge" voice speak stop
+check "voice speak stop: Unsinn in speak.pid ist harmlos" 0 "$RC"
+rm -f "$BRIDGE_DIR/speak.pid"
+rb bash "$T/bin/rootbridge" voice speak stop
+check "voice speak stop ohne Abspieler: Exit 0"           0 "$RC"
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
+rb bash "$T/bin/rootbridge" voice speak off
+sleep 0.3
+check "voice speak off: beendet auch, was gerade gelesen wird" beendet "$(alive "$PLAYER")"
+rb bash "$T/bin/rootbridge" voice speak on
+
 # the command line of `rootbridge help` and `status`
 rb bash "$T/bin/rootbridge" help
 check "help nennt voice start|stop|status|grant"          1 "$(count "$T/out.txt" 'rootbridge voice start|stop|status|grant')"
@@ -238,6 +303,20 @@ check "install.sh: nichts über VOICE/SIDEKEY gespeichert"  "" "$(iget VOICE)$(i
 check "install.sh: nicht auf einem Terminal: Hinweis auf rootbridge voice grant" 1 "$(count "$T/install.log" 'rootbridge voice grant')"
 check "install.sh: nicht auf einem Terminal: kein Root-Befehl" 0 "$(count "$ILOG" '^rootbridge voice')"
 check "install.sh: Abschlussmeldung nennt /voice und ptt"  1 "$(count "$T/install.log" "^Sprache: /voice.*ptt start")"
+check "install.sh: Abschlussmeldung nennt das Vorlesen"    1 "$(count "$T/install.log" "^Vorlesen: .*rootbridge voice speak")"
+check "install.sh: Widgets Vorlesen und Stopp in tasks/ (Hintergrund)" "ja ja" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
+check "install.sh: Widget Vorlesen schaltet um, Stopp stoppt" "1 1" "$(count "$H/.shortcuts/tasks/Vorlesen" '^msg="$(rootbridge voice speak toggle') $(count "$H/.shortcuts/tasks/Stopp" '^exec rootbridge voice speak stop$')"
+check "install.sh: Gast hat speak.py und rootbridge-speak" "ja ja" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak")"
+check "install.sh: Gast-Hooks Stop (vorlesen) und UserPromptSubmit (stoppen)" "1 1" "$(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --hook') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --stop')"
+irun --no-voice
+check "install.sh --no-voice: Widgets Vorlesen und Stopp entfernt" "nein nein" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
+check "install.sh --no-voice: Gast ohne Vorlesen"          "nein nein 0" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak") $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py')"
+printf '#!/bin/sh\necho mine\n' > "$H/.shortcuts/tasks/Stopp"
+irun --no-voice
+check "install.sh --no-voice: ein eigenes Widget Stopp bleibt" ja "$(has "$H/.shortcuts/tasks/Stopp")"
+rm -f "$H/.shortcuts/tasks/Stopp"
+irun --voice
+check "install.sh --voice: Widgets wieder da"              "ja ja" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
 check "install.sh: keine Backup-Datei bei der ersten Installation" 0 "$(baks "$H/.config/pulse/*bak*")"
 
 irun
@@ -362,6 +441,12 @@ check "Gast frisch: läuft"                                 0 "$GRC"
 check "Gast frisch: keybindings.json mit meta+k"           '{"$schema": "https://www.schemastore.org/claude-code-keybindings.json", "bindings": [{"bindings": {"meta+k": "voice:pushToTalk"}, "context": "Chat"}]}' "$(kb "$GA/root/.claude/keybindings.json")"
 check "Gast frisch: .bashrc setzt PULSE_COOKIE (Cookie im Termux-Home)" 1 "$(count "$GA/root/.bashrc" '^\[ -r /data/data/com.termux/files/home/.config/pulse/cookie \] && export PULSE_COOKIE=')"
 check "Gast frisch: voice in settings.json"                '{"enabled": true, "mode": "hold"}' "$(sv "$GA")"
+MS="$GA/etc/claude-code/managed-settings.json"
+hookcmd() { python3 -I -c "import json,sys; print(' '.join(h['command'] for e in json.load(open(sys.argv[1])).get('hooks',{}).get(sys.argv[2],[]) for h in e['hooks'] if 'speak.py' in h['command']))" "$1" "$2"; }
+check "Gast frisch: Stop-Hook liest vor (mit Marker für die Deinstallation)" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --hook" "$(hookcmd "$MS" Stop)"
+check "Gast frisch: UserPromptSubmit-Hook stoppt das Vorlesen" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --stop" "$(hookcmd "$MS" UserPromptSubmit)"
+check "Gast frisch: speak.py und rootbridge-speak"         "ja ja" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak")"
+check "Gast frisch: rootbridge-speak mit dem Python des Gasts" 1 "$(count "$GA/usr/local/bin/rootbridge-speak" '^exec /usr/bin/python3 -I .*/usr/local/lib/termux-rootbridge/speak.py')"
 KBSUM="$(cksum < "$GA/root/.claude/keybindings.json")"; SSUM="$(cksum < "$GA/root/.claude/settings.json")"
 gi "$GA" --claude yes --codex no
 check "Gast zweimal: keybindings.json unverändert"         "$KBSUM" "$(cksum < "$GA/root/.claude/keybindings.json")"
@@ -399,6 +484,13 @@ GF="$T/gf"; rm -rf "$GF"; mkdir -p "$GF"
 gi "$GF" --claude yes --codex no --voice no
 check "Gast --voice no: .bashrc ohne PULSE_COOKIE"         0 "$(count "$GF/root/.bashrc" 'PULSE_COOKIE')"
 check "Gast --voice no: keine Tastenbelegung, kein voice" "nein null" "$(has "$GF/root/.claude/keybindings.json") $(sv "$GF")"
+check "Gast --voice no: kein Vorlesen (Programm, Hooks)"   "nein nein 0" "$(has "$GF/usr/local/lib/termux-rootbridge/speak.py") $(has "$GF/usr/local/bin/rootbridge-speak") $(count "$GF/etc/claude-code/managed-settings.json" 'speak.py')"
+gi "$GA" --claude yes --codex no --voice no
+check "Gast erst mit, dann --voice no: Vorlesen wieder weg" "nein nein 0" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak") $(count "$MS" 'speak.py')"
+check "Gast --voice no: die Hooks von rootbridge bleiben"  2 "$(count "$MS" 'rootbridge-hook.py')"
+gi "$GA" --claude yes --codex no
+gi "$GA" --uninstall
+check "Gast deinstalliert: Vorlesen weg"                   "nein nein" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak")"
 GG="$T/gg"; rm -rf "$GG"; mkdir -p "$GG"
 gi "$GG" --claude no --codex yes
 check "Gast ohne Claude Code: keine Tastenbelegung"        nein "$(has "$GG/root/.claude/keybindings.json")"
@@ -417,15 +509,24 @@ for c in python3 curl shellcheck; do printf '#!/bin/bash\nexit 0\n' > "$T/gstubs
 printf '#!/bin/bash\nexit 0\n' > "$T/gstubs/git"
 chmod +x "$T/gstubs"/*
 mkdir -p "$T/gbin"
-for c in bash sh mktemp rm ls timeout cat sed tr head tail dirname basename env mkdir; do
+for c in bash sh mktemp rm ls timeout cat sed tr head tail dirname basename env mkdir chmod mv; do
     p="$(command -v "$c")" && ln -sf "$p" "$T/gbin/$c"
 done
 mkdir -p "$T/ghome/.local/bin"; printf '#!/bin/bash\nexit 0\n' > "$T/ghome/.local/bin/claude"; chmod +x "$T/ghome/.local/bin/claude"
 printf 'x' > "$T/ca.crt"
+# Piper: present (a venv with piper and the voice) unless a test removes it; never the real /opt/piper
+PIPER="$T/piper"
+piper_present() {
+    mkdir -p "$PIPER/bin" "$PIPER/voices"
+    printf '#!/bin/bash\nexit 0\n' > "$PIPER/bin/piper"; chmod +x "$PIPER/bin/piper"
+    echo x > "$PIPER/voices/de_DE-kerstin-medium.onnx"; echo x > "$PIPER/voices/de_DE-kerstin-medium.onnx.json"
+}
+piper_present
 gs() {   # gs [args]: setup-guest.sh with everything present except what the test removes
     : > "$ILOG"
     env -i PATH="$T/gstubs:$T/gbin" HOME="$T/ghome" ROOTBRIDGE_GUEST_HOME="$T/ghome" ROOTBRIDGE_CA_BUNDLE="$T/ca.crt" STUB_LOG="$ILOG" \
-        bash "$SETUP" "$@" > "$T/setup.log" 2>&1
+        PIPER_DIR="$PIPER" STUB_PIPER="$PIPER" STUB_ENSUREPIP="${STUB_ENSUREPIP:-0}" STUB_PIP_RC="${STUB_PIP_RC:-0}" \
+        STUB_VOICE_RC="${STUB_VOICE_RC:-0}" bash "$SETUP" "$@" > "$T/setup.log" 2>&1
     SRC_RC=$?
 }
 gs --codex no
@@ -440,14 +541,68 @@ check "setup-guest: rec ist da, kein apt für sox"          0 "$(count "$ILOG" '
 rm -f "$T/gstubs/rec"
 gs --codex no --voice maybe
 check "setup-guest --voice maybe: abgelehnt"               1 "$SRC_RC"
+printf '#!/bin/bash\nexit 0\n' > "$T/gstubs/rec"; chmod +x "$T/gstubs/rec"
+gs --codex no
+check "setup-guest: Piper und Stimme da, nichts zu tun"   "0 0 1" "$SRC_RC $(count "$ILOG" '.') $(count "$T/setup.log" 'piper ist schon installiert')"
+# no Piper: a venv, pip install piper-tts, then the voice. python3 is a stub: ensurepip as STUB_ENSUREPIP says, -m venv makes pip and python3
+cat > "$T/gstubs/python3" <<'EOF'
+#!/bin/bash
+echo "python3 $*" >> "$STUB_LOG"
+case "$*" in
+    *"import ensurepip"*) exit "${STUB_ENSUREPIP:-0}" ;;
+    "-m venv "*) mkdir -p "$3/bin"
+        printf '#!/bin/bash\necho "pip $*" >> "$STUB_LOG"\nprintf "#!/bin/bash\\n" > "$STUB_PIPER/bin/piper"; chmod +x "$STUB_PIPER/bin/piper"\nexit "${STUB_PIP_RC:-0}"\n' > "$3/bin/pip"
+        cat > "$3/bin/python3" <<'VPY'
+#!/bin/bash
+echo "venv-python3 $*" >> "$STUB_LOG"
+# the downloader: both files into --download-dir ($4), a partial model and no .json with STUB_VOICE_RC
+if [ "$2" = piper.download_voices ]; then
+    if [ "${STUB_VOICE_RC:-0}" = 0 ]; then echo model > "$4/$5.onnx"; echo '{"audio": {"sample_rate": 22050}}' > "$4/$5.onnx.json"
+    else echo teil > "$4/$5.onnx"; exit 1; fi
+fi
+exit 0
+VPY
+        chmod +x "$3/bin/pip" "$3/bin/python3" ;;
+esac
+exit 0
+EOF
+chmod +x "$T/gstubs/python3"
+rm -rf "$PIPER"
+gs --codex no
+check "setup-guest ohne Piper: venv, pip install piper-tts" "0 1 1" "$SRC_RC $(count "$ILOG" "^python3 -m venv $PIPER$") $(count "$ILOG" '^pip install -q piper-tts$')"
+check "setup-guest ohne Piper: lädt die Stimme kerstin-medium in einen Zwischenordner" 1 "$(count "$ILOG" "^venv-python3 -m piper.download_voices --download-dir $PIPER/voices/.download de_DE-kerstin-medium$")"
+check "setup-guest: die Stimme liegt danach an ihrem Platz, ohne Zwischenordner" "ja ja nein" "$(has "$PIPER/voices/de_DE-kerstin-medium.onnx") $(has "$PIPER/voices/de_DE-kerstin-medium.onnx.json") $(has "$PIPER/voices/.download")"
+check "setup-guest: venv geht (ensurepip da): kein apt"   0 "$(count "$ILOG" '^apt-get')"
+rm -rf "$PIPER"
+gs --codex no --voice no
+check "setup-guest --voice no: kein Piper"                 "0 0" "$SRC_RC $(count "$ILOG" 'venv')"
+gs --claude no --codex yes
+check "setup-guest ohne Claude Code: kein Piper"           0 "$(count "$ILOG" 'venv')"
+STUB_ENSUREPIP=1 gs --codex no
+check "setup-guest ohne ensurepip: apt-get install python3-venv" 1 "$(count "$ILOG" '^apt-get install -y --no-install-recommends python3-venv$')"
+rm -rf "$PIPER"
+STUB_PIP_RC=1 gs --codex no
+check "setup-guest: pip scheitert, Fehler mit Hinweis"     "1 1" "$SRC_RC $(count "$T/setup.log" 'Piper ließ sich nicht installieren')"
+rm -rf "$PIPER"
+STUB_VOICE_RC=1 gs --codex no
+check "setup-guest: Stimme scheitert, Fehler mit Hinweis"  "1 1" "$SRC_RC $(count "$T/setup.log" 'Stimme de_DE-kerstin-medium ließ sich nicht laden')"
+check "setup-guest: ein halber Download gilt nicht als Stimme" "nein nein" "$(has "$PIPER/voices/de_DE-kerstin-medium.onnx") $(has "$PIPER/voices/.download")"
+printf '#!/bin/bash\nexit 0\n' > "$T/gstubs/python3"; chmod +x "$T/gstubs/python3"
+rm -f "$T/gstubs/rec"; piper_present
 
 # =========================================================================== 7. uninstall.sh
 H2="$T/uh"; P2="$T/up"; mkdir -p "$H2/.config/pulse" "$P2/bin"
 printf '#!/bin/sh\n# sidekey-ptt\n' > "$P2/bin/sidekey-ptt"
 printf '# termux-rootbridge voice: x\n' > "$H2/.config/pulse/default.pa"
 run_un() { : > "$ILOG"; STUB_LOG="$ILOG" HOME="$H2" PREFIX="$P2" PATH="$T/istubs:$PATH" bash "$UNINSTALL" --no-guest > "$T/uninstall.log" 2>&1; }
+mkdir -p "$H2/.shortcuts/tasks"
+cp "$ROOT/termux/shortcuts/speak" "$H2/.shortcuts/tasks/Vorlesen"; cp "$ROOT/termux/shortcuts/speak-stop" "$H2/.shortcuts/tasks/Stopp"
 run_un
 check "uninstall: sidekey-ptt weg, Leser beendet"          "nein 1" "$(has "$P2/bin/sidekey-ptt") $(count "$ILOG" '^pkill -f sidekey-ptt')"
+check "uninstall: Widgets Vorlesen und Stopp weg"          "nein nein" "$(has "$H2/.shortcuts/tasks/Vorlesen") $(has "$H2/.shortcuts/tasks/Stopp")"
+printf '#!/bin/sh\necho mine\n' > "$H2/.shortcuts/tasks/Stopp"
+run_un
+check "uninstall: ein eigenes Widget Stopp bleibt"         ja "$(has "$H2/.shortcuts/tasks/Stopp")"
 check "uninstall: unsere default.pa weg"                   nein "$(has "$H2/.config/pulse/default.pa")"
 printf '# my own\n' > "$H2/.config/pulse/default.pa"
 printf '#!/bin/sh\necho mine\n' > "$P2/bin/sidekey-ptt"
