@@ -297,11 +297,11 @@ check "voice speak stop: eine FIFO als speak.pid hält nicht auf" "0 ja" "$RC $(
 rm -f "$BRIDGE_DIR/speak.pid"
 rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak nope
 check "voice speak: unbekannter Befehl"                   "1 1" "$RC $(count "$T/out.txt" 'voice speak: on')"
-# first | all: the scope (the file speak-first; the hook reads only the first sentence)
+# first | all: the scope (the file speak-first; the hook reads only the short version)
 rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak first
-check "voice speak first: Schalterdatei, Meldung"          "0 ja Vorlesen: nur der erste Satz" "$RC $(has "$BRIDGE_DIR/speak-first") $(cat "$T/out.txt")"
+check "voice speak first: Schalterdatei, Meldung"          "0 ja Vorlesen: nur die Kurzfassung" "$RC $(has "$BRIDGE_DIR/speak-first") $(cat "$T/out.txt")"
 rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak status
-check "voice speak status: an, nur der erste Satz"         "Vorlesen: an, nur der erste Satz" "$(cat "$T/out.txt")"
+check "voice speak status: an, nur die Kurzfassung"        "Vorlesen: an, nur die Kurzfassung" "$(cat "$T/out.txt")"
 rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak toggle
 check "voice speak toggle: aus, der Umfang bleibt"         "ja Vorlesen: aus" "$(has "$BRIDGE_DIR/speak-first") $(cat "$T/out.txt")"
 rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak on

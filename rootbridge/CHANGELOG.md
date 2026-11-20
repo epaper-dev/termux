@@ -29,6 +29,9 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
 
 ### Changed
+* **`rootbridge voice speak first` reads a short version instead of one sentence.** The first paragraph of an answer, at most three
+  sentences, and the last question of the answer when it stands further down: one sentence was too little to work with, and a question
+  at the end was never heard. The messages say "nur die Kurzfassung". Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
 * **The root dialog no longer shows the deadline as a clock time.** The countdown in the title says the same; the text is the command
   only. With a stock Termux:API (no countdown) the dialog says nothing about the deadline. Tests: `tests/test_daemon.sh`.
 * **`/voice` is set up in `tap` mode instead of `hold`.** `tap` fits both triggers: the side key starts on press and sends on release, the

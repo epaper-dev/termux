@@ -353,7 +353,7 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   etwas abschickst (UserPromptSubmit-Hook) und wenn `ptt` startet (Home-Langdruck, Seitentaste), sonst nähme das Mikrofon die Stimme auf.
   Nach der Installation ist das Vorlesen an. Schalten: Widget **Vorlesen** (an/aus, mit Toast; aus beendet auch das laufende Lesen) und
   Widget **Stopp** (nur jetzt still), beide in `~/.shortcuts/tasks/` (sie laufen im Hintergrund), oder `rootbridge voice speak on|off|toggle|stop`.
-  `rootbridge voice speak first` liest nur den ersten Satz jeder Antwort (Datei `~/.rootbridge/speak-first`; den Hinweis an Claude, das
+  `rootbridge voice speak first` liest nur eine Kurzfassung jeder Antwort: den ersten Absatz, höchstens drei Sätze, und die letzte Frage weiter unten (Datei `~/.rootbridge/speak-first`; den Hinweis an Claude, das
   Wichtigste dorthin zu schreiben, gehört in deine `CLAUDE.md`), `all` wieder die ganze Antwort.
   Im Gast liest `rootbridge-speak "Text"` beliebigen Text vor, `rootbridge-speak --stop` beendet ihn. Eine andere Piper-Stimme: `PIPER_VOICE`
   (Pfad zur `.onnx`-Datei, die `.onnx.json` daneben). Auf dem A9 braucht Piper etwa so lange, wie der Text dauert; es liefert satzweise.

@@ -15,7 +15,8 @@
 #   rootbridge voice start|stop|status|grant   microphone for /voice: PulseAudio, source, Android permission
 #   rootbridge voice assistant [on|off|status]   Termux push to talk as Android's digital assistant (long press on Home; root)
 #   rootbridge voice speak [on|off|toggle|stop|first|all|status]   reading Claude's answers aloud (off also ends what is being
-#                        read; first = only the first sentence of an answer, all = the whole answer)
+#                        read; first = a short version: the first paragraph, at most 3 sentences, and the last
+#                        question, all = the whole answer)
 #   rootbridge daemon-start | daemon-stop
 #   rootbridge version
 
@@ -358,7 +359,7 @@ speak_flag() {
 }
 
 # voice_speak: the switches of reading aloud in the bridge directory: speak-off (nothing is read) and speak-first (the hook
-# reads only the first sentence of an answer)
+# reads only a short version of an answer: first paragraph, at most 3 sentences, the last question)
 voice_speak() {
     local off="$BRIDGE_DIR/speak-off" first="$BRIDGE_DIR/speak-first"
     case "$1" in
@@ -366,10 +367,10 @@ voice_speak() {
         off)    speak_flag "$off"; rb_speak_stop; echo "Vorlesen: aus" ;;
         toggle) if [ -e "$off" ]; then voice_speak on; else voice_speak off; fi ;;
         stop)   rb_speak_stop ;;
-        first)  speak_flag "$first"; echo "Vorlesen: nur der erste Satz" ;;
+        first)  speak_flag "$first"; echo "Vorlesen: nur die Kurzfassung" ;;
         all)    rm -f "$first" || die "voice speak all: $first ließ sich nicht entfernen"; echo "Vorlesen: die ganze Antwort" ;;
         status) if [ -e "$off" ]; then echo "Vorlesen: aus"
-                elif [ -e "$first" ]; then echo "Vorlesen: an, nur der erste Satz"
+                elif [ -e "$first" ]; then echo "Vorlesen: an, nur die Kurzfassung"
                 else echo "Vorlesen: an"; fi ;;
         *) die "voice speak: on | off | toggle | stop | first | all | status" ;;
     esac

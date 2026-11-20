@@ -11,7 +11,8 @@ the PreToolUse hook; a new text ends the one still being read.
   speak.py [TEXT...]  read TEXT, or stdin, aloud (also when the switch is off)
 
 What is read: the text without code blocks, tables, URLs and Markdown marks. With the file speak-first in the bridge
-directory (`rootbridge voice speak first|all`) the hooks read only the first sentence of an answer or note.
+directory (`rootbridge voice speak first|all`) the hooks read only a short version of an answer or note: its first paragraph,
+at most SUMMARY_SENTENCES sentences, and the last question of the text when it stands further down.
 --progress remembers the id of the note it read in speak-progress, so each note is read once.
 The switch: the file speak-off in the bridge directory (Termux and the guest both see it; `rootbridge voice speak
 on|off|toggle` in Termux, the widget "Vorlesen"). The player runs in its own process group, its id in speak.pid next to
@@ -61,6 +62,7 @@ PREFIX_RE = re.compile(r"^\s*(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s+)?)")
 RULE_RE = re.compile(r"^\s*([-*_]\s*){3,}$")
 SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
 # a dot after these does not end a sentence (lower case, without their dots)
+SUMMARY_SENTENCES = 3
 ABBREVIATIONS = {"z.b", "d.h", "u.a", "bzw", "ca", "usw", "vgl", "ggf", "inkl", "evtl", "etc", "nr", "dr", "bspw", "e.g", "i.e", "vs"}
 
 
@@ -82,18 +84,31 @@ def speakable(text):
     return "\n".join(lines)
 
 
-def first_sentence(text):
-    """The first sentence of a speakable text: its first line (paragraph, heading, list item) up to the first end of a
-    sentence. A dot after a number (\"20. November\"), a single letter or a known abbreviation (\"z. B.\") does not end it."""
-    line = text.split("\n", 1)[0]
+def sentences(line):
+    """The sentences of one line of a speakable text; the rest after the last end of a sentence counts as one.
+    A dot after a number (\"20. November\"), a single letter or a known abbreviation (\"z. B.\") does not end one."""
+    found, begin = [], 0
     for m in SENTENCE_END_RE.finditer(line):
         words = line[:m.start()].split()
         word = words[-1].lower() if words else ""
         if m.group() == "." and (word[-1:].isdigit() or len(word) == 1
                                  or word in ABBREVIATIONS or (words[-2:-1] and words[-2].lower() + word in ABBREVIATIONS)):
             continue
-        return line[:m.end()]
-    return line
+        found.append(line[begin:m.end()].strip())
+        begin = m.end()
+    rest = line[begin:].strip()
+    return found + [rest] if rest else found
+
+
+def summary(text):
+    """The short version of a speakable text: its first line (paragraph, heading, list item), at most SUMMARY_SENTENCES
+    sentences, and the last question of the text when it is not among them (a question at the end must be heard)."""
+    lines = text.split("\n")
+    head = sentences(lines[0])[:SUMMARY_SENTENCES]
+    questions = [s for line in lines for s in sentences(line) if s.endswith("?")]
+    if questions and questions[-1] not in head:
+        head.append(questions[-1])
+    return " ".join(head)
 
 
 def log(message):
@@ -255,7 +270,7 @@ def speak_answer(message):
         return
     text = speakable(message)
     if os.path.exists(FIRST):
-        text = first_sentence(text)
+        text = summary(text)
     start(text)   # the hooks stay silent towards Claude Code: a failure is in the log
 
 
