@@ -46,9 +46,9 @@ class TestSpeakable(unittest.TestCase):
 
 
 class TestSummary(unittest.TestCase):
-    def test_the_first_paragraph_up_to_three_sentences(self):
+    def test_the_whole_first_paragraph(self):
         self.assertEqual(speak.summary("PR #47 ist gemergt. Tests grün.\nZweiter Absatz."), "PR #47 ist gemergt. Tests grün.")
-        self.assertEqual(speak.summary("Eins. Zwei! Drei. Vier.\nMehr."), "Eins. Zwei! Drei.")
+        self.assertEqual(speak.summary("Eins. Zwei! Drei. Vier. Fünf. Sechs.\nMehr."), "Eins. Zwei! Drei. Vier. Fünf. Sechs.")
 
     def test_the_last_question_further_down_is_added(self):
         self.assertEqual(speak.summary("Fertig. Alles grün.\nDetails hier.\nSoll ich A? Oder pushen? Sag Bescheid."),
