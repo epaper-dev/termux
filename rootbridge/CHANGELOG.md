@@ -24,6 +24,11 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   C code. Tests: `tests/test_setup.sh`, `tests/test_voice.sh`.
 
 ### Fixed
+* **`install.sh --sidekey` starts the side key reader right away.** Before, it was only installed and started by the next
+  `rootbridge start` / `attach`; with a session already running the side key did nothing. The installer now ends a reader of an
+  earlier install, waits until it is gone (it holds the lock; a new one without it would leave silently), starts the new one and
+  checks that it runs (the root prompt comes once); it says so when the old one stays or the new one ends right away. The closing message no longer says "Modus hold": `ptt`
+  follows the mode of `/voice` (hold or tap). Tests: `tests/test_voice.sh` (a `setsid` stub, so the test never starts the real reader).
 * **Only one PulseAudio.** Seen on the A9: Android's microphone indicator stayed on with no recording, because three PulseAudio
   servers ran (two for 31 hours). `rootbridge voice start` asks `pulseaudio --check`, which only reads the pid file of the runtime folder;
   when that file is gone, the running server is not seen and another one starts. It does not get the port, but loads the microphone
