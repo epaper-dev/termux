@@ -64,7 +64,8 @@ daemon_stop() {
     local pid
     pid="$(daemon_pid)" || return 0
     kill "$pid" 2>/dev/null
-    sleep 0.5
+    # up to 6 s for its cleanup: it gives back the audio focus (a question to Termux:API that is still running first)
+    for _ in $(seq 60); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
     kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
     rm -rf "$BRIDGE_DIR/.lock" "$BRIDGE_DIR/.alive"
 }

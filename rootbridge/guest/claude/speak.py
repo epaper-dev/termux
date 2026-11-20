@@ -49,6 +49,9 @@ OFF = os.path.join(BRIDGE_DIR, "speak-off")
 FIRST = os.path.join(BRIDGE_DIR, "speak-first")
 PIDFILE = os.path.join(BRIDGE_DIR, "speak.pid")
 PROGRESS = os.path.join(BRIDGE_DIR, "speak-progress")
+FOCUS = os.path.join(BRIDGE_DIR, "speak-focus")       # the daemon's answer for the player: "<pid> <answer>"
+ALIVE = os.path.join(BRIDGE_DIR, ".alive")             # the daemon's heartbeat (every round)
+FOCUS_WAIT_SECONDS = 1.5   # a round of the daemon is 0.5 s, its question to Android up to 2 s more
 STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop (--stop here, rb_speak_stop in Termux)
 TAIL_BYTES = 512 * 1024   # the newest note stands near the end of the transcript; the hook runs before every tool call
 WAIT_SECONDS = 2          # how long --progress waits for its tool call (and the note before it) to reach the transcript
@@ -313,6 +316,33 @@ def server_connection():
     return None
 
 
+def focus_allows():
+    """Whether the player may play: it waits up to FOCUS_WAIT_SECONDS for the answer of the Termux daemon (which asks
+    Android for the audio focus, so music turns down) and plays unless it says "call" (a phone call is going on).
+    Without a running daemon (no fresh heartbeat) or without an answer in time it plays."""
+    try:
+        if time.time() - os.stat(ALIVE).st_mtime > 3:
+            return True
+    except OSError:
+        return True
+    me = str(os.getpid())   # start() registered it in speak.pid, which the daemon answers
+    deadline = time.time() + FOCUS_WAIT_SECONDS
+    while True:
+        try:
+            with open(FOCUS, encoding="ascii", errors="replace") as fh:
+                pid, _, answer = fh.read(64).partition(" ")
+            if pid == me:
+                if answer.split()[:1] == ["call"]:
+                    log("Telefonat: es wird nicht vorgelesen")
+                    return False
+                return True
+        except OSError:
+            pass
+        if time.time() >= deadline:
+            return True
+        time.sleep(0.05)
+
+
 def play_from_server(conn, text, err, env):
     """Sends text to speak-server.py and plays its audio; the exit codes, or None when no audio came (then Piper reads)."""
     with conn:
@@ -321,6 +351,8 @@ def play_from_server(conn, text, err, env):
         audio = conn.recv(65536)
         if not audio:
             return None
+        if not focus_allows():
+            return 0, 0
         play = subprocess.Popen(play_command(SERVER_RATE), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=err,
                                 env=env)
         try:
@@ -347,6 +379,8 @@ def run():
                 codes = play_from_server(conn, text, err, env)
                 if codes is None:
                     log("Articulino lieferte kein Audio (siehe oben), es liest Piper")
+            if codes is None and not focus_allows():
+                codes = (0, 0)
             if codes is None:
                 engine = "piper"
                 piper = subprocess.Popen([PIPER, "-m", VOICE, "--output-raw"], stdin=subprocess.PIPE,

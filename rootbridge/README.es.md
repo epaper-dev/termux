@@ -343,6 +343,9 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   `rootbridge-speak --record` (habla con calma unos 10 s). A partir de ahí un pequeño servicio (`speak-server.py`, unos 500 MB mientras
   funciona; termina tras 30 minutos sin texto) lee con tu voz; el primer texto tras su arranque tarda unos 5 s más. Sin grabación o sin
   Articulino lee Piper.
+  **Música y llamadas:** mientras lee, el daemon de Termux pide el foco de audio para voz a la Termux:API de este repositorio, así
+  Android baja la música (como con una app de navegación) y la vuelve a subir después; durante una llamada no se lee nada, y una llamada
+  entrante termina la lectura. Con la Termux:API estándar la música sigue sonando.
 
 **Disparadores sin root** (la app Termux de este repositorio, `app/`, muestra «Termux push to talk» a Android; cada uno ejecuta `ptt toggle`: un
 solo evento, el primero empieza a hablar y el siguiente lo detiene):

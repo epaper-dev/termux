@@ -42,6 +42,16 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   `[en]…[/en]`. A stop ends the player, not the server. Without the voice, or when the server does not come up, Piper reads as before.
   Tests: `tests/test_speak.py` (stub server), `tests/test_voice.sh`.
 
+* **Reading aloud: music turns down, a call ends it.** While the guest reads aloud (a live player in `speak.pid`), the daemon asks our
+  Termux:API for the audio focus for speech (new `AudioFocus`: `request`, `release`, `status`; usage navigation guidance, transient, may
+  duck): Android turns music (Deezer, …) down and up again afterwards (the release is asked again until Android confirms it, also
+  after a daemon that was killed). The answer
+  for each player goes to `~/.rootbridge/speak-focus`; the player waits up to 1.5 s for it and does not start during a phone or VoIP
+  call, and a call that comes in (or the focus lost to one) ends the reading: PulseAudio would play right into it. The stock Termux:API
+  never answers `AudioFocus`: the daemon then asks less and less often (up to once a minute) and music just plays on. A call that
+  rings silently is seen too when Termux:API has the phone permission. Needs the Termux:API of this
+  repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
+
 ### Changed
 * **The volume keys change the volume while Termux is in front.** The block of the installer in `~/.termux/termux.properties` (with
   the extra keys) sets `volume-keys = volume`; by default Termux takes them as CTRL and FN. Tests: `tests/test_extra_keys.sh`.
