@@ -422,6 +422,7 @@ check "Fokus: request ohne Antwort zählt als gehalten, wird gemerkt und freigeg
     echo released > "$T/af.release"; for _ in $(seq 64); do rb_speak_focus; done
     printf '%s;%s' "${RB_SPEAK_FOCUS:-leer}" "$(has "$T/ftmp/rootbridge-audio-focus")" ) )"
 : > "$T/ftmp/rootbridge-audio-focus"; : > "$T/af.log"
+# shellcheck disable=SC2034  # RB_ASK_CMD is read by rb_audio_focus in $LIB
 check "Fokus: ein neuer Daemon gibt den Fokus eines beendeten frei" "held;leer;1" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
     rb_speak_focus_resume; printf '%s;' "$RB_SPEAK_FOCUS"; rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"
     grep -c 'action release' "$T/af.log" ) )"
