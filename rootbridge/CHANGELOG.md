@@ -29,6 +29,8 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
 
 ### Changed
+* **The volume keys change the volume while Termux is in front.** The block of the installer in `~/.termux/termux.properties` (with
+  the extra keys) sets `volume-keys = volume`; by default Termux takes them as CTRL and FN. Tests: `tests/test_extra_keys.sh`.
 * **`rootbridge voice speak first` reads a short version instead of one sentence.** The first paragraph of an answer, at most three
   sentences, and the last question of the answer when it stands further down: one sentence was too little to work with, and a question
   at the end was never heard. The messages say "nur die Kurzfassung". Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
