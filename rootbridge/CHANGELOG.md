@@ -10,7 +10,9 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
 * **Push to talk with the key of a wired headset.** `sidekey-ptt` also reads the buttons of the headset jack (the input device whose name
   has "Button Jack", found in `/sys/class/input`; `KEY_MEDIA`) as root: hold to record, let go to stop, also with the phone locked. A
   short press stays with the music. A long press also starts Android's voice search; no app should answer it (on the A9 that was
-  Whisper). Tests: `tests/test_sidekey.py` (the reader had none).
+  Whisper). Each device has a `su -c cat` of its own (Magisk ends a `su -c` at once whose shell starts readers in the background); the
+  end of one ends the others and the reader starts over, also when the root lookup of the headset fails. Tests: `tests/test_sidekey.py`
+  (the reader had none).
 * **Reading aloud (part of `--voice`).** `setup-guest.sh` installs Piper (pip `piper-tts` in a venv, `/opt/piper`) and the voice
   `de_DE-kerstin-medium`; `python3-venv` comes from apt when the guest cannot make a venv. `install-guest.sh` installs
   `guest/claude/speak.py` and `rootbridge-speak` and adds two hooks to the managed settings: Stop reads `last_assistant_message` aloud
