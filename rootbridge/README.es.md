@@ -366,6 +366,10 @@ nada), ninguna app: para la tecla lateral usa `--sidekey` (abajo).
 `sidekey-ptt` en `$PREFIX/bin`; mantiene un `cat` de root sobre `/dev/input/event2` (la tecla, código 766) y llama a `ptt start` / `ptt stop`.
 La pulsación corta y la doble siguen con la app E-Ink; ajusta su pulsación larga a «Nothing». `rootbridge start|attach` arrancan el lector (una instancia),
 `--no-sidekey` lo elimina. Es un puente hasta que la app E-Ink y la app de Termux lo hagan por sí mismas.
+La **tecla de un auricular con cable** funciona igual (mantener = grabar, soltar = parar; una pulsación corta sigue reproduciendo y pausando la
+música): el lector mantiene además un `cat` de root sobre las teclas del conector del auricular (el dispositivo «… Button Jack», `KEY_MEDIA`),
+también con el teléfono bloqueado. Una pulsación larga en esa tecla inicia además la búsqueda por voz de Android: ninguna app debería
+atenderla, o se abre también su ventana.
 
 ## Inicios de sesión y enlaces MCP
 

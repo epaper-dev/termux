@@ -389,6 +389,9 @@ App: Für die Seitentaste nimm `--sidekey` (unten).
 `sidekey-ptt` nach `$PREFIX/bin`; es hält ein root-`cat` auf `/dev/input/event2` (die Taste, Scancode 766) und ruft `ptt start` / `ptt stop`.
 Kurz- und Doppeldruck bleiben bei der E-Ink-App; ihren Langdruck auf „Nothing“ stellen. `rootbridge start|attach` starten den Leser (eine Instanz),
 `--no-sidekey` entfernt ihn. Es ist eine Brücke, bis die E-Ink-App und die Termux-App das selbst können.
+Die **Taste eines Kabel-Headsets** geht genauso (halten = aufnehmen, loslassen = stoppen; ein kurzer Druck startet und stoppt weiter die Musik):
+Der Leser hält zusätzlich ein root-`cat` auf den Tasten der Headset-Buchse (das Eingabegerät „… Button Jack“, `KEY_MEDIA`), auch bei gesperrtem
+Handy. Ein Langdruck auf diese Taste startet außerdem Androids Sprachsuche: Keine App sollte sie übernehmen, sonst geht deren Fenster mit auf.
 
 ## Logins und MCP-Links
 
