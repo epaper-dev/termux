@@ -222,10 +222,59 @@ status_codex() {
 VOICE_SOURCE="OpenSL_ES_source"
 voice_running() { pulseaudio --check >/dev/null 2>&1; }
 voice_source() { pactl list short sources 2>/dev/null | grep -q "$VOICE_SOURCE"; }
+# voice_pids: the PulseAudio servers of Termux itself, one pid per line. A process of that name in the guest runs under proot,
+# which traces it (TracerPid in /proc/<pid>/status): that one is not ours and stays. Fails when pgrep fails (1 is "none") or
+# the status of a process that still exists cannot be read (a pid that is gone meanwhile is skipped).
+voice_pids() {
+    local out rc=0 pid tracer
+    out="$(pgrep -x pulseaudio 2>/dev/null)" || rc=$?
+    [ "$rc" -le 1 ] || return 1
+    for pid in $out; do
+        [[ "$pid" =~ ^[0-9]+$ ]] || continue
+        tracer="$(sed -n 's/^TracerPid:[[:space:]]*//p' "$RB_PROC_DIR/$pid/status" 2>/dev/null)"
+        if [ -z "$tracer" ]; then
+            [ -e "$RB_PROC_DIR/$pid" ] && return 1
+            continue
+        fi
+        [ "$tracer" = 0 ] && echo "$pid"
+    done
+    return 0
+}
+# voice_end_all: end every PulseAudio server of Termux (also those without a pid file), by pid. Fails when one is still there
+# after 2 s and SIGKILL, or when they cannot be listed.
+voice_end_all() {
+    local pids
+    pids="$(voice_pids)" || return 1
+    pulseaudio --kill >/dev/null 2>&1
+    # shellcheck disable=SC2086   # a list of pids
+    [ -z "$pids" ] || kill $pids 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        pids="$(voice_pids)" || return 1
+        [ -n "$pids" ] || return 0
+        sleep 0.2
+    done
+    # shellcheck disable=SC2086
+    kill -KILL $pids 2>/dev/null
+    sleep 0.2
+    pids="$(voice_pids)" && [ -z "$pids" ]
+}
 
-# voice_start: PulseAudio running, with the microphone source (quiet when something is missing: a session must start anyway)
+# voice_start: exactly one PulseAudio running, with the microphone source (quiet when something is missing: a session must
+# start anyway). `pulseaudio --check` only reads the pid file of the runtime folder: when that is gone, the server that still
+# runs is not seen and a second one starts. That one does not get the port, but loads the microphone source anyway (.nofail
+# in default.pa) and keeps Android's microphone on (seen on the A9: three servers). So more than one server, or one that
+# --check does not know, means: end them all, then start one.
 voice_start() {
+    local pids n=0
     command -v pulseaudio >/dev/null 2>&1 || return 0
+    # when the servers cannot be listed, nothing is ended (as before: --check decides)
+    if pids="$(voice_pids)"; then n="$(printf '%s' "$pids" | grep -c .)"; fi
+    if [ "$n" -gt 1 ] || { [ "$n" -gt 0 ] && ! voice_running; }; then
+        if ! voice_end_all; then   # no further server next to it: the session starts without the microphone
+            echo "rootbridge: PulseAudio-Server lassen sich nicht beenden ($(voice_pids | tr '\n' ' '))" >&2
+            return 0
+        fi
+    fi
     voice_running || pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 || return 0
     # the source is missing when Android's microphone permission was not there at the first start
     if command -v pactl >/dev/null 2>&1 && ! voice_source; then
@@ -282,14 +331,24 @@ voice_assistant() {
 
 voice_status() {
     command -v pulseaudio >/dev/null 2>&1 || { echo "PulseAudio:    nicht installiert (pkg install pulseaudio)"; return 0; }
-    if voice_running; then echo "PulseAudio:    läuft"; else echo "PulseAudio:    gestoppt (rootbridge voice start)"; return 0; fi
+    local pids n=0
+    if pids="$(voice_pids)"; then n="$(printf '%s' "$pids" | grep -c .)"; else echo "  WARNUNG:     pgrep -x pulseaudio schlug fehl"; fi
+    if voice_running; then
+        echo "PulseAudio:    läuft"
+    elif [ "$n" -gt 0 ]; then
+        echo "PulseAudio:    läuft, aber ohne pid-Datei (rootbridge voice start startet ihn neu)"
+    else
+        echo "PulseAudio:    gestoppt (rootbridge voice start)"
+    fi
+    if [ "$n" -gt 1 ]; then echo "  WARNUNG:     $n PulseAudio-Server laufen, das hält das Mikrofon an (rootbridge voice start räumt auf)"; fi
+    voice_running || return 0
     if voice_source; then echo "Mikrofon:      ok ($VOICE_SOURCE)"; else echo "Mikrofon:      FEHLT (rootbridge voice grant, dann voice start)"; fi
 }
 
 cmd_voice() {
     case "${1:-}" in
         start)  voice_start; voice_status ;;
-        stop)   pulseaudio --kill >/dev/null 2>&1 || true; echo "PulseAudio gestoppt." ;;
+        stop)   voice_end_all || die "PulseAudio läuft noch oder pgrep schlug fehl: $(voice_pids | tr '\n' ' ')"; echo "PulseAudio gestoppt." ;;
         status) voice_status ;;
         grant)  voice_grant ;;
         assistant) voice_assistant "${2:-status}" ;;
