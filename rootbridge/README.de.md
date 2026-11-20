@@ -348,7 +348,8 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   `rootbridge voice start|stop` steuern den Audio-Server von Hand.
 * **Vorlesen**: Claudes Antworten liest **Piper** vor, eine lokale Sprachausgabe ohne Netz (im Gast in `/opt/piper`, Stimme
   `de_DE-kerstin-medium`). Ein Stop-Hook in den Managed Settings gibt jede Antwort weiter, ohne Codeblöcke, Tabellen und URLs und ohne
-  Markdown-Zeichen; der Ton geht über dasselbe PulseAudio wie das Mikrofon. Eine neue Antwort beendet die alte. Still wird es sofort, wenn du
+  Markdown-Zeichen; der Ton geht über dasselbe PulseAudio wie das Mikrofon. Ein PreToolUse-Hook liest außerdem Claudes kurze Zwischenstände
+  zwischen zwei Werkzeugaufrufen („Ich baue jetzt …“) vor, jeden einmal, aus dem Sitzungsprotokoll. Ein neuer Text beendet den alten. Still wird es sofort, wenn du
   etwas abschickst (UserPromptSubmit-Hook) und wenn `ptt` startet (Home-Langdruck, Seitentaste), sonst nähme das Mikrofon die Stimme auf.
   Nach der Installation ist das Vorlesen an. Schalten: Widget **Vorlesen** (an/aus, mit Toast; aus beendet auch das laufende Lesen) und
   Widget **Stopp** (nur jetzt still), beide in `~/.shortcuts/tasks/` (sie laufen im Hintergrund), oder `rootbridge voice speak on|off|toggle|stop`.

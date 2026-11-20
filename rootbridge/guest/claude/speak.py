@@ -2,14 +2,17 @@
 """speak - speech output for Claude Code (termux-rootbridge, part of --voice).
 
 Reads text aloud with Piper (a local neural voice) through PulseAudio in Termux, the same way the microphone of
-/voice comes in. Claude's answers are read by the Stop hook; a new answer ends the one still being read.
+/voice comes in. Claude's answers are read by the Stop hook, its short notes between tool calls ("Ich baue jetzt ...") by
+the PreToolUse hook; a new text ends the one still being read.
 
   speak.py --hook     Stop hook: reads last_assistant_message from the hook JSON on stdin, unless the switch is off
+  speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once
   speak.py --stop     end what is being read (UserPromptSubmit hook, rootbridge-speak --stop)
   speak.py [TEXT...]  read TEXT, or stdin, aloud (also when the switch is off)
 
 What is read: the text without code blocks, tables, URLs and Markdown marks. With the file speak-first in the bridge
-directory (`rootbridge voice speak first|all`) the hook reads only the first sentence of an answer.
+directory (`rootbridge voice speak first|all`) the hooks read only the first sentence of an answer or note.
+--progress remembers the id of the note it read in speak-progress, so each note is read once.
 The switch: the file speak-off in the bridge directory (Termux and the guest both see it; `rootbridge voice speak
 on|off|toggle` in Termux, the widget "Vorlesen"). The player runs in its own process group, its id in speak.pid next to
 it: Termux ends it from there (`rootbridge voice speak stop`, the widget "Stopp", `ptt start` before the microphone).
@@ -21,8 +24,10 @@ Environment (tests, other voices): PIPER_VOICE (.onnx file), RB_SPEAK_PIPER (pip
 RB_SPEAK_DIR (bridge directory), RB_SPEAK_LOG (log file).
 Python >= 3.8, standard library only.
 """
+import fcntl
 import json
 import os
+import stat
 import re
 import signal
 import subprocess
@@ -34,11 +39,16 @@ BRIDGE_DIR = os.environ.get("RB_SPEAK_DIR", "/data/data/com.termux/files/home/.r
 OFF = os.path.join(BRIDGE_DIR, "speak-off")
 FIRST = os.path.join(BRIDGE_DIR, "speak-first")
 PIDFILE = os.path.join(BRIDGE_DIR, "speak.pid")
+PROGRESS = os.path.join(BRIDGE_DIR, "speak-progress")
+STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop (--stop here, rb_speak_stop in Termux)
+TAIL_BYTES = 512 * 1024   # the newest note stands near the end of the transcript; the hook runs before every tool call
+WAIT_SECONDS = 2          # how long --progress waits for its tool call (and the note before it) to reach the transcript
 PIPER = os.environ.get("RB_SPEAK_PIPER", "/opt/piper/bin/piper")
 PLAY = os.environ.get("RB_SPEAK_PLAY", "play")
 VOICE = os.environ.get("PIPER_VOICE", "/opt/piper/voices/de_DE-kerstin-medium.onnx")
 PULSE_COOKIE = "/data/data/com.termux/files/home/.config/pulse/cookie"
 LOG = os.environ.get("RB_SPEAK_LOG", os.path.expanduser("~/.cache/rootbridge-speak.log"))
+PROC = os.environ.get("RB_SPEAK_PROC", "/proc")
 RUN_ARG = "--run"   # the player process; Termux recognises it by "speak.py --run" in its command line
 
 FENCE_RE = re.compile(r"^\s*(```|~~~).*?^\s*\1[^\n]*$", re.S | re.M)
@@ -114,6 +124,25 @@ def stop():
             os.killpg(pid, signal.SIGTERM)
         except OSError:
             pass
+
+
+def mark_stopped():
+    """Touch speak-stopped (not through a link): a --progress hook still waiting for its note does not start after it."""
+    try:
+        fd = os.open(STOPPED, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        try:
+            os.utime(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+def stopped_since(moment):
+    try:
+        return os.lstat(STOPPED).st_mtime >= moment
+    except OSError:
+        return False
 
 
 def sample_rate():
@@ -192,25 +221,136 @@ def run():
             pass
 
 
-def hook():
+def hook_input():
+    """The hook JSON on stdin, or None when it is not an object or the switch is off."""
     try:
         data = json.load(sys.stdin)
     except ValueError:
-        return
+        return None
     if os.path.exists(OFF) or not isinstance(data, dict):
+        return None
+    return data
+
+
+def recording():
+    """True while Claude Code records for /voice: its recorder is SoX `rec ... --buffer 1024 -t raw ...` (the same test as
+    find_recorders in ptt). The microphone would take what is read into the prompt."""
+    try:
+        pids = [p for p in os.listdir(PROC) if p.isdigit()]
+    except OSError:
+        return False
+    for pid in pids:
+        try:
+            with open(os.path.join(PROC, pid, "cmdline"), "rb") as fh:
+                args = fh.read().split(b"\0")
+        except OSError:
+            continue
+        if args[0].endswith(b"rec") and b" --buffer 1024 -t raw " in b" " + b" ".join(args) + b" ":
+            return True
+    return False
+
+
+def speak_answer(message):
+    if recording():
         return
-    message = data.get("last_assistant_message")
+    text = speakable(message)
+    if os.path.exists(FIRST):
+        text = first_sentence(text)
+    start(text)   # the hooks stay silent towards Claude Code: a failure is in the log
+
+
+def hook():
+    data = hook_input()
+    message = data and data.get("last_assistant_message")
     if isinstance(message, str):
-        text = speakable(message)
-        if os.path.exists(FIRST):
-            text = first_sentence(text)
-        start(text)   # the hook stays silent towards Claude Code: a failure is in the log
+        speak_answer(message)
+
+
+def transcript_tail(path, tool_use_id):
+    """The end of the transcript once it holds the tool call tool_use_id (Claude Code may run the hook before it writes
+    the call and the note before it), at most WAIT_SECONDS; then as it is. None when it cannot be read."""
+    end = time.time() + WAIT_SECONDS
+    while True:
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(0, os.SEEK_END)
+                fh.seek(max(0, fh.tell() - TAIL_BYTES))
+                tail = fh.read()
+        except OSError as e:
+            log("Zwischenstand: Sitzungsprotokoll nicht lesbar, %s" % e)
+            return None
+        if not tool_use_id or tool_use_id.encode() in tail or time.time() >= end:
+            return tail
+        time.sleep(0.1)
+
+
+def newest_note(tail):
+    """(uuid, text) of the newest assistant entry with text in the transcript tail (JSON lines) since the last prompt of
+    the user, or None. A user entry that only carries tool results is not a prompt."""
+    for line in reversed(tail.split(b"\n")):
+        try:
+            entry = json.loads(line)
+            content = entry["message"]["content"]
+        except (ValueError, KeyError, TypeError):
+            continue
+        blocks = content if isinstance(content, list) else [{"type": "text", "text": content}]
+        blocks = [b for b in blocks if isinstance(b, dict)]
+        if entry.get("type") == "user":
+            if any(b.get("type") == "tool_result" for b in blocks):
+                continue
+            return None
+        if entry.get("type") == "assistant":
+            text = "\n".join(b["text"] for b in blocks if b.get("type") == "text" and isinstance(b.get("text"), str))
+            if text.strip():
+                return str(entry.get("uuid", "")), text
+    return None
+
+
+def open_progress():
+    """speak-progress for reading and writing, not through a link and only a regular file (the bridge directory is shared)."""
+    fd = os.open(PROGRESS, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise OSError("keine reguläre Datei")
+    return os.fdopen(fd, "r+", encoding="utf-8")
+
+
+def progress():
+    begun = time.time()
+    data = hook_input()
+    path = data and data.get("transcript_path")
+    tool_use_id = data and data.get("tool_use_id")
+    tail = isinstance(path, str) and transcript_tail(path, tool_use_id if isinstance(tool_use_id, str) else None)
+    note = tail and newest_note(tail)
+    if not note:
+        return
+    # parallel tool calls run their hooks at the same time: the lock makes one of them claim the note and start the player
+    try:
+        with open_progress() as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            if fh.read().strip() == note[0]:
+                return
+            fh.seek(0)
+            fh.truncate()
+            fh.write(note[0] + "\n")
+            fh.flush()
+            # switched off or stopped while it waited for the transcript: the note counts as read, nothing starts
+            if not os.path.exists(OFF) and not stopped_since(begun):
+                speak_answer(note[1])
+                # a stop between that check and speak.pid missed the player: end it before Piper has the first sound
+                if os.path.exists(OFF) or stopped_since(begun):
+                    stop()
+    except OSError as e:
+        log("Zwischenstand nicht vorgelesen, %s: %s" % (PROGRESS, e))   # without the memory every tool call would read it again
 
 
 def main(argv):
     if argv[:1] == ["--hook"]:
         hook()
+    elif argv[:1] == ["--progress"]:
+        progress()
     elif argv[:1] == ["--stop"]:
+        mark_stopped()
         stop()
     elif argv[:1] == [RUN_ARG]:
         run()

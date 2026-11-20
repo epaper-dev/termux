@@ -218,9 +218,12 @@ rb_url_host() {
 # rb_speak_stop: end what the guest is reading aloud. Its player writes the id of its process group to speak.pid in the
 # bridge directory (no pid namespace under proot). The guest can write there, so the pid only counts when that process is
 # really the player ("speak.py --run"); the same check as player_pid() in speak.py. Only a regular file, read with a time
-# limit: a FIFO there must not hold up `ptt start` before its key.
+# limit: a FIFO there must not hold up `ptt start` before its key. It also puts a new speak-stopped in place: a --progress
+# hook of the guest that is still waiting for its note then does not start reading after the stop. Made in the own temp
+# folder of Termux and moved with mv -T (replaces a link instead of following it), like the switches of reading aloud.
 rb_speak_stop() {
-    local pid f="$BRIDGE_DIR/speak.pid"
+    local pid f="$BRIDGE_DIR/speak.pid" tmp
+    tmp="$(mktemp 2>/dev/null)" && mv -fT "$tmp" "$BRIDGE_DIR/speak-stopped" 2>/dev/null || rm -f "${tmp:-}"
     [ -f "$f" ] && [ ! -L "$f" ] || return 0
     pid="$(timeout 1 head -c 16 "$f" 2>/dev/null | tr -d '[:space:]')"
     [[ "$pid" =~ ^[0-9]{1,9}$ ]] || return 0

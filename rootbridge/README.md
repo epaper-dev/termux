@@ -319,7 +319,8 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   `rootbridge voice start|stop` run the audio server by hand.
 * **Reading aloud**: **Piper**, a local speech output without network (in the guest in `/opt/piper`, voice `de_DE-kerstin-medium`), reads
   Claude's answers. A Stop hook in the managed settings hands over every answer, without code blocks, tables, URLs and Markdown marks; the
-  sound goes through the same PulseAudio as the microphone. A new answer ends the old one. It goes quiet at once when you send something
+  sound goes through the same PulseAudio as the microphone. A PreToolUse hook also reads Claude's short notes between tool calls ("Ich
+  baue jetzt …"), each once, from the transcript of the session. A new text ends the old one. It goes quiet at once when you send something
   (UserPromptSubmit hook) and when `ptt` starts (long press on Home, side key), or the microphone would record the voice. Reading aloud is on
   after the installation. Switch it with the widget **Vorlesen** (on/off, with a toast; off also ends what is being read) and the widget
   **Stopp** (quiet now), both in `~/.shortcuts/tasks/` (they run in the background), or `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` reads only the first sentence of each answer (the file

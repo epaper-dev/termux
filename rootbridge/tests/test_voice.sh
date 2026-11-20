@@ -324,6 +324,11 @@ echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
 rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak stop
 sleep 0.3
 check "voice speak stop: beendet den Abspieler, Exit 0"  "0 beendet" "$RC $(alive "$PLAYER")"
+check "voice speak stop: merkt den Stopp in speak-stopped" ja "$(has "$BRIDGE_DIR/speak-stopped")"
+echo wertvoll > "$T/wertvoll3"; rm -f "$BRIDGE_DIR/speak-stopped"; ln -s "$T/wertvoll3" "$BRIDGE_DIR/speak-stopped"
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak stop
+check "voice speak stop über einem Link: Ziel unberührt, eigene Datei" "0 wertvoll nein" \
+    "$RC $(cat "$T/wertvoll3") $([ -L "$BRIDGE_DIR/speak-stopped" ] && echo ja || echo nein)"
 player "sleep-ohne-kennung"
 echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
 rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak stop
@@ -425,7 +430,7 @@ check "install.sh: Abschlussmeldung nennt das Vorlesen"    1 "$(count "$T/instal
 check "install.sh: Widgets Vorlesen und Stopp in tasks/ (Hintergrund)" "ja ja" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
 check "install.sh: Widget Vorlesen schaltet um, Stopp stoppt" "1 1" "$(count "$H/.shortcuts/tasks/Vorlesen" '^msg="$(rootbridge voice speak toggle') $(count "$H/.shortcuts/tasks/Stopp" '^exec rootbridge voice speak stop$')"
 check "install.sh: Gast hat speak.py und rootbridge-speak" "ja ja" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak")"
-check "install.sh: Gast-Hooks Stop (vorlesen) und UserPromptSubmit (stoppen)" "1 1" "$(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --hook') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --stop')"
+check "install.sh: Gast-Hooks Stop (vorlesen), PreToolUse (Zwischenstand) und UserPromptSubmit (stoppen)" "1 1 1" "$(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --hook') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --progress') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --stop')"
 irun --no-voice
 check "install.sh --no-voice: Widgets Vorlesen und Stopp entfernt" "nein nein" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
 check "install.sh --no-voice: Gast ohne Vorlesen"          "nein nein 0" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak") $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py')"
