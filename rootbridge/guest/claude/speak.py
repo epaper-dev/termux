@@ -10,7 +10,9 @@ the PreToolUse hook; a new text ends the one still being read.
   speak.py --stop     end what is being read (UserPromptSubmit hook, rootbridge-speak --stop)
   speak.py [TEXT...]  read TEXT, or stdin, aloud (also when the switch is off)
 
-What is read: the text without code blocks, tables, URLs and Markdown marks. With the file speak-first in the bridge
+What is read: the text without code blocks, tables, URLs and Markdown marks. The English words of the list
+speak-english.txt next to this file go to Piper as phonemes ([[...]]), so the German voice says them in English, and German
+forms of English verbs as they are said ("gemergt" as "gemörtscht"). With the file speak-first in the bridge
 directory (`rootbridge voice speak first|all`) the hooks read only a short version of an answer or note: its first paragraph,
 at most SUMMARY_SENTENCES sentences, and the last question of the text when it stands further down.
 --progress remembers the id of the note it read in speak-progress, so each note is read once.
@@ -22,7 +24,7 @@ Errors of piper and play go to ~/.cache/rootbridge-speak.log (the hook and the p
 also says when Piper or the voice is missing.
 
 Environment (tests, other voices): PIPER_VOICE (.onnx file), RB_SPEAK_PIPER (piper program), RB_SPEAK_PLAY (play of sox),
-RB_SPEAK_DIR (bridge directory), RB_SPEAK_LOG (log file).
+RB_SPEAK_DIR (bridge directory), RB_SPEAK_LOG (log file), RB_SPEAK_ENGLISH (the list of English words).
 Python >= 3.8, standard library only.
 """
 import fcntl
@@ -50,6 +52,7 @@ VOICE = os.environ.get("PIPER_VOICE", "/opt/piper/voices/de_DE-kerstin-medium.on
 PULSE_COOKIE = "/data/data/com.termux/files/home/.config/pulse/cookie"
 LOG = os.environ.get("RB_SPEAK_LOG", os.path.expanduser("~/.cache/rootbridge-speak.log"))
 PROC = os.environ.get("RB_SPEAK_PROC", "/proc")
+ENGLISH = os.environ.get("RB_SPEAK_ENGLISH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "speak-english.txt"))
 RUN_ARG = "--run"   # the player process; Termux recognises it by "speak.py --run" in its command line
 
 FENCE_RE = re.compile(r"^\s*(```|~~~).*?^\s*\1[^\n]*$", re.S | re.M)
@@ -109,6 +112,27 @@ def summary(text):
     if questions and questions[-1] not in head:
         head.append(questions[-1])
     return " ".join(head)
+
+
+def english(text):
+    """text with the words of the list ENGLISH replaced by what Piper should read: phonemes in [[...]] or a German spelling.
+    A line of the list: the word as written (case matters), a tab, the replacement; # starts a comment. No list, no change."""
+    words = {}
+    try:
+        with open(ENGLISH, encoding="utf-8") as fh:
+            for line in fh:
+                word, tab, replacement = line.strip().partition("\t")
+                if tab and not word.startswith("#"):
+                    words[word.strip()] = replacement.strip()
+    except FileNotFoundError:
+        return text
+    except (OSError, ValueError) as e:   # ValueError: not UTF-8
+        log("Liste englischer Wörter %s: %s" % (ENGLISH, e))
+        return text
+    if not words:
+        return text
+    pattern = r"(?<!\w)(%s)(?!\w)" % "|".join(map(re.escape, sorted(words, key=len, reverse=True)))
+    return re.sub(pattern, lambda m: words[m.group(1)], text)
 
 
 def log(message):
@@ -201,7 +225,7 @@ def write_pidfile(pid):
 def run():
     """The player: piper | play, in its own process group (the group id is in speak.pid while it reads)."""
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop still removes speak.pid (finally below)
-    text = sys.stdin.buffer.read()
+    text = english(sys.stdin.buffer.read().decode("utf-8", "replace")).encode("utf-8")
     env = dict(os.environ)
     env.setdefault("PULSE_SERVER", "127.0.0.1")
     if "PULSE_COOKIE" not in env and os.access(PULSE_COOKIE, os.R_OK):

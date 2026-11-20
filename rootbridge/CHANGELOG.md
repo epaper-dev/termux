@@ -28,6 +28,11 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   `~/.rootbridge/speak-stopped`) or the switch turned off cancels it. The same switches as the Stop hook (`speak-off`, `speak-first`).
   Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
 
+* **Reading aloud: English words in English.** `speak.py` hands the words of `guest/claude/speak-english.txt` (Pull Request, Commit,
+  Merge, Branch, Hook, Check, …; word, tab, replacement, case matters) to Piper as espeak-ng en-us phonemes (`[[…]]`), so the German voice
+  says them in English, and German forms of English verbs as they are said ("gemergt" as "gemörtscht"); everything else stays German ("grün"). `install-guest.sh` installs the list next to `speak.py`
+  (`RB_SPEAK_ENGLISH` points elsewhere). Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
+
 ### Changed
 * **The volume keys change the volume while Termux is in front.** The block of the installer in `~/.termux/termux.properties` (with
   the extra keys) sets `volume-keys = volume`; by default Termux takes them as CTRL and FN. Tests: `tests/test_extra_keys.sh`.

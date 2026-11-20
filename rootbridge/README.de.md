@@ -359,6 +359,9 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   Wichtigste dorthin zu schreiben, gehört in deine `CLAUDE.md`), `all` wieder die ganze Antwort.
   Im Gast liest `rootbridge-speak "Text"` beliebigen Text vor, `rootbridge-speak --stop` beendet ihn. Eine andere Piper-Stimme: `PIPER_VOICE`
   (Pfad zur `.onnx`-Datei, die `.onnx.json` daneben). Auf dem A9 braucht Piper etwa so lange, wie der Text dauert; es liefert satzweise.
+  Englische Fachbegriffe (Pull Request, Commit, Branch, Hook, …) spricht die Stimme englisch aus: `guest/claude/speak-english.txt`
+  führt sie mit ihrer Lautschrift in `[[…]]` (eingedeutschte Formen wie „gemergt“ mit deutscher Schreibung, „gemörtscht“); ein weiteres Wort:
+  dort eine Zeile (Wort, Tab, Ersatz), dann erneut `install-guest.sh` (es überschreibt die installierte Kopie neben `speak.py`).
 
 **Auslöser ohne Root** (die Termux-App dieses Repositorys, `app/`, zeigt Android „Termux push to talk“ an; jeder führt `ptt toggle` aus: ein
 Ereignis, das erste startet das Sprechen, das nächste stoppt es):

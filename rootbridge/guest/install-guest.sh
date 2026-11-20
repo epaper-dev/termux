@@ -470,9 +470,10 @@ fi
 # speech output (part of voice, Claude Code only): reads Claude's answers aloud (Piper, installed by setup-guest.sh)
 if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
     put "$SRC/claude/speak.py"       "$LIBDIR/speak.py"
+    put "$SRC/claude/speak-english.txt" "$LIBDIR/speak-english.txt"
     put "$SRC/bin/rootbridge-speak"  "$BINDIR/rootbridge-speak"
 else
-    rm -f "$ROOT$LIBDIR/speak.py" "$ROOT$BINDIR/rootbridge-speak"
+    rm -f "$ROOT$LIBDIR/speak.py" "$ROOT$LIBDIR/speak-english.txt" "$ROOT$BINDIR/rootbridge-speak"
 fi
 # rootbridge-hook.py hands the refusals of the Termux daemon to the agent that asked (Claude Code and Codex)
 put "$SRC/claude/rootbridge-hook.py" "$LIBDIR/rootbridge-hook.py"

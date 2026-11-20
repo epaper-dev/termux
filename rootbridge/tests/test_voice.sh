@@ -429,11 +429,11 @@ check "install.sh: Abschlussmeldung nennt /voice und ptt"  1 "$(count "$T/instal
 check "install.sh: Abschlussmeldung nennt das Vorlesen"    1 "$(count "$T/install.log" "^Vorlesen: .*rootbridge voice speak")"
 check "install.sh: Widgets Vorlesen und Stopp in tasks/ (Hintergrund)" "ja ja" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
 check "install.sh: Widget Vorlesen schaltet um, Stopp stoppt" "1 1" "$(count "$H/.shortcuts/tasks/Vorlesen" '^msg="$(rootbridge voice speak toggle') $(count "$H/.shortcuts/tasks/Stopp" '^exec rootbridge voice speak stop$')"
-check "install.sh: Gast hat speak.py und rootbridge-speak" "ja ja" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak")"
+check "install.sh: Gast hat speak.py, die englischen Wörter und rootbridge-speak" "ja ja ja" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-english.txt") $(has "$T/iguest/usr/local/bin/rootbridge-speak")"
 check "install.sh: Gast-Hooks Stop (vorlesen), PreToolUse (Zwischenstand) und UserPromptSubmit (stoppen)" "1 1 1" "$(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --hook') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --progress') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --stop')"
 irun --no-voice
 check "install.sh --no-voice: Widgets Vorlesen und Stopp entfernt" "nein nein" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
-check "install.sh --no-voice: Gast ohne Vorlesen"          "nein nein 0" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak") $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py')"
+check "install.sh --no-voice: Gast ohne Vorlesen"          "nein nein nein 0" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-english.txt") $(has "$T/iguest/usr/local/bin/rootbridge-speak") $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py')"
 printf '#!/bin/sh\necho mine\n' > "$H/.shortcuts/tasks/Stopp"
 irun --no-voice
 check "install.sh --no-voice: ein eigenes Widget Stopp bleibt" ja "$(has "$H/.shortcuts/tasks/Stopp")"

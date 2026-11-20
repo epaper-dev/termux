@@ -329,6 +329,9 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   `~/.rootbridge/speak-first`; a hint for Claude to put the essentials there belongs in your `CLAUDE.md`), `all` the whole answer again. In the
   guest `rootbridge-speak "text"` reads any text, `rootbridge-speak --stop` ends it. Another Piper voice: `PIPER_VOICE` (path of the `.onnx`
   file, its `.onnx.json` next to it). On the A9 Piper takes about as long as the text lasts; it delivers sentence by sentence.
+  English terms (Pull Request, Commit, Branch, Hook, …) are said in English: `guest/claude/speak-english.txt` lists them with their
+  phonemes in `[[…]]` (German forms like "gemergt" with a German spelling, "gemörtscht"); another word: a line there (word, tab, replacement),
+  then `install-guest.sh` again (it overwrites the installed copy next to `speak.py`).
 
 **Triggers without root** (the Termux app of this repository, `app/`, shows "Termux push to talk" to Android; each one runs `ptt toggle`: one
 event, the first starts talking, the next stops):

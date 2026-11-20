@@ -66,6 +66,64 @@ class TestSummary(unittest.TestCase):
         self.assertEqual(speak.summary(""), "")
 
 
+class TestEnglish(unittest.TestCase):
+    """English words of the list go to Piper as phonemes; the rest stays as it is."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old = speak.ENGLISH
+        speak.ENGLISH = os.path.join(self.tmp.name, "english.txt")
+        with open(speak.ENGLISH, "w", encoding="utf-8") as fh:
+            fh.write("# comment\tx\nPull Request\t[[pˈʊl ɹᵻkwˈɛst]]\nCommit\t[[kəmˈɪt]]\nPre-Commit\t[[pɹˈiːkəmˈɪt]]\n"
+                     "Prompt\t[[pɹˈɑːmpt]]\nmain\t[[mˈeɪn]]\ngemergt\tgemörtscht\n")
+
+    def tearDown(self):
+        speak.ENGLISH = self.old
+        self.tmp.cleanup()
+
+    def test_words_become_phonemes(self):
+        self.assertEqual(speak.english("Der Pull Request ist auf main, der Merge-Commit auch."),
+                         "Der [[pˈʊl ɹᵻkwˈɛst]] ist auf [[mˈeɪn]], der Merge-[[kəmˈɪt]] auch.")
+
+    def test_german_spelling_of_english_verbs(self):
+        self.assertEqual(speak.english("Der Pull Request ist gemergt."), "Der [[pˈʊl ɹᵻkwˈɛst]] ist gemörtscht.")
+
+    def test_longest_word_first(self):
+        self.assertEqual(speak.english("Der Pre-Commit prüft."), "Der [[pɹˈiːkəmˈɪt]] prüft.")
+
+    def test_only_whole_words_with_their_case(self):
+        text = "Er antwortet prompt, die Commits und Pull Requests, # comment, Commitment, Main."
+        self.assertEqual(speak.english(text), text)
+
+    def test_no_list_no_change(self):
+        speak.ENGLISH = os.path.join(self.tmp.name, "fehlt.txt")
+        self.assertEqual(speak.english("Der Pull Request"), "Der Pull Request")
+
+    def test_unreadable_list_is_logged_and_text_stays(self):
+        with open(speak.ENGLISH, "wb") as fh:
+            fh.write("gemergt\tgem\xf6rtscht\n".encode("cp1252"))
+        log = os.path.join(self.tmp.name, "speak.log")
+        old_log, speak.LOG = speak.LOG, log
+        try:
+            self.assertEqual(speak.english("Der Commit"), "Der Commit")
+        finally:
+            speak.LOG = old_log
+        with open(log, encoding="utf-8") as fh:
+            self.assertIn("Liste englischer Wörter", fh.read())
+
+    def test_shipped_list_is_well_formed(self):
+        speak.ENGLISH = self.old
+        with open(self.old, encoding="utf-8") as fh:
+            lines = [l.rstrip("\n") for l in fh if l.strip() and not l.startswith("#")]
+        self.assertTrue(lines)
+        for line in lines:
+            word, tab, replacement = line.partition("\t")
+            self.assertTrue(tab and word.strip() and replacement.strip(), line)
+            if replacement.startswith("["):
+                self.assertRegex(replacement, r"^\[\[[^\[\]]+\]\]$", line)
+        self.assertEqual(speak.english("Der Pull Request ist gemergt"), "Der [[pˈʊl ɹᵻkwˈɛst]] ist gemörtscht")
+
+
 class TestPlayer(unittest.TestCase):
     """speak.py as Claude Code runs it, with stubs for piper and play."""
 
@@ -103,7 +161,8 @@ class TestPlayer(unittest.TestCase):
 
     def env(self, **extra):
         env = dict(os.environ, RB_SPEAK_DIR=self.bridge, RB_SPEAK_PIPER=self.piper, RB_SPEAK_PLAY=self.play,
-                   PIPER_VOICE=self.voice, OUT=self.out, RB_SPEAK_LOG=self.log)
+                   PIPER_VOICE=self.voice, OUT=self.out, RB_SPEAK_LOG=self.log,
+                   RB_SPEAK_ENGLISH=os.path.join(self.tmp.name, "keine-liste.txt"))   # the text as it is, unless a test sets one
         env.update(extra)
         return env
 
@@ -182,6 +241,13 @@ class TestPlayer(unittest.TestCase):
         open(os.path.join(self.bridge, "speak-off"), "w").close()
         self.run_speak(["Hallo", "Welt"])
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Hallo Welt"))
+
+    def test_player_hands_english_words_as_phonemes(self):
+        english = os.path.join(self.tmp.name, "english.txt")
+        with open(english, "w", encoding="utf-8") as fh:
+            fh.write("Commit\t[[kəmˈɪt]]\n")
+        self.run_speak(["Der Commit ist grün."], RB_SPEAK_ENGLISH=english)
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Der [[kəmˈɪt]] ist grün."))
 
     def test_bad_input_is_harmless(self):
         for stdin in ("kein json", "[]", json.dumps({"last_assistant_message": 3}), json.dumps({})):
