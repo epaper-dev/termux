@@ -24,7 +24,8 @@ GUEST="$ROOT/guest/install-guest.sh"
 SETUP="$ROOT/guest/setup-guest.sh"
 
 T="$(mktemp -d)"
-trap 'kill "$(cat "$T/bridge/.lock/pid" 2>/dev/null)" 2>/dev/null; rm -rf "$T"' EXIT
+# the stand-in PulseAudio servers (sleep processes of this test) end with it
+trap 'kill "$(cat "$T/bridge/.lock/pid" 2>/dev/null)" $(cat "$T/state/pa.servers" 2>/dev/null) 2>/dev/null; rm -rf "$T"' EXIT
 
 has() { [ -e "$1" ] && echo ja || echo nein; }
 baks() { compgen -G "$1" | wc -l | tr -d ' '; }   # how many files match the glob
@@ -62,16 +63,27 @@ echo "tmux $*" >> "$STUB_LOG"
 exit 0
 EOF
 printf '#!/bin/bash\necho "proot-distro $*" >> "$STUB_LOG"\nexit 0\n' > "$T/stubs/proot-distro"
-# PulseAudio as a state machine in files: running = $T/pa.running; the source exists once it was loaded with the permission ($T/perm)
+# PulseAudio as a state machine in files. Every server is a real process of this test (a sleep), its pid a line
+# in $T/state/pa.servers: rootbridge ends servers by pid with kill, so they must be ours and nothing else. pa.running holds the
+# pid of the server --check knows (through its pid file). pgrep -x pulseaudio lists the living ones and writes their status into
+# the fake /proc (RB_PROC_DIR): TracerPid 0 (a server of Termux), or 4242 for the pids in pa.guest (a server in a proot guest).
+# pa.stubborn: pids that pgrep lists although they do not exist (a server that does not end). The source exists once it was
+# loaded with the permission ($T/perm).
+# (not a copy of sleep named pulseaudio: a multicall coreutils binary does not run under another name)
+mkdir -p "$T/proc"
 cat > "$T/vstubs/pulseaudio" <<'EOF'
 #!/bin/bash
 echo "pulseaudio $*" >> "$STUB_LOG"
 case "$1" in
-    --check) [ -e "$STUB_STATE/pa.running" ] ;;
-    --start) touch "$STUB_STATE/pa.running"; [ -e "$STUB_STATE/perm" ] && touch "$STUB_STATE/source"; exit 0 ;;
-    --kill) rm -f "$STUB_STATE/pa.running" "$STUB_STATE/source"; exit 0 ;;
+    --check) [ -s "$STUB_STATE/pa.running" ] && kill -0 "$(cat "$STUB_STATE/pa.running")" 2>/dev/null ;;
+    --start) "$STUB_FAKEPA" 600 > /dev/null 2>&1 &
+             echo $! >> "$STUB_STATE/pa.servers"; echo $! > "$STUB_STATE/pa.running"
+             [ -e "$STUB_STATE/perm" ] && touch "$STUB_STATE/source"; exit 0 ;;
+    --kill) [ -s "$STUB_STATE/pa.running" ] || exit 1
+            kill "$(cat "$STUB_STATE/pa.running")" 2>/dev/null; rm -f "$STUB_STATE/pa.running" "$STUB_STATE/source"; exit 0 ;;
 esac
 EOF
+printf '#!/bin/bash\necho "pkill $*" >> "$STUB_LOG"\nexit 1\n' > "$T/vstubs/pkill"
 cat > "$T/vstubs/pactl" <<'EOF'
 #!/bin/bash
 echo "pactl $*" >> "$STUB_LOG"
@@ -92,26 +104,56 @@ touch "$STUB_STATE/perm"
 exit 0
 EOF
 printf '#!/bin/bash\necho "sidekey-ptt $*" >> "$STUB_LOG"\nexit 0\n' > "$T/vstubs/sidekey-ptt"
-printf '#!/bin/bash\nexit 1\n' > "$T/vstubs/pgrep"
+cat > "$T/vstubs/pgrep" <<'EOF'
+#!/bin/bash
+[ "${STUB_PGREP_FAIL:-0}" = 1 ] && exit 2
+[ "$*" = "-x pulseaudio" ] || exit 1
+found=1
+for pid in $(cat "$STUB_STATE/pa.servers" "$STUB_STATE/pa.stubborn" 2>/dev/null); do
+    grep -qx "$pid" "$STUB_STATE/pa.stubborn" 2>/dev/null || kill -0 "$pid" 2>/dev/null || continue
+    tracer=0; grep -qx "$pid" "$STUB_STATE/pa.guest" 2>/dev/null && tracer=4242
+    # STUB_NOSTATUS: no status; the /proc entry exists only for a living process
+    if [ "${STUB_NOSTATUS:-0}" = 1 ]; then kill -0 "$pid" 2>/dev/null && mkdir -p "$RB_PROC_DIR/$pid"; echo "$pid"; found=0; continue; fi
+    mkdir -p "$RB_PROC_DIR/$pid"; printf 'Name:\tpulseaudio\nTracerPid:\t%s\n' "$tracer" > "$RB_PROC_DIR/$pid/status"
+    echo "$pid"; found=0
+done
+exit "$found"
+EOF
 printf '#!/bin/bash\nexec "$@"\n' > "$T/vstubs/setsid"
 chmod +x "$T/bin/rootbridge" "$T/bin/rootbridge-daemon" "$T/stubs"/* "$T/vstubs"/*
 mkdir -p "$T/state"
-export STUB_LOG="$T/stub.log" STUB_STATE="$T/state" BRIDGE_DIR="$T/bridge"
+STUB_FAKEPA="$(command -v sleep)"
+export STUB_LOG="$T/stub.log" STUB_STATE="$T/state" BRIDGE_DIR="$T/bridge" STUB_FAKEPA RB_PROC_DIR="$T/proc"
 RBC="$T/home/.config/termux-rootbridge/config"
 rb() {   # rb [env VAR=..] <args...>: the copied rootbridge, voice stubs on the PATH; exit code in $RC
     : > "$STUB_LOG"
     env HOME="$T/home" PREFIX="$T/prefix" RB_SU="$T/vstubs/su" PATH="$T/stubs:$T/vstubs:$PATH" "$@" > "$T/out.txt" 2>&1
     RC=$?
 }
-reset_pa() { rm -f "$T/state"/*; }
+reset_pa() {   # also ends the stand-in servers
+    # shellcheck disable=SC2046
+    kill $(cat "$T/state/pa.servers" 2>/dev/null) 2>/dev/null; rm -rf "$T/state"/* "$T/proc"/*
+}
+spawn_pa() { "$STUB_FAKEPA" 600 > /dev/null 2>&1 & echo $! >> "$T/state/pa.servers"; LAST_PA=$!; }   # a server --check does not know
+alive() { local n=0 pid; for pid in "$@"; do kill -0 "$pid" 2>/dev/null && n=$((n + 1)); done; echo "$n"; }
 calls() { grep -c -- "$1" "$STUB_LOG" || true; }
 : > "$RBC"; reset_pa
 
-# no PulseAudio installed at all (a PATH without the stub dir)
+# no PulseAudio installed at all: a PATH with every program of the machine except PulseAudio and the tools that end processes
+# (on a machine with PulseAudio the real server must stay)
+mkdir -p "$T/nopa"
+IFS=: read -r -a dirs <<< "$PATH"
+for d in "${dirs[@]}"; do
+    for f in "$d"/*; do
+        n="${f##*/}"
+        case "$n" in pulseaudio|pactl|pgrep|pkill|killall) continue ;; esac
+        [ -x "$f" ] && [ ! -e "$T/nopa/$n" ] && ln -s "$f" "$T/nopa/$n"
+    done
+done
 : > "$STUB_LOG"
-env HOME="$T/home" PREFIX="$T/prefix" PATH="$T/stubs:/usr/bin:/bin" bash "$T/bin/rootbridge" voice status > "$T/out.txt" 2>&1; RC=$?
+env HOME="$T/home" PREFIX="$T/prefix" PATH="$T/stubs:$T/nopa" bash "$T/bin/rootbridge" voice status > "$T/out.txt" 2>&1; RC=$?
 check "voice status ohne PulseAudio: Hinweis, Exit 0"     "0 1" "$RC $(count "$T/out.txt" 'nicht installiert')"
-env HOME="$T/home" PREFIX="$T/prefix" PATH="$T/stubs:/usr/bin:/bin" bash "$T/bin/rootbridge" voice start > "$T/out.txt" 2>&1; RC=$?
+env HOME="$T/home" PREFIX="$T/prefix" PATH="$T/stubs:$T/nopa" bash "$T/bin/rootbridge" voice start > "$T/out.txt" 2>&1; RC=$?
 check "voice start ohne PulseAudio: kein Fehler"          0 "$RC"
 
 # without the microphone permission: PulseAudio runs, the source is missing
@@ -136,6 +178,57 @@ check "voice start mit Quelle: lädt nichts nach"          0 "$(calls '^pactl lo
 
 rb bash "$T/bin/rootbridge" voice stop
 check "voice stop: pulseaudio --kill"                     1 "$(calls '^pulseaudio --kill$')"
+# also a server without a pid file (--check does not know it) ends
+reset_pa; spawn_pa; P1=$LAST_PA
+rb bash "$T/bin/rootbridge" voice stop
+check "voice stop: beendet auch Server ohne pid-Datei"     "0 0" "$RC $(alive "$P1")"
+# a server that does not end: stop says so and fails; start then starts no further one
+reset_pa; echo 999999999 > "$T/state/pa.stubborn"
+rb bash "$T/bin/rootbridge" voice stop
+check "voice stop: ein Server bleibt, Fehler mit Meldung"  "1 1" "$RC $(count "$T/out.txt" 'PulseAudio läuft noch.*999999999')"
+rb bash "$T/bin/rootbridge" voice start
+check "voice start: ein Server bleibt, Hinweis, Sitzung startet trotzdem (Exit 0)" "0 1" "$RC $(count "$T/out.txt" 'lassen sich nicht beenden')"
+check "voice start: neben dem hartnäckigen Server startet kein weiterer" 0 "$(calls '^pulseaudio --start')"
+# the status of a server cannot be read: stop does not claim success; a pid gone meanwhile (no /proc entry) is skipped
+reset_pa; spawn_pa; P1=$LAST_PA
+rb env STUB_NOSTATUS=1 bash "$T/bin/rootbridge" voice stop
+check "voice stop: Status nicht lesbar, Fehler"            "1 1" "$RC $(alive "$P1")"
+reset_pa; echo 999999999 > "$T/state/pa.stubborn"
+rb env STUB_NOSTATUS=1 bash "$T/bin/rootbridge" voice stop
+check "voice stop: Status nicht lesbar, aber Server schon weg: ok" 0 "$RC"
+reset_pa; echo 999999999 > "$T/state/pa.stubborn"; mkdir -p "$T/proc/999999999"
+rb env STUB_NOSTATUS=1 bash "$T/bin/rootbridge" voice stop
+check "voice stop: Status nicht lesbar, Prozess noch da: Fehler" 1 "$RC"
+# pgrep fails: stop does not claim success, start ends nothing and goes on as before
+reset_pa
+rb env STUB_PGREP_FAIL=1 bash "$T/bin/rootbridge" voice stop
+check "voice stop: pgrep schlägt fehl, Fehler"             "1 1" "$RC $(count "$T/out.txt" 'pgrep schlug fehl')"
+rb env STUB_PGREP_FAIL=1 bash "$T/bin/rootbridge" voice start
+check "voice start: pgrep schlägt fehl, startet wie bisher" "0 1" "$RC $(calls '^pulseaudio --start')"
+
+# more than one server, or one that --check does not know (its pid file is gone), keeps the microphone on: start ends them, then one
+reset_pa; touch "$T/state/perm"
+rb bash "$T/bin/rootbridge" voice start; P1="$(cat "$T/state/pa.running")"
+spawn_pa; P2=$LAST_PA; spawn_pa; P3=$LAST_PA
+rb bash "$T/bin/rootbridge" voice status
+check "voice status: drei Server, Warnung"                1 "$(count "$T/out.txt" 'WARNUNG: *3 PulseAudio-Server laufen')"
+rb bash "$T/bin/rootbridge" voice start
+check "voice start bei drei Servern: beendet alle, startet einen" "0 1" "$(alive "$P1" "$P2" "$P3") $(calls '^pulseaudio --start')"
+check "voice start bei drei Servern: danach keine Warnung" 0 "$(count "$T/out.txt" 'WARNUNG')"
+reset_pa; touch "$T/state/perm"; spawn_pa; P1=$LAST_PA
+rb bash "$T/bin/rootbridge" voice status
+check "voice status: Server ohne pid-Datei wird gemeldet"  1 "$(count "$T/out.txt" 'läuft, aber ohne pid-Datei')"
+rb bash "$T/bin/rootbridge" voice start
+check "voice start bei einem Server ohne pid-Datei: neu gestartet, nicht daneben" "0 1" "$(alive "$P1") $(calls '^pulseaudio --start')"
+P1="$(cat "$T/state/pa.running")"
+rb bash "$T/bin/rootbridge" voice start
+check "voice start bei einem erkannten Server: nichts beendet, nichts gestartet" "1 0" "$(alive "$P1") $(calls '^pulseaudio --start')"
+# a PulseAudio in a proot guest (traced by proot) is not ours: it stays, and does not count
+spawn_pa; PG=$LAST_PA; echo "$PG" > "$T/state/pa.guest"
+rb bash "$T/bin/rootbridge" voice start
+check "voice start: Server im Gast bleibt, unserer auch"   "1 1 0" "$(alive "$PG") $(alive "$P1") $(calls '^pulseaudio --start')"
+rb bash "$T/bin/rootbridge" voice stop
+check "voice stop: Server im Gast bleibt, unserer endet"   "0 1 0" "$RC $(alive "$PG") $(alive "$P1")"
 
 reset_pa
 rb env STUB_SU_FAIL=1 bash "$T/bin/rootbridge" voice grant
@@ -396,6 +489,9 @@ case "$*" in *pulseaudio*) printf '#!/bin/sh\n' > "$PREFIX/bin/pulseaudio"; chmo
 exit 0
 EOF
 cp "$T/vstubs/su" "$T/sstubs/su"
+# install.sh runs `rootbridge voice start`, which ends PulseAudio servers it finds: pgrep must be the stub (it lists only the
+# servers of this test), or the test ends the real PulseAudio of the device it runs on
+cp "$T/vstubs/pgrep" "$T/vstubs/pkill" "$T/sstubs/"
 chmod +x "$T/sstubs"/*
 mkdir -p "$T/sbindir"
 cp "$T/vstubs/pulseaudio" "$T/vstubs/pactl" "$T/sbindir/"   # the programs the voice code finds in the PATH: never the real ones

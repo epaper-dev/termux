@@ -462,7 +462,10 @@ cat > "$T/stubs/proot-distro" <<'EOF'
 echo "proot-distro $*" >> "$STUB_LOG"
 exit 0
 EOF
-chmod +x "$T/bin/rootbridge" "$T/bin/rootbridge-daemon" "$T/stubs/tmux" "$T/stubs/proot-distro"
+# attach runs `rootbridge voice start`, which ends PulseAudio servers it does not know: on a machine with PulseAudio (Termux) the
+# real programs would end (or start) the real server, so pulseaudio, pgrep and pkill are stubs that do nothing here
+for c in pulseaudio pgrep pkill; do printf '#!/bin/bash\nexit 1\n' > "$T/stubs/$c"; done
+chmod +x "$T/bin/rootbridge" "$T/bin/rootbridge-daemon" "$T/stubs/tmux" "$T/stubs/proot-distro" "$T/stubs/pulseaudio" "$T/stubs/pgrep" "$T/stubs/pkill"
 export STUB_LOG="$T/stub.log" BRIDGE_DIR="$T/bridge"
 export RB_STORAGE_DIR="$T/no-storage"   # the shared storage of the machine must not change what the tests expect
 RBC="$T/home/.config/termux-rootbridge/config"

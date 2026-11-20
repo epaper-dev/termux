@@ -24,6 +24,16 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   C code. Tests: `tests/test_setup.sh`, `tests/test_voice.sh`.
 
 ### Fixed
+* **Only one PulseAudio.** Seen on the A9: Android's microphone indicator stayed on with no recording, because three PulseAudio
+  servers ran (two for 31 hours). `rootbridge voice start` asks `pulseaudio --check`, which only reads the pid file of the runtime folder;
+  when that file is gone, the running server is not seen and another one starts. It does not get the port, but loads the microphone
+  source anyway (`.nofail` in `default.pa`) and keeps the microphone on. `voice start` (also run by `rootbridge start` / `attach`) now
+  ends all servers when more than one runs or when `--check` does not know the one that runs, then starts one; if one does not end,
+  it starts none next to it. `voice stop` also ends servers without a pid file and fails when one stays, `pgrep` fails or the status of a living one cannot be read. Only the
+  servers of Termux count: they are ended by pid, and a PulseAudio in a proot guest (traced by proot, `TracerPid` in
+  `/proc/<pid>/status`) stays. `voice status` warns about more than one server and names one without a pid file. Tests:
+  `tests/test_voice.sh` (the servers are sleep processes of the test, listed by a `pgrep` stub, so a test run never ends the real
+  PulseAudio of the device it runs on); `test_rootbridge_shell.sh` and `test_codex.sh` stub `pulseaudio`, `pgrep` and `pkill`.
 * **The microphone no longer stays on after `ptt stop`.** Seen on the A9: the first recording after `install.sh` gave no text, and after
   the stop "listening" went off but Android's microphone indicator stayed on: Claude Code had left a recorder behind
   (anthropics/claude-code#110732), which `ptt start` only ended at the next start. `ptt stop` (hold mode) now looks again 3.5 s later,
