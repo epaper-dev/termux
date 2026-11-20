@@ -43,6 +43,25 @@ class TestSpeakable(unittest.TestCase):
         self.assertEqual(speak.speakable("```\nnur Code\n```\n"), "")
 
 
+class TestFirstSentence(unittest.TestCase):
+    def test_up_to_the_first_end(self):
+        self.assertEqual(speak.first_sentence("PR #47 ist gemergt. Der Rest folgt.\nZweiter Absatz."), "PR #47 ist gemergt.")
+
+    def test_question_and_exclamation_end_it(self):
+        self.assertEqual(speak.first_sentence("Soll ich mergen? Dann sag ja."), "Soll ich mergen?")
+        self.assertEqual(speak.first_sentence("Fertig! Alles grün."), "Fertig!")
+
+    def test_numbers_versions_and_abbreviations_do_not(self):
+        self.assertEqual(speak.first_sentence("Am 20. November kam Version 2.1.2, z. B. mit Piper, bzw. ohne. Danach mehr."),
+                         "Am 20. November kam Version 2.1.2, z. B. mit Piper, bzw. ohne.")
+        self.assertEqual(speak.first_sentence("Das gilt z.B. hier. Rest."), "Das gilt z.B. hier.")
+
+    def test_without_an_end_the_first_line(self):
+        self.assertEqual(speak.first_sentence("Ergebnis\nDer Text."), "Ergebnis")
+        self.assertEqual(speak.first_sentence("So geht es:\nerstens"), "So geht es:")
+        self.assertEqual(speak.first_sentence(""), "")
+
+
 class TestPlayer(unittest.TestCase):
     """speak.py as Claude Code runs it, with stubs for piper and play."""
 
@@ -127,6 +146,19 @@ class TestPlayer(unittest.TestCase):
         self.assertIn("-r 16000", self.out_file("play.args"))          # the rate of the voice, from its .json
         self.assertIn("-t pulseaudio", self.out_file("play.args"))
         self.assertTrue(self.wait_for(lambda: not os.path.exists(self.pidfile())), "speak.pid bleibt liegen")
+
+    def test_hook_with_speak_first_reads_the_first_sentence(self):
+        open(os.path.join(self.bridge, "speak-first"), "w").close()
+        r = self.run_speak(["--hook"], json.dumps({"last_assistant_message": "**Alles** gut, z. B. hier. Danach Details.\n\nMehr."}))
+        self.assertEqual(r.returncode, 0)
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "RAW"))
+        self.assertEqual(self.out_file("piper.in"), "Alles gut, z. B. hier.")
+
+    def test_speak_first_leaves_the_command_line_whole(self):
+        open(os.path.join(self.bridge, "speak-first"), "w").close()
+        self.run_speak(["Erster Satz. Zweiter Satz."])
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "RAW"))
+        self.assertEqual(self.out_file("piper.in"), "Erster Satz. Zweiter Satz.")
 
     def test_hook_returns_at_once(self):
         start = time.time()

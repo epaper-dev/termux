@@ -16,6 +16,11 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   guest. `install.sh` runs `setup-guest.sh` again when Piper or the voice is missing. Tests: `tests/test_speak.py` (new),
   `tests/test_voice.sh`, `tests/test_ptt.sh`, `tests/test_codex.sh`.
 
+* **Reading aloud: only the first sentence, if you like.** `rootbridge voice speak first` makes the Stop hook read only the first sentence
+  of each answer (the file `~/.rootbridge/speak-first`; up to the first `.`, `!` or `?` of the first paragraph, not after a number, a single
+  letter or an abbreviation like "z. B."); `all` reads the whole answer again, `status` shows it. `rootbridge-speak` on the command line
+  still reads everything. Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
+
 ### Changed
 * **`/voice` is set up in `tap` mode instead of `hold`.** `tap` fits both triggers: the side key starts on press and sends on release, the
   long press on Home starts and the next one sends (Android reports no release; you talk hands-free in between). With `hold` the side key
