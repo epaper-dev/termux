@@ -63,13 +63,14 @@ echo "tmux $*" >> "$STUB_LOG"
 exit 0
 EOF
 printf '#!/bin/bash\necho "proot-distro $*" >> "$STUB_LOG"\nexit 0\n' > "$T/stubs/proot-distro"
-# PulseAudio as a state machine in files. Every server is a real process of this test (a sleep named pulseaudio), its pid a line
+# PulseAudio as a state machine in files. Every server is a real process of this test (a sleep), its pid a line
 # in $T/state/pa.servers: rootbridge ends servers by pid with kill, so they must be ours and nothing else. pa.running holds the
 # pid of the server --check knows (through its pid file). pgrep -x pulseaudio lists the living ones and writes their status into
 # the fake /proc (RB_PROC_DIR): TracerPid 0 (a server of Termux), or 4242 for the pids in pa.guest (a server in a proot guest).
 # pa.stubborn: pids that pgrep lists although they do not exist (a server that does not end). The source exists once it was
 # loaded with the permission ($T/perm).
-mkdir -p "$T/fakebin" "$T/proc"; cp "$(command -v sleep)" "$T/fakebin/pulseaudio"
+# (not a copy of sleep named pulseaudio: a multicall coreutils binary does not run under another name)
+mkdir -p "$T/proc"
 cat > "$T/vstubs/pulseaudio" <<'EOF'
 #!/bin/bash
 echo "pulseaudio $*" >> "$STUB_LOG"
@@ -121,7 +122,8 @@ EOF
 printf '#!/bin/bash\nexec "$@"\n' > "$T/vstubs/setsid"
 chmod +x "$T/bin/rootbridge" "$T/bin/rootbridge-daemon" "$T/stubs"/* "$T/vstubs"/*
 mkdir -p "$T/state"
-export STUB_LOG="$T/stub.log" STUB_STATE="$T/state" BRIDGE_DIR="$T/bridge" STUB_FAKEPA="$T/fakebin/pulseaudio" RB_PROC_DIR="$T/proc"
+STUB_FAKEPA="$(command -v sleep)"
+export STUB_LOG="$T/stub.log" STUB_STATE="$T/state" BRIDGE_DIR="$T/bridge" STUB_FAKEPA RB_PROC_DIR="$T/proc"
 RBC="$T/home/.config/termux-rootbridge/config"
 rb() {   # rb [env VAR=..] <args...>: the copied rootbridge, voice stubs on the PATH; exit code in $RC
     : > "$STUB_LOG"
