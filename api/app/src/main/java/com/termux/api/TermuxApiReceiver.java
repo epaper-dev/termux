@@ -9,6 +9,7 @@ import android.provider.Settings;
 import android.widget.Toast;
 
 import com.termux.api.apis.AudioAPI;
+import com.termux.api.apis.AudioFocusAPI;
 import com.termux.api.apis.BatteryStatusAPI;
 import com.termux.api.apis.BrightnessAPI;
 import com.termux.api.apis.CallLogAPI;
@@ -93,6 +94,9 @@ public class TermuxApiReceiver extends BroadcastReceiver {
         }
 
         switch (apiMethod) {
+            case "AudioFocus":
+                AudioFocusAPI.onReceive(this, context, intent);
+                break;
             case "AudioInfo":
                 AudioAPI.onReceive(this, context, intent);
                 break;

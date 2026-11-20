@@ -348,6 +348,93 @@ sleep 0.3
 check "voice speak off: beendet auch, was gerade gelesen wird" beendet "$(alive "$PLAYER")"
 rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak on
 
+# the audio focus while the guest reads (rb_speak_focus, every round of the daemon): a stand-in for our Termux:API that
+# logs each call and answers from af.status / af.request
+cat > "$T/fake-api" <<API
+#!/bin/bash
+echo "\$*" >> "$T/af.log"
+case "\$*" in
+    *"action request"*) cat "$T/af.request" ;;
+    *"action release"*) cat "$T/af.release" ;;
+    *) cat "$T/af.status" ;;
+esac
+API
+chmod +x "$T/fake-api"; mkdir -p "$T/ftmp"
+focus() {   # focus <rounds>: that many rounds of rb_speak_focus in one daemon; prints the state after each
+    ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+      for _ in $(seq "$1"); do rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"; done )
+}
+: > "$T/af.log"; echo none > "$T/af.status"; echo granted > "$T/af.request"; echo released > "$T/af.release"
+check "Fokus: kein Vorlesen, keine Frage an Android"       "leer;leer;0" "$(focus 2)$(wc -l < "$T/af.log" | tr -d ' ')"
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
+: > "$T/af.log"
+check "Fokus: der Gast liest, Termux holt den Fokus"       "held;" "$(focus 1)"
+check "Fokus: erst status, dann request"                   "AudioFocus --es action status|AudioFocus --es action request" "$(paste -sd'|' "$T/af.log")"
+check "Fokus: die Antwort für den Player in speak-focus"   "$PLAYER granted" "$(head -n 1 "$BRIDGE_DIR/speak-focus")"
+echo held > "$T/af.status"; : > "$T/af.log"
+check "Fokus: gehalten, kein zweiter request"              "held;held;0" "$(focus 2)$(grep -c request "$T/af.log")"
+echo lost > "$T/af.status"; : > "$T/af.log"
+check "Fokus: verloren (andere App), neu angefordert"      "held;1" "$(focus 1)$(grep -c request "$T/af.log")"
+echo denied > "$T/af.request"; echo none > "$T/af.status"
+check "Fokus: verweigert, es liest trotzdem (frei erst nach release)" "held;läuft" "$(focus 1)$(alive "$PLAYER")"
+echo call > "$T/af.status"; rm -f "$BRIDGE_DIR/speak-stopped"
+focus 1 >/dev/null; sleep 0.3
+check "Fokus: ein Anruf beendet das Vorlesen"              "beendet ja" "$(alive "$PLAYER") $(has "$BRIDGE_DIR/speak-stopped")"
+check "Fokus: der Player liest call in speak-focus"        "$PLAYER call" "$(head -n 1 "$BRIDGE_DIR/speak-focus")"
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
+echo none > "$T/af.status"; echo call > "$T/af.request"
+focus 1 >/dev/null; sleep 0.3
+check "Fokus: Anruf beim Anfordern beendet das Vorlesen"   beendet "$(alive "$PLAYER")"
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
+echo granted > "$T/af.request"
+check "Fokus: Ende des Vorlesens gibt ihn frei"            "held;leer;1" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+    : > "$T/af.log"; rb_speak_focus; printf '%s;' "$RB_SPEAK_FOCUS"; kill "$PLAYER"; sleep 0.3
+    rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"; grep -c 'action release' "$T/af.log" ) )"
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
+echo granted > "$T/af.request"; echo failed > "$T/af.release"
+check "Fokus: Freigabe ohne Bestätigung wird wiederholt"  "held;held;held;released;leer;" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+    rb_speak_focus; printf '%s;' "$RB_SPEAK_FOCUS"; kill "$PLAYER"; sleep 0.3
+    rb_speak_focus; printf '%s;' "$RB_SPEAK_FOCUS"; rb_speak_focus; printf '%s;' "$RB_SPEAK_FOCUS"
+    echo released > "$T/af.release"; printf 'released;'; rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}" ) )"
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
+: > "$T/af.status"; : > "$T/af.log"   # the stock Termux:API never answers AudioFocus
+check "Fokus: Termux:API ohne AudioFocus, immer seltener gefragt" "leer;leer;leer;leer;leer;leer;leer;leer;3" "$(focus 8)$(wc -l < "$T/af.log" | tr -d ' ')"
+check "Fokus: dann liest der Player off in speak-focus"    "$PLAYER off" "$(head -n 1 "$BRIDGE_DIR/speak-focus")"
+echo none > "$T/af.request"
+check "Fokus: antwortet die Termux:API wieder, wird wieder jede Runde gefragt" "leer;leer;held;held;" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+    : > "$T/af.status"; rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"; echo held > "$T/af.status"
+    for _ in 1 2 3; do rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"; done ) )"
+echo granted > "$T/af.request"; : > "$T/af.log"
+check "Fokus: gehalten, eine Antwort fehlt: bleibt gehalten" "held;held;held;held;" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+    echo none > "$T/af.status"; rb_speak_focus; printf '%s;' "$RB_SPEAK_FOCUS"; : > "$T/af.status"
+    for _ in 1 2 3; do rb_speak_focus; printf '%s;' "$RB_SPEAK_FOCUS"; done ) )"
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
+echo none > "$T/af.status"; : > "$T/af.request"; echo released > "$T/af.release"; rm -f "$T/ftmp/rootbridge-audio-focus"
+check "Fokus: request ohne Antwort zählt als gehalten, wird gemerkt und freigegeben" "held;ja;held;leer;nein" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+    rb_speak_focus; printf '%s;%s;' "$RB_SPEAK_FOCUS" "$(has "$T/ftmp/rootbridge-audio-focus")"; kill "$PLAYER"; sleep 0.3
+    : > "$T/af.release"; for _ in $(seq 20); do rb_speak_focus; done; printf '%s;' "$RB_SPEAK_FOCUS"
+    echo released > "$T/af.release"; for _ in $(seq 64); do rb_speak_focus; done
+    printf '%s;%s' "${RB_SPEAK_FOCUS:-leer}" "$(has "$T/ftmp/rootbridge-audio-focus")" ) )"
+: > "$T/ftmp/rootbridge-audio-focus"; : > "$T/af.log"
+# shellcheck disable=SC2034  # RB_ASK_CMD is read by rb_audio_focus in $LIB
+check "Fokus: ein neuer Daemon gibt den Fokus eines beendeten frei" "held;leer;1" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+    rb_speak_focus_resume; printf '%s;' "$RB_SPEAK_FOCUS"; rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"
+    grep -c 'action release' "$T/af.log" ) )"
+ln -s "$T/wertvoll4" "$BRIDGE_DIR/speak-focus" 2>/dev/null || { rm -f "$BRIDGE_DIR/speak-focus"; ln -s "$T/wertvoll4" "$BRIDGE_DIR/speak-focus"; }
+echo wertvoll > "$T/wertvoll4"
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"; echo held > "$T/af.status"
+focus 1 >/dev/null
+check "Fokus: speak-focus über einem Link: Ziel unberührt, eigene Datei" "wertvoll nein $PLAYER granted" \
+    "$(cat "$T/wertvoll4") $([ -L "$BRIDGE_DIR/speak-focus" ] && echo ja || echo nein) $(head -n 1 "$BRIDGE_DIR/speak-focus")"
+kill "$PLAYER" 2>/dev/null; rm -f "$BRIDGE_DIR/speak.pid" "$BRIDGE_DIR/speak-stopped" "$BRIDGE_DIR/speak-focus"
+
 # the command line of `rootbridge help` and `status`
 rb bash "$T/bin/rootbridge" help
 check "help nennt voice start|stop|status|grant"          1 "$(count "$T/out.txt" 'rootbridge voice start|stop|status|grant')"

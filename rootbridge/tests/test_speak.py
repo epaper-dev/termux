@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -482,6 +483,52 @@ class TestPlayer(unittest.TestCase):
         with open(env["RB_SPEAK_VOICE_SAMPLE"]) as fh:
             self.assertEqual(fh.read(), "alt")
         self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"] + ".new.wav"))
+
+    def daemon_answers(self, answer):
+        """The Termux daemon: a fresh heartbeat, and its answer in speak-focus once the player is in speak.pid."""
+        open(os.path.join(self.bridge, ".alive"), "w").close()
+
+        def answer_the_player():
+            end = time.time() + 10
+            while time.time() < end:
+                try:
+                    with open(self.pidfile()) as fh:
+                        pid = fh.read().strip()
+                except OSError:
+                    pid = ""
+                if pid:
+                    with open(os.path.join(self.bridge, "speak-focus"), "w") as fh:
+                        fh.write("%s %s\n" % (pid, answer))
+                    return
+                time.sleep(0.02)
+        threading.Thread(target=answer_the_player, daemon=True).start()
+
+    def logged(self, text):
+        return os.path.exists(self.log) and text in self.read_log()
+
+    def test_no_reading_during_a_call(self):
+        self.daemon_answers("call")
+        self.run_speak(["Hallo."])
+        self.assertTrue(self.wait_for(lambda: self.logged("Telefonat")))
+        self.assertIsNone(self.out_file("piper.in"))
+        self.assertIsNone(self.out_file("play.in"))
+
+    def test_reads_after_the_answer_of_the_daemon(self):
+        self.daemon_answers("granted")
+        self.run_speak(["Hallo."])
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Hallo."))
+
+    def test_reads_when_the_daemon_does_not_answer(self):
+        open(os.path.join(self.bridge, ".alive"), "w").close()
+        self.run_speak(["Hallo."])
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Hallo."))
+
+    def test_articulino_does_not_read_during_a_call(self):
+        env = self.articulino()
+        self.daemon_answers("call")
+        self.run_speak(["Hallo."], **env)
+        self.assertTrue(self.wait_for(lambda: self.logged("Telefonat")))
+        self.assertIsNone(self.out_file("play.in"))
 
     def test_bad_input_is_harmless(self):
         for stdin in ("kein json", "[]", json.dumps({"last_assistant_message": 3}), json.dumps({})):

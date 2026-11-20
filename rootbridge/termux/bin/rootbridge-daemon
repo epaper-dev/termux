@@ -191,6 +191,7 @@ echo "$$" > "$LOCK/pid"
 # daemon may own it, and deleting that lock would let yet another daemon start.
 cleanup() {
     if [ "$(cat "$LOCK/pid" 2>/dev/null)" = "$$" ]; then rm -rf "$LOCK" 2>/dev/null; fi
+    if [ "$RB_SPEAK_FOCUS" = held ] && [ "$(rb_audio_focus release)" = released ]; then rb_focus_state ""; fi   # music up
     return 0
 }
 trap cleanup EXIT
@@ -210,9 +211,11 @@ own_lock() {
 }
 
 startup_cleanup
+rb_speak_focus_resume                 # a focus that a killed daemon still held is released in the first round
 while true; do
     own_lock || { echo "rootbridge-daemon: Lock gehört einem anderen Daemon - beende mich (PID $$)." >&2; exit 0; }
     scan_once
+    rb_speak_focus                    # music quieter while the guest reads aloud
     : > "$BRIDGE_DIR/.alive"          # heartbeat for the guest
     sleep "$POLL_INTERVAL"
 done

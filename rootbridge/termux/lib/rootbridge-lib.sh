@@ -222,11 +222,91 @@ rb_url_host() {
 # hook of the guest that is still waiting for its note then does not start reading after the stop. Made in the own temp
 # folder of Termux and moved with mv -T (replaces a link instead of following it), like the switches of reading aloud.
 rb_speak_stop() {
-    local pid f="$BRIDGE_DIR/speak.pid" tmp
+    local pid tmp
     tmp="$(mktemp 2>/dev/null)" && mv -fT "$tmp" "$BRIDGE_DIR/speak-stopped" 2>/dev/null || rm -f "${tmp:-}"
-    [ -f "$f" ] && [ ! -L "$f" ] || return 0
-    pid="$(timeout 1 head -c 16 "$f" 2>/dev/null | tr -d '[:space:]')"
-    [[ "$pid" =~ ^[0-9]{1,9}$ ]] || return 0
-    tr '\0' ' ' < "$RB_PROC_DIR/$pid/cmdline" 2>/dev/null | grep -q 'speak\.py --run' || return 0
+    pid="$(rb_speak_player)" || return 0
     kill -TERM -- "-$pid" 2>/dev/null || true
+}
+
+# rb_speak_player: prints the pid in speak.pid when that process is the player of the guest (see rb_speak_stop), else fails.
+rb_speak_player() {
+    local pid f="$BRIDGE_DIR/speak.pid"
+    [ -f "$f" ] && [ ! -L "$f" ] || return 1
+    pid="$(timeout 1 head -c 16 "$f" 2>/dev/null | tr -d '[:space:]')"
+    [[ "$pid" =~ ^[0-9]{1,9}$ ]] || return 1
+    tr '\0' ' ' < "$RB_PROC_DIR/$pid/cmdline" 2>/dev/null | grep -q 'speak\.py --run' || return 1
+    printf '%s\n' "$pid"
+}
+
+# rb_speak_focus: called by the daemon every round. While the guest reads aloud (a live player in speak.pid), our
+# Termux:API holds the audio focus for speech (AudioFocus): Android turns music down, like for a navigation app, and
+# lets it up again when the player is gone. A phone call (or the focus lost to one) ends the reading: PulseAudio would
+# play right into it. The answer for a new player goes to speak-focus ("<pid> <answer>"); the player waits for it before
+# it plays, and does not play during a call.
+# Once asked for, the focus counts as held until Android confirms the release (a request without an answer in time may
+# have been granted); the held state is also kept in a file in the private temp folder of Termux, so a daemon started
+# after one that was killed releases it too (rb_speak_focus_resume).
+# When Termux:API does not answer (the stock one never answers AudioFocus), the daemon asks less and less often (after
+# 2, 4, ... up to 128 rounds) and tells the player "off" meanwhile; once it answers again, every round.
+RB_SPEAK_FOCUS=""        # "" or held
+RB_SPEAK_FOCUS_PID=""    # the player that speak-focus answers
+RB_FOCUS_HELD="${TMPDIR:-/tmp}/rootbridge-audio-focus"
+rb_focus_miss=0          # questions in a row without an answer
+rb_focus_skip=0          # rounds left before the next question
+rb_focus_state() {   # rb_focus_state <""|held>
+    RB_SPEAK_FOCUS="$1"
+    if [ "$1" = held ]; then : > "$RB_FOCUS_HELD" 2>/dev/null; else rm -f "$RB_FOCUS_HELD" 2>/dev/null; fi
+    return 0
+}
+rb_speak_focus_resume() {
+    [ ! -e "$RB_FOCUS_HELD" ] || RB_SPEAK_FOCUS=held
+}
+rb_focus_missed() {
+    rb_focus_miss=$((rb_focus_miss + 1))
+    rb_focus_skip=$((1 << (rb_focus_miss < 7 ? rb_focus_miss : 7)))
+}
+rb_speak_focus() {
+    local pid answer
+    [ "$rb_focus_skip" -eq 0 ] || rb_focus_skip=$((rb_focus_skip - 1))
+    if pid="$(rb_speak_player)"; then
+        if [ "$rb_focus_skip" -gt 0 ]; then answer=off
+        else
+            answer="$(rb_audio_focus status)"
+            case "$answer" in
+                none|lost) rb_focus_state held   # until a release is confirmed: Android may hold an earlier request
+                           answer="$(rb_audio_focus request)" ;;
+            esac
+            case "$answer" in
+                held|granted) rb_focus_state held; answer=granted ;;
+                call) rb_speak_stop ;;
+                denied) ;;                      # someone else holds it: read anyway, the next round asks again
+                *) rb_focus_missed; answer=off ;;
+            esac
+            [ "$answer" = off ] || rb_focus_miss=0
+        fi
+        if [ "$pid" != "$RB_SPEAK_FOCUS_PID" ]; then
+            rb_speak_focus_tell "$pid $answer" && RB_SPEAK_FOCUS_PID="$pid"
+        fi
+    elif [ "$RB_SPEAK_FOCUS" = held ] && [ "$rb_focus_skip" -eq 0 ]; then
+        case "$(rb_audio_focus release)" in
+            released) rb_focus_state ""; rb_focus_miss=0 ;;
+            failed) rb_focus_miss=0 ;;          # Android keeps it: asked again next round
+            *) rb_focus_missed ;;
+        esac
+    fi
+}
+
+# rb_speak_focus_tell <line>: speak-focus for the player; made in the own temp folder of Termux and moved with mv -T
+# (replaces a link of the guest instead of following it)
+rb_speak_focus_tell() {
+    local tmp
+    tmp="$(mktemp 2>/dev/null)" || return 1
+    if printf '%s\n' "$1" > "$tmp" && mv -fT "$tmp" "$BRIDGE_DIR/speak-focus" 2>/dev/null; then return 0; fi
+    rm -f "$tmp"
+    return 1
+}
+
+# rb_audio_focus <request|release|status>: one word from AudioFocus of our Termux:API (empty when it does not answer)
+rb_audio_focus() {
+    timeout 2 "$RB_ASK_CMD" AudioFocus --es action "$1" 2>/dev/null < /dev/null | head -n 1 | tr -d '[:space:]'
 }
