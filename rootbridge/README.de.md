@@ -329,7 +329,11 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   ein (privat in Termux; der Gast bekommt `PULSE_COOKIE`) und trägt das Mikrofon des Telefons (`~/.config/pulse/default.pa`: Termux' eigene Datei plus die Mikrofonquelle und 200 % Verstärkung, weil die
   Android-Quelle „Spracherkennung“ leise ist). Es startet mit der Sitzung (`rootbridge start` / `attach`); eine eigene `default.pa` bleibt.
 * **Einstellungen von Claude Code**: `~/.claude/keybindings.json` bekommt `meta+k` = `voice:pushToTalk`, `~/.claude/settings.json` bekommt
-  `"voice": {"enabled": true, "mode": "hold"}`. Beides nur, wo du noch nichts entschieden hast (eine vorhandene Belegung der Aktion oder ein `voice`-Wert bleibt).
+  `"voice": {"enabled": true, "mode": "tap"}`. Beides nur, wo du noch nichts entschieden hast (eine vorhandene Belegung der Aktion oder ein `voice`-Wert bleibt).
+  `tap` passt zu beiden Auslösern: Die Seitentaste startet beim Drücken und schickt beim Loslassen ab, der Home-Langdruck startet und der nächste
+  schickt ab (Android meldet kein Loslassen, dazwischen sprichst du freihändig). Zum Starten muss das Eingabefeld leer sein. `/voice hold` geht mit
+  `ptt` weiterhin, aber mit der Seitentaste bricht ein kurzer Druck ab (die Wiederholung beginnt 1,2 s später), und der Home-Langdruck lässt den Text dann
+  im Eingabefeld, statt ihn abzuschicken.
 * **`ptt`**: `ptt start` drückt die Taste für dich, `ptt stop` lässt sie los. `ptt toggle` startet oder stoppt in einem Aufruf (das führen der Home-Langdruck und das Launcher-Symbol aus). `ptt` folgt dem Modus von
   `/voice` in Claude Code (`PTT_MODE=auto`, der Standard: es liest `voice.mode` aus den Einstellungen des Gastes). Im Modus `hold` wiederholt es Alt+K
   alle 50 ms, wie eine gehaltene Taste (Claude Code hält die Taste für losgelassen, wenn 200 ms nichts kommt, deshalb startet jede Runde nur `tmux`; die Wiederholungen beginnen `PTT_WARMUP` ms (1200) nach der ersten

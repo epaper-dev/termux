@@ -54,7 +54,7 @@
 #   --no-guidelines removes the blocks again. The choice is stored (GUIDELINES).
 # --voice / --no-voice: voice dictation for Claude Code's /voice, on by default (needs Claude Code). The installer sets up sox in
 #   the guest (rec), PulseAudio in Termux (127.0.0.1 only, with the microphone source and 200 % gain, started with the session),
-#   the guest's ~/.claude/keybindings.json (meta+k = voice:pushToTalk) and "voice": {"enabled": true, "mode": "hold"} in
+#   the guest's ~/.claude/keybindings.json (meta+k = voice:pushToTalk) and "voice": {"enabled": true, "mode": "tap"} in
 #   ~/.claude/settings.json (both only where you have not decided yet), and `ptt` (start / stop). Android's microphone
 #   permission for Termux needs root: on a terminal the installer asks for it (the root manager prompts), otherwise run
 #   `rootbridge voice grant` once. Reading aloud belongs to it: Piper with the voice de_DE-kerstin-medium in the guest

@@ -17,6 +17,11 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   `tests/test_voice.sh`, `tests/test_ptt.sh`, `tests/test_codex.sh`.
 
 ### Changed
+* **`/voice` is set up in `tap` mode instead of `hold`.** `tap` fits both triggers: the side key starts on press and sends on release, the
+  long press on Home starts and the next one sends (Android reports no release; you talk hands-free in between). With `hold` the side key
+  broke off on a short press (the repeats of `ptt` start 1.2 s late), and Home left the text in the input. Tested on the A9. As before, only
+  a fresh setting: a `voice.mode` you set stays (`/voice hold` switches back; `ptt` follows the mode). README en/de/es updated.
+  Tests: `tests/test_voice.sh`.
 * **Termux packages without their recommendations.** `install.sh` passes `-o APT::Install-Recommends=false` to `pkg install`. `python`
   recommends `python-pip`, which recommends `clang`, `make` and `pkg-config`: on the A9 that brought `clang` with `libllvm`, `llvm`, `lld`,
   `libcompiler-rt` and `ndk-sysroot`, about 500 MB that nothing used (all auto-installed, no package depended on them; removed there with
