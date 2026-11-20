@@ -8,7 +8,8 @@ Reads text aloud with Piper (a local neural voice) through PulseAudio in Termux,
   speak.py --stop     end what is being read (UserPromptSubmit hook, rootbridge-speak --stop)
   speak.py [TEXT...]  read TEXT, or stdin, aloud (also when the switch is off)
 
-What is read: the text without code blocks, tables, URLs and Markdown marks.
+What is read: the text without code blocks, tables, URLs and Markdown marks. With the file speak-first in the bridge
+directory (`rootbridge voice speak first|all`) the hook reads only the first sentence of an answer.
 The switch: the file speak-off in the bridge directory (Termux and the guest both see it; `rootbridge voice speak
 on|off|toggle` in Termux, the widget "Vorlesen"). The player runs in its own process group, its id in speak.pid next to
 it: Termux ends it from there (`rootbridge voice speak stop`, the widget "Stopp", `ptt start` before the microphone).
@@ -31,6 +32,7 @@ import time
 
 BRIDGE_DIR = os.environ.get("RB_SPEAK_DIR", "/data/data/com.termux/files/home/.rootbridge")
 OFF = os.path.join(BRIDGE_DIR, "speak-off")
+FIRST = os.path.join(BRIDGE_DIR, "speak-first")
 PIDFILE = os.path.join(BRIDGE_DIR, "speak.pid")
 PIPER = os.environ.get("RB_SPEAK_PIPER", "/opt/piper/bin/piper")
 PLAY = os.environ.get("RB_SPEAK_PLAY", "play")
@@ -47,6 +49,9 @@ MARKS_RE = re.compile(r"\*\*|__|`|~~")
 EMPH_RE = re.compile(r"(?<!\w)[*_](\S(?:.*?\S)?)[*_](?!\w)")
 PREFIX_RE = re.compile(r"^\s*(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s+)?)")
 RULE_RE = re.compile(r"^\s*([-*_]\s*){3,}$")
+SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
+# a dot after these does not end a sentence (lower case, without their dots)
+ABBREVIATIONS = {"z.b", "d.h", "u.a", "bzw", "ca", "usw", "vgl", "ggf", "inkl", "evtl", "etc", "nr", "dr", "bspw", "e.g", "i.e", "vs"}
 
 
 def speakable(text):
@@ -65,6 +70,20 @@ def speakable(text):
         if line:
             lines.append(line)
     return "\n".join(lines)
+
+
+def first_sentence(text):
+    """The first sentence of a speakable text: its first line (paragraph, heading, list item) up to the first end of a
+    sentence. A dot after a number (\"20. November\"), a single letter or a known abbreviation (\"z. B.\") does not end it."""
+    line = text.split("\n", 1)[0]
+    for m in SENTENCE_END_RE.finditer(line):
+        words = line[:m.start()].split()
+        word = words[-1].lower() if words else ""
+        if m.group() == "." and (word[-1:].isdigit() or len(word) == 1
+                                 or word in ABBREVIATIONS or (words[-2:-1] and words[-2].lower() + word in ABBREVIATIONS)):
+            continue
+        return line[:m.end()]
+    return line
 
 
 def log(message):
@@ -182,7 +201,10 @@ def hook():
         return
     message = data.get("last_assistant_message")
     if isinstance(message, str):
-        start(speakable(message))   # the hook stays silent towards Claude Code: a failure is in the log
+        text = speakable(message)
+        if os.path.exists(FIRST):
+            text = first_sentence(text)
+        start(text)   # the hook stays silent towards Claude Code: a failure is in the log
 
 
 def main(argv):

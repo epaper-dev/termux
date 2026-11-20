@@ -14,7 +14,8 @@
 #   rootbridge theme light|dark      Claude Code theme "Auto epaper" follows (tmux hook)
 #   rootbridge voice start|stop|status|grant   microphone for /voice: PulseAudio, source, Android permission
 #   rootbridge voice assistant [on|off|status]   Termux push to talk as Android's digital assistant (long press on Home; root)
-#   rootbridge voice speak [on|off|toggle|stop|status]   reading Claude's answers aloud (off also ends what is being read)
+#   rootbridge voice speak [on|off|toggle|stop|first|all|status]   reading Claude's answers aloud (off also ends what is being
+#                        read; first = only the first sentence of an answer, all = the whole answer)
 #   rootbridge daemon-start | daemon-stop
 #   rootbridge version
 
@@ -350,17 +351,27 @@ voice_status() {
 # (the Stop hook in the guest looks for it); on is the default. The guest can write there: off makes the file in Termux'
 # own temp folder and puts it in place with mv -T (replaces a link, also one to a folder, instead of following it); on
 # removes whatever is there.
+# speak_flag <file>: create a switch file of reading aloud as a file of its own (mv -T replaces a link, never writes through it)
+speak_flag() {
+    local tmp
+    mkdir -p "$BRIDGE_DIR" && tmp="$(mktemp)" && mv -fT "$tmp" "$1" || { rm -f "${tmp:-}"; die "$1 ließ sich nicht anlegen"; }
+}
+
+# voice_speak: the switches of reading aloud in the bridge directory: speak-off (nothing is read) and speak-first (the hook
+# reads only the first sentence of an answer)
 voice_speak() {
-    local off="$BRIDGE_DIR/speak-off" tmp
+    local off="$BRIDGE_DIR/speak-off" first="$BRIDGE_DIR/speak-first"
     case "$1" in
         on)     rm -f "$off" || die "voice speak on: $off ließ sich nicht entfernen"; echo "Vorlesen: an" ;;
-        off)    mkdir -p "$BRIDGE_DIR" && tmp="$(mktemp)" && mv -fT "$tmp" "$off" \
-                    || { rm -f "${tmp:-}"; die "voice speak off: $off ließ sich nicht anlegen"; }
-                rb_speak_stop; echo "Vorlesen: aus" ;;
+        off)    speak_flag "$off"; rb_speak_stop; echo "Vorlesen: aus" ;;
         toggle) if [ -e "$off" ]; then voice_speak on; else voice_speak off; fi ;;
         stop)   rb_speak_stop ;;
-        status) if [ -e "$off" ]; then echo "Vorlesen: aus"; else echo "Vorlesen: an"; fi ;;
-        *) die "voice speak: on | off | toggle | stop | status" ;;
+        first)  speak_flag "$first"; echo "Vorlesen: nur der erste Satz" ;;
+        all)    rm -f "$first" || die "voice speak all: $first ließ sich nicht entfernen"; echo "Vorlesen: die ganze Antwort" ;;
+        status) if [ -e "$off" ]; then echo "Vorlesen: aus"
+                elif [ -e "$first" ]; then echo "Vorlesen: an, nur der erste Satz"
+                else echo "Vorlesen: an"; fi ;;
+        *) die "voice speak: on | off | toggle | stop | first | all | status" ;;
     esac
 }
 

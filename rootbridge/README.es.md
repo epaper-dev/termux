@@ -329,7 +329,8 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   UserPromptSubmit) y cuando arranca `ptt` (pulsación larga en Inicio, tecla lateral); si no, el micrófono grabaría la voz. Tras la
   instalación la lectura está activada. Se cambia con el widget **Vorlesen** (sí/no, con un aviso; no también termina la lectura en curso) y
   el widget **Stopp** (silencio ahora), ambos en `~/.shortcuts/tasks/` (se ejecutan en segundo plano), o con
-  `rootbridge voice speak on|off|toggle|stop`. En el invitado `rootbridge-speak "texto"` lee cualquier texto y `rootbridge-speak --stop` lo
+  `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` lee solo la primera frase de cada respuesta (el archivo
+  `~/.rootbridge/speak-first`; la indicación a Claude de poner ahí lo esencial va en tu `CLAUDE.md`), `all` vuelve a leerla entera. En el invitado `rootbridge-speak "texto"` lee cualquier texto y `rootbridge-speak --stop` lo
   termina. Otra voz de Piper: `PIPER_VOICE` (ruta del archivo `.onnx`, con su `.onnx.json` al lado). En el A9 Piper tarda más o menos lo que
   dura el texto; entrega frase a frase.
 

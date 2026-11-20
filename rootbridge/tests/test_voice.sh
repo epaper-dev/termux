@@ -297,6 +297,21 @@ check "voice speak stop: eine FIFO als speak.pid hält nicht auf" "0 ja" "$RC $(
 rm -f "$BRIDGE_DIR/speak.pid"
 rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak nope
 check "voice speak: unbekannter Befehl"                   "1 1" "$RC $(count "$T/out.txt" 'voice speak: on')"
+# first | all: the scope (the file speak-first; the hook reads only the first sentence)
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak first
+check "voice speak first: Schalterdatei, Meldung"          "0 ja Vorlesen: nur der erste Satz" "$RC $(has "$BRIDGE_DIR/speak-first") $(cat "$T/out.txt")"
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak status
+check "voice speak status: an, nur der erste Satz"         "Vorlesen: an, nur der erste Satz" "$(cat "$T/out.txt")"
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak toggle
+check "voice speak toggle: aus, der Umfang bleibt"         "ja Vorlesen: aus" "$(has "$BRIDGE_DIR/speak-first") $(cat "$T/out.txt")"
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak on
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak all
+check "voice speak all: Schalterdatei weg, Meldung"        "0 nein Vorlesen: die ganze Antwort" "$RC $(has "$BRIDGE_DIR/speak-first") $(cat "$T/out.txt")"
+ln -s "$T/wertvoll2" "$BRIDGE_DIR/speak-first"; echo wertvoll > "$T/wertvoll2"
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak first
+check "voice speak first über einem Link: Ziel unberührt"  "0 wertvoll ja nein" \
+    "$RC $(cat "$T/wertvoll2") $(has "$BRIDGE_DIR/speak-first") $([ -L "$BRIDGE_DIR/speak-first" ] && echo ja || echo nein)"
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak all
 # a stand-in for the player of the guest: a process group leader whose command line says "speak.py --run"
 player() {   # player <argv0>: starts it, its pid in $PLAYER
     setsid bash -c 'exec -a "$1" sleep 30' _ "$1" < /dev/null > /dev/null 2>&1 &
