@@ -325,11 +325,12 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   `rootbridge voice start|stop` controlan el servidor de audio a mano.
 * **Lectura en voz alta**: **Piper**, una salida de voz local sin red (en el invitado en `/opt/piper`, voz `de_DE-kerstin-medium`), lee las
   respuestas de Claude. Un hook Stop en los managed settings le pasa cada respuesta, sin bloques de código, tablas, URL ni marcas de Markdown;
-  el sonido va por el mismo PulseAudio que el micrófono. Una respuesta nueva termina la anterior. Se calla en seguida cuando envías algo (hook
+  el sonido va por el mismo PulseAudio que el micrófono. Un hook PreToolUse lee además las notas breves de Claude entre dos llamadas a
+  herramientas («Ich baue jetzt …»), cada una una vez, desde el registro de la sesión. Un texto nuevo termina el anterior. Se calla en seguida cuando envías algo (hook
   UserPromptSubmit) y cuando arranca `ptt` (pulsación larga en Inicio, tecla lateral); si no, el micrófono grabaría la voz. Tras la
   instalación la lectura está activada. Se cambia con el widget **Vorlesen** (sí/no, con un aviso; no también termina la lectura en curso) y
   el widget **Stopp** (silencio ahora), ambos en `~/.shortcuts/tasks/` (se ejecutan en segundo plano), o con
-  `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` lee solo la primera frase de cada respuesta (el archivo
+  `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` lee solo una versión corta de cada respuesta: su primer párrafo, como mucho tres frases, y la última pregunta más abajo (el archivo
   `~/.rootbridge/speak-first`; la indicación a Claude de poner ahí lo esencial va en tu `CLAUDE.md`), `all` vuelve a leerla entera. En el invitado `rootbridge-speak "texto"` lee cualquier texto y `rootbridge-speak --stop` lo
   termina. Otra voz de Piper: `PIPER_VOICE` (ruta del archivo `.onnx`, con su `.onnx.json` al lado). En el A9 Piper tarda más o menos lo que
   dura el texto; entrega frase a frase.

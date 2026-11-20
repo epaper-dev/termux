@@ -21,7 +21,19 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   letter or an abbreviation like "z. B."); `all` reads the whole answer again, `status` shows it. `rootbridge-speak` on the command line
   still reads everything. Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
 
+* **Reading aloud: what Claude is doing right now.** A third hook, PreToolUse (`speak.py --progress`), reads Claude's short notes between
+  tool calls ("Ich baue jetzt …") as they come: the newest assistant text since your last prompt, from the end of `transcript_path` (it
+  waits up to 2 s for its tool call to be written there), each once (its id in `~/.rootbridge/speak-progress`, under a lock for parallel
+  tool calls, not through a link). A stop while it waits (`--stop`, and `rb_speak_stop` of `ptt` and the widgets, which touch
+  `~/.rootbridge/speak-stopped`) or the switch turned off cancels it. The same switches as the Stop hook (`speak-off`, `speak-first`).
+  Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
+
 ### Changed
+* **`rootbridge voice speak first` reads a short version instead of one sentence.** The first paragraph of an answer, at most three
+  sentences, and the last question of the answer when it stands further down: one sentence was too little to work with, and a question
+  at the end was never heard. The messages say "nur die Kurzfassung". Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
+* **The root dialog no longer shows the deadline as a clock time.** The countdown in the title says the same; the text is the command
+  only. With a stock Termux:API (no countdown) the dialog says nothing about the deadline. Tests: `tests/test_daemon.sh`.
 * **`/voice` is set up in `tap` mode instead of `hold`.** `tap` fits both triggers: the side key starts on press and sends on release, the
   long press on Home starts and the next one sends (Android reports no release; you talk hands-free in between). With `hold` the side key
   broke off on a short press (the repeats of `ptt` start 1.2 s late), and Home left the text in the input. Tested on the A9. As before, only

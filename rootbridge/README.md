@@ -50,7 +50,7 @@ The Termux:API of this repository, `api/`, shows them in the language of the pho
   within `ASK_TIMEOUT` (120 s), a missing dialog or a command longer than 4000 characters means refused. With the Termux:API of
   this repository (`api/`) the dialog has the buttons in the language of the phone (Ja/Nein, Sí/No, else Yes/No), a title that
   counts down to the deadline and closes itself then, and only a tap on a button answers it. With any other Termux:API build
-  the buttons are English, the deadline stands in the text, and a dialog you swipe away (or a keyboard that hides it) shows
+  the buttons are English, there is no countdown, and a dialog you swipe away (or a keyboard that hides it) shows
   again until you tap Yes or No; a Yes within one second of the dialog appearing counts as a slip and is asked again.
 * **Refusals reach the agent.** The daemon leaves a note for the agent that asked (`~/.rootbridge/events/`), and the hook
   `rootbridge-hook.py` (PostToolUse and UserPromptSubmit, in the managed settings of Claude Code and in
@@ -319,10 +319,11 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   `rootbridge voice start|stop` run the audio server by hand.
 * **Reading aloud**: **Piper**, a local speech output without network (in the guest in `/opt/piper`, voice `de_DE-kerstin-medium`), reads
   Claude's answers. A Stop hook in the managed settings hands over every answer, without code blocks, tables, URLs and Markdown marks; the
-  sound goes through the same PulseAudio as the microphone. A new answer ends the old one. It goes quiet at once when you send something
+  sound goes through the same PulseAudio as the microphone. A PreToolUse hook also reads Claude's short notes between tool calls ("Ich
+  baue jetzt …"), each once, from the transcript of the session. A new text ends the old one. It goes quiet at once when you send something
   (UserPromptSubmit hook) and when `ptt` starts (long press on Home, side key), or the microphone would record the voice. Reading aloud is on
   after the installation. Switch it with the widget **Vorlesen** (on/off, with a toast; off also ends what is being read) and the widget
-  **Stopp** (quiet now), both in `~/.shortcuts/tasks/` (they run in the background), or `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` reads only the first sentence of each answer (the file
+  **Stopp** (quiet now), both in `~/.shortcuts/tasks/` (they run in the background), or `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` reads only a short version of each answer: its first paragraph, at most three sentences, and the last question further down (the file
   `~/.rootbridge/speak-first`; a hint for Claude to put the essentials there belongs in your `CLAUDE.md`), `all` the whole answer again. In the
   guest `rootbridge-speak "text"` reads any text, `rootbridge-speak --stop` ends it. Another Piper voice: `PIPER_VOICE` (path of the `.onnx`
   file, its `.onnx.json` next to it). On the A9 Piper takes about as long as the text lasts; it delivers sentence by sentence.

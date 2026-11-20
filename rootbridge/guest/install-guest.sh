@@ -28,8 +28,9 @@
 #   --voice yes|no    voice dictation for Claude Code (default yes; needs Claude Code): ~/.claude/keybindings.json gets
 #                     meta+k = voice:pushToTalk (Chat context; an existing binding for that action stays), and
 #                     ~/.claude/settings.json "voice": {"enabled": true, "mode": "tap"} where you have not set it yet;
-#                     speech output: rootbridge-speak and two hooks in the managed settings (Stop reads Claude's answer
-#                     aloud with Piper, UserPromptSubmit ends it). no removes the command and the hooks again.
+#                     speech output: rootbridge-speak and three hooks in the managed settings (Stop reads Claude's answer
+#                     aloud with Piper, PreToolUse its notes between tool calls, UserPromptSubmit ends it). no removes the
+#                     command and the hooks again.
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
 #                     (no warning dialog for bypass mode) and, if settings.json has no default mode yet,
 #                     permissions.defaultMode = bypassPermissions (Claude Code starts in bypass mode; every

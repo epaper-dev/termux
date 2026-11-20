@@ -148,11 +148,10 @@ contains "Frist: input_timeout bis ASK_TIMEOUT" "timeout=" "$ex"
 check "Frist: input_timeout liegt zwischen 1 und ASK_TIMEOUT" ja "$(t="${ex#*timeout=}"; t="${t%% *}"; [ "$t" -ge 1 ] && [ "$t" -le 4 ] && echo ja || echo nein)"
 contains "Countdown-Text" "text=%d s left" "$ex"
 contains "Nur Tippen auf die Tasten: input_modal" "modal=true" "$ex"
-case "$ex" in *"hint=echo hi||Answer by "[0-9][0-9]:[0-9][0-9]:[0-9][0-9]) PASS=$((PASS + 1)); echo "ok    Text: Befehl, Leerzeile, Frist als Uhrzeit" ;; *) FAIL=$((FAIL + 1)); echo "FAIL  Text: Befehl, Leerzeile, Frist als Uhrzeit: $ex" ;; esac
+case "$ex" in *"hint=echo hi") PASS=$((PASS + 1)); echo "ok    Text: nur der Befehl, keine Uhrzeit" ;; *) FAIL=$((FAIL + 1)); echo "FAIL  Text: nur der Befehl, keine Uhrzeit: $ex" ;; esac
 RB_LANG=de run_client 'echo hi'
-contains "Deutsch: Ja und Nein, noch %d s, Antwort bis" "yes=Ja no=Nein timeout=" "$(cat "$T/ask.extras")"
+contains "Deutsch: Ja und Nein, noch %d s" "yes=Ja no=Nein timeout=" "$(cat "$T/ask.extras")"
 contains "Deutsch: Countdown-Text" "text=noch %d s" "$(cat "$T/ask.extras")"
-contains "Deutsch: Frist im Text" "||Antwort bis " "$(cat "$T/ask.extras")"
 RB_LANG=es-ES run_client 'echo hi'
 contains "Spanisch (es-ES): Sí und No" "yes=Sí no=No" "$(cat "$T/ask.extras")"
 RB_LANG=fr run_client 'echo hi'

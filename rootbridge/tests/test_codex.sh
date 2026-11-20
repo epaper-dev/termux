@@ -60,12 +60,12 @@ try:
 except OSError:
     print("keine Datei")
     sys.exit()
-pre = d.get("hooks", {}).get("PreToolUse", [])
+# the hooks of reading aloud (voice, test_voice.sh) are not counted here
+pre = [e for e in d.get("hooks", {}).get("PreToolUse", []) if not any("speak.py" in h.get("command", "") for h in e.get("hooks", []))]
 cmds = [h for e in pre for h in e.get("hooks", [])]
 codex = [h for h in cmds if "codex-precommit-review.py" in h.get("command", "")]
 hooks = d.get("hooks", {})
 notice = [h for event in hooks.values() for e in event for h in e.get("hooks", []) if "rootbridge-hook.py" in h.get("command", "")]
-# the hook that ends reading aloud (voice, test_voice.sh) is not counted here
 prompt = [e for e in hooks.get("UserPromptSubmit", []) if not any("speak.py" in h.get("command", "") for h in e.get("hooks", []))]
 print("pre=%d codex=%d notice=%d post=%d prompt=%d timeout=%s onFailure=%s" % (
     len(pre), len(codex), len(notice), len(hooks.get("PostToolUse", [])), len(prompt),
