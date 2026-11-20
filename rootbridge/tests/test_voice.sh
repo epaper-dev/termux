@@ -552,7 +552,7 @@ gi "$GA" --claude yes --codex no
 check "Gast frisch: läuft"                                 0 "$GRC"
 check "Gast frisch: keybindings.json mit meta+k"           '{"$schema": "https://www.schemastore.org/claude-code-keybindings.json", "bindings": [{"bindings": {"meta+k": "voice:pushToTalk"}, "context": "Chat"}]}' "$(kb "$GA/root/.claude/keybindings.json")"
 check "Gast frisch: .bashrc setzt PULSE_COOKIE (Cookie im Termux-Home)" 1 "$(count "$GA/root/.bashrc" '^\[ -r /data/data/com.termux/files/home/.config/pulse/cookie \] && export PULSE_COOKIE=')"
-check "Gast frisch: voice in settings.json"                '{"enabled": true, "mode": "hold"}' "$(sv "$GA")"
+check "Gast frisch: voice in settings.json"                '{"enabled": true, "mode": "tap"}' "$(sv "$GA")"
 MS="$GA/etc/claude-code/managed-settings.json"
 hookcmd() { python3 -I -c "import json,sys; print(' '.join(h['command'] for e in json.load(open(sys.argv[1])).get('hooks',{}).get(sys.argv[2],[]) for h in e['hooks'] if 'speak.py' in h['command']))" "$1" "$2"; }
 check "Gast frisch: Stop-Hook liest vor (mit Marker für die Deinstallation)" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --hook" "$(hookcmd "$MS" Stop)"

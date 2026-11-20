@@ -27,7 +27,7 @@
 #   --root DIR        install below DIR instead of / (staging, tests)
 #   --voice yes|no    voice dictation for Claude Code (default yes; needs Claude Code): ~/.claude/keybindings.json gets
 #                     meta+k = voice:pushToTalk (Chat context; an existing binding for that action stays), and
-#                     ~/.claude/settings.json "voice": {"enabled": true, "mode": "hold"} where you have not set it yet;
+#                     ~/.claude/settings.json "voice": {"enabled": true, "mode": "tap"} where you have not set it yet;
 #                     speech output: rootbridge-speak and two hooks in the managed settings (Stop reads Claude's answer
 #                     aloud with Piper, UserPromptSubmit ends it). no removes the command and the hooks again.
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
@@ -756,10 +756,12 @@ if [ "$MODEL" != none ] && [ "$CLAUDE_ON" = yes ]; then
     fi
 fi
 
-# voice dictation (/voice): on, push to talk with a held key ("hold"; `ptt` holds it for you). A value you set yourself stays.
+# voice dictation (/voice): on, in "tap" mode: one press starts, the next stops and sends. It fits both triggers: the side key
+# (press = start, release = send) and the long press on Home (Android gives no release: once to start, once more to send). In
+# "hold" the side key broke off (ptt's repeats start 1.2 s late). A value you set yourself stays.
 if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
     settings_queue voice.enabled true missing
-    settings_queue voice.mode '"hold"' missing
+    settings_queue voice.mode '"tap"' missing
 fi
 
 # Claude Code theme (only when asked for: install.sh passes --theme unless --no-colors)

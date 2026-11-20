@@ -301,7 +301,10 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   (private to Termux; the guest gets `PULSE_COOKIE`), and carries the phone's microphone (`~/.config/pulse/default.pa`: Termux' own file plus the microphone source and 200 % gain, since
   Android's "voice recognition" source is quiet). It starts with the session (`rootbridge start` / `attach`); a `default.pa` of your own stays.
 * **Claude Code's settings**: `~/.claude/keybindings.json` gets `meta+k` = `voice:pushToTalk`, and `~/.claude/settings.json` gets
-  `"voice": {"enabled": true, "mode": "hold"}`. Both only where you have not decided yet (an existing binding for the action, or a `voice` value, stays).
+  `"voice": {"enabled": true, "mode": "tap"}`. Both only where you have not decided yet (an existing binding for the action, or a `voice` value, stays).
+  `tap` fits both triggers: the side key starts on press and sends on release, the long press on Home starts and the next one sends (Android
+  reports no release, so you talk hands-free in between). The input has to be empty for a start. `/voice hold` still works with `ptt`, but with the
+  side key a short press breaks off (the repeats begin 1.2 s late), and the long press on Home then leaves the text in the input instead of sending it.
 * **`ptt`**: `ptt start` presses the key for you, `ptt stop` lets go. `ptt toggle` starts or stops in one call (what the Home long press and the launcher icon run). `ptt` follows the mode of
   Claude Code's `/voice` (`PTT_MODE=auto`, the default: it reads `voice.mode` from the settings of the guest). In `hold` mode it repeats Alt+K every
   50 ms, like a held key (Claude Code takes the key for released when none comes for 200 ms, so each round starts only `tmux`; the repeats begin `PTT_WARMUP` ms, 1200, after the first
