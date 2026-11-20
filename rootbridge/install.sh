@@ -640,11 +640,29 @@ if [ "$VOICE_ON" = yes ]; then
 else
     say "  übersprungen ($([ "$USE_CLAUDE" = yes ] && echo '--no-voice' || echo 'ohne Claude Code gibt es kein /voice'))"
 fi
-# the side key reader (Hisense A9): installed on request only; a reader of an earlier install goes when it is switched off
+# the side key reader (Hisense A9): installed on request only; a reader of an earlier install goes when it is switched off.
+# It runs as "<python> $PREFIX/bin/sidekey-ptt" (its shebang): only that command line is the reader, not an editor or a `tail`
+# on its file or log.
+SIDEKEY_RE="^[^ ]*python[^ ]* $PREFIX/bin/sidekey-ptt\$"
 if [ "$USE_SIDEKEY" = yes ] && [ "$VOICE_ON" = yes ]; then
     inst "$REPO/termux/bin/sidekey-ptt" "$PREFIX/bin/sidekey-ptt" python3
+    # start it now (otherwise only the next `rootbridge start` does), and a reader of an earlier install with the new code. The
+    # old one has to be gone first: it holds the lock, and a new one that does not get it leaves without a word.
+    pkill -f "$SIDEKEY_RE" 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "$SIDEKEY_RE" >/dev/null 2>&1 || break; sleep 0.3; done
+    if pgrep -f "$SIDEKEY_RE" >/dev/null 2>&1; then
+        say "  Seitentasten-Leser: der alte läuft noch, nicht neu gestartet (pkill -f sidekey-ptt, dann rootbridge start)"
+    else
+        setsid nohup "$PREFIX/bin/sidekey-ptt" >/dev/null 2>&1 < /dev/null &
+        sleep 0.5
+        if pgrep -f "$SIDEKEY_RE" >/dev/null 2>&1; then
+            say "  Seitentasten-Leser gestartet (fragt einmal nach Root; Log: ~/.cache/sidekey-ptt.log)"
+        else
+            say "  Seitentasten-Leser: Start fehlgeschlagen (siehe ~/.cache/sidekey-ptt.log; rootbridge start versucht es erneut)"
+        fi
+    fi
 elif [ -f "$PREFIX/bin/sidekey-ptt" ] && grep -q 'sidekey-ptt' "$PREFIX/bin/sidekey-ptt" 2>/dev/null; then
-    pkill -f 'sidekey-ptt' 2>/dev/null || true
+    pkill -f "$SIDEKEY_RE" 2>/dev/null || true
     rm -f "$PREFIX/bin/sidekey-ptt"
     say "  Seitentasten-Leser entfernt (abgewählt)"
 elif [ "$USE_SIDEKEY" = yes ]; then
@@ -798,7 +816,7 @@ if [ "$USE_CODEX" = yes ] && [ "$USE_BYPASS" = yes ]; then
     say "Codex läuft ohne eigene Sandbox (unter proot scheitert sie; aus mit --no-codex-bypass). Android-Root bekommt es nur, wenn du die Rückfrage in Termux bestätigst."
 fi
 if [ "$VOICE_ON" = yes ]; then
-    say "Sprache: /voice in Claude Code (Modus hold, Alt+K); 'ptt start' / 'ptt stop' halten die Taste für dich (rootbridge voice status prüft das Mikrofon)."
+    say "Sprache: /voice in Claude Code (Alt+K; ptt folgt dem Modus hold oder tap); 'ptt start' / 'ptt stop' bedienen die Taste für dich (rootbridge voice status prüft das Mikrofon)."
     say "Vorlesen: Claudes Antworten liest Piper vor; aus/an mit dem Widget 'Vorlesen' oder 'rootbridge voice speak off|on', sofort still mit 'Stopp' oder einem Start von ptt."
     if [ "$USE_SIDEKEY" = yes ]; then
         say "Seitentaste: Langdruck = aufnehmen, loslassen = stoppen. In den E-Ink-Einstellungen den Langdruck auf 'Nothing' stellen."

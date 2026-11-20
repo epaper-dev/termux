@@ -366,7 +366,16 @@ ln -sf "$(command -v bash)" "$P/bin/bash"
 cp "$ROOT/tests/stubs/proot-distro-guest-scripts" "$T/istubs/proot-distro"
 printf '#!/bin/bash\nexit 0\n' > "$T/istubs/termux-reload-settings"
 printf '#!/bin/bash\necho "rootbridge $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs/rootbridge"
-printf '#!/bin/bash\necho "pkill $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs/pkill"
+# the side key reader is a file: setsid "starts" it (never the real reader, it runs su), pkill ends it (unless STUB_READER_STAYS=1),
+# pgrep -f <the reader> sees it (unless STUB_READER_DIES=1: it left right after the start)
+cat > "$T/istubs/pkill" <<'EOF'
+#!/bin/bash
+echo "pkill $*" >> "$STUB_LOG"
+[ "${STUB_READER_STAYS:-0}" = 1 ] || rm -f "$STUB_LOG.reader"
+exit 1
+EOF
+printf '#!/bin/bash\necho "setsid $*" >> "$STUB_LOG"\n[ "${STUB_READER_DIES:-0}" = 1 ] || : > "$STUB_LOG.reader"\nexit 0\n' > "$T/istubs/setsid"
+printf '#!/bin/bash\ncase "$*" in *sidekey-ptt*) [ -e "$STUB_LOG.reader" ] ;; *) exit 1 ;; esac\n' > "$T/istubs/pgrep"
 chmod +x "$T/istubs"/*
 export STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$T/iguest"
 ILOG="$T/i.log"
@@ -456,12 +465,18 @@ check "--sidekey: läuft, SIDEKEY=on gespeichert"           "0 on" "$IRC $(iget 
 check "--sidekey: sidekey-ptt installiert, ausführbar"     "ja ja" "$(has "$P/bin/sidekey-ptt") $([ -x "$P/bin/sidekey-ptt" ] && echo ja || echo nein)"
 check "--sidekey: Shebang zeigt auf das Python von Termux" "#!$P/bin/python3" "$(head -n 1 "$P/bin/sidekey-ptt")"
 check "--sidekey: Meldung zum Langdruck 'Nothing'"         1 "$(count "$T/install.log" "Langdruck auf 'Nothing'")"
+check "--sidekey: Leser neu gestartet (alter beendet, neuer im Hintergrund)" "1 1 1" "$(count "$ILOG" "^pkill -f .*python.* $P/bin/sidekey-ptt") $(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt$") $(count "$T/install.log" 'Seitentasten-Leser gestartet')"
+STUB_READER_STAYS=1 irun --sidekey
+check "--sidekey: alter Leser endet nicht, kein zweiter, Meldung" "0 1" "$(count "$ILOG" '^setsid') $(count "$T/install.log" 'der alte läuft noch')"
+rm -f "$ILOG.reader"
+STUB_READER_DIES=1 irun --sidekey
+check "--sidekey: neuer Leser endet sofort, Meldung"        "1 1" "$(count "$ILOG" '^setsid') $(count "$T/install.log" 'Start fehlgeschlagen')"
 irun
 check "ohne Option nach --sidekey: bleibt installiert (Konfig)" "ja" "$(has "$P/bin/sidekey-ptt")"
 check "ohne Option nach --sidekey: Meldung aus der Konfig" 1 "$(count "$T/install.log" 'Seitentaste: an (aus der Konfig')"
 irun --no-sidekey
 check "--no-sidekey: entfernt, SIDEKEY=off gespeichert"    "nein off" "$(has "$P/bin/sidekey-ptt") $(iget SIDEKEY)"
-check "--no-sidekey: beendet einen laufenden Leser"        1 "$(count "$ILOG" "^pkill -f sidekey-ptt")"
+check "--no-sidekey: beendet einen laufenden Leser, startet keinen" "1 0" "$(count "$ILOG" "^pkill -f .*python.* $P/bin/sidekey-ptt") $(count "$ILOG" "^setsid")"
 irun
 check "ohne Option nach --no-sidekey: bleibt aus"          nein "$(has "$P/bin/sidekey-ptt")"
 irun --sidekey --no-voice
