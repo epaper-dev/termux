@@ -724,6 +724,11 @@ echo x > "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx"
 echo x > "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx.json"
 rm -f "$H/.config/termux-rootbridge/config"
 ROOTBRIDGE_GUEST_HOME=/root irun --setup
+check "Gast ohne Articulino, Voice an: setup-guest.sh läuft" 1 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
+mkdir -p "$GROOT/opt/articulino/model/int8"
+echo x > "$GROOT/opt/articulino/model/int8/voice.onnx"
+rm -f "$H/.config/termux-rootbridge/config"
+ROOTBRIDGE_GUEST_HOME=/root irun --setup
 check "Gast komplett: setup-guest.sh läuft nicht"          0 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
 rm -rf "${GROOT:?}/usr/bin" "${GROOT:?}/root"
 

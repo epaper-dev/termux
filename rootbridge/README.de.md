@@ -362,6 +362,10 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   Englische Fachbegriffe (Pull Request, Commit, Branch, Hook, …) spricht die Stimme englisch aus: `guest/claude/speak-english.txt`
   führt sie mit ihrer Lautschrift in `[[…]]` (eingedeutschte Formen wie „gemergt“ mit deutscher Schreibung, „gemörtscht“); ein weiteres Wort:
   dort eine Zeile (Wort, Tab, Ersatz), dann erneut `install-guest.sh` (es überschreibt die installierte Kopie neben `speak.py`).
+  **Mit deiner eigenen Stimme:** `setup-guest.sh` installiert zusätzlich Articulino (`/opt/articulino`, etwa 230 MB); deine Stimme
+  nimmst du im Gast mit `rootbridge-speak --record` auf (etwa 10 s ruhig sprechen). Danach liest ein kleiner Dienst (`speak-server.py`,
+  etwa 500 MB, solange er läuft; er beendet sich nach 30 Minuten ohne Text) mit deiner Stimme; der erste Text nach seinem Start braucht
+  etwa 5 s länger. Ohne Aufnahme oder ohne Articulino liest Piper.
 
 **Auslöser ohne Root** (die Termux-App dieses Repositorys, `app/`, zeigt Android „Termux push to talk“ an; jeder führt `ptt toggle` aus: ein
 Ereignis, das erste startet das Sprechen, das nächste stoppt es):

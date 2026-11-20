@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """speak - speech output for Claude Code (termux-rootbridge, part of --voice).
 
-Reads text aloud with Piper (a local neural voice) through PulseAudio in Termux, the same way the microphone of
-/voice comes in. Claude's answers are read by the Stop hook, its short notes between tool calls ("Ich baue jetzt ...") by
+Reads text aloud through PulseAudio in Termux, the same way the microphone of /voice comes in: in your own voice with
+Articulino (speak-server.py keeps it loaded) when setup-guest.sh installed it and you recorded the voice (--record), else
+with Piper (a local neural voice, de_DE-kerstin-medium); Piper also reads when the server does not come up. Claude's answers are read by the Stop hook, its short notes between tool calls ("Ich baue jetzt ...") by
 the PreToolUse hook; a new text ends the one still being read.
 
   speak.py --hook     Stop hook: reads last_assistant_message from the hook JSON on stdin, unless the switch is off
   speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once
   speak.py --stop     end what is being read (UserPromptSubmit hook, rootbridge-speak --stop)
+  speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py [TEXT...]  read TEXT, or stdin, aloud (also when the switch is off)
 
 What is read: the text without code blocks, tables, URLs and Markdown marks. The English words of the list
-speak-english.txt next to this file go to Piper as phonemes ([[...]]), so the German voice says them in English, and German
-forms of English verbs as they are said ("gemergt" as "gemörtscht"). With the file speak-first in the bridge
+speak-english.txt next to this file go to Piper as phonemes ([[...]]) and to Articulino in [en]...[/en], so the German voice
+says them in English, and German forms of English verbs as they are said ("gemergt" as "gemörtscht"). With the file speak-first in the bridge
 directory (`rootbridge voice speak first|all`) the hooks read only a short version of an answer or note: its first paragraph,
 at most SUMMARY_SENTENCES sentences, and the last question of the text when it stands further down.
 --progress remembers the id of the note it read in speak-progress, so each note is read once.
@@ -24,7 +26,9 @@ Errors of piper and play go to ~/.cache/rootbridge-speak.log (the hook and the p
 also says when Piper or the voice is missing.
 
 Environment (tests, other voices): PIPER_VOICE (.onnx file), RB_SPEAK_PIPER (piper program), RB_SPEAK_PLAY (play of sox),
-RB_SPEAK_DIR (bridge directory), RB_SPEAK_LOG (log file), RB_SPEAK_ENGLISH (the list of English words).
+RB_SPEAK_DIR (bridge directory), RB_SPEAK_LOG (log file), RB_SPEAK_ENGLISH (the list of English words),
+RB_SPEAK_ARTICULINO (its venv, the model in model/), RB_SPEAK_VOICE_SAMPLE (your voice), RB_SPEAK_SERVER (speak-server.py),
+RB_SPEAK_SOCKET (its socket), RB_SPEAK_SERVER_START (how long to wait for it), RB_SPEAK_REC (rec of sox).
 Python >= 3.8, standard library only.
 """
 import fcntl
@@ -33,10 +37,12 @@ import os
 import stat
 import re
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
 import time
+import wave
 
 BRIDGE_DIR = os.environ.get("RB_SPEAK_DIR", "/data/data/com.termux/files/home/.rootbridge")
 OFF = os.path.join(BRIDGE_DIR, "speak-off")
@@ -53,6 +59,15 @@ PULSE_COOKIE = "/data/data/com.termux/files/home/.config/pulse/cookie"
 LOG = os.environ.get("RB_SPEAK_LOG", os.path.expanduser("~/.cache/rootbridge-speak.log"))
 PROC = os.environ.get("RB_SPEAK_PROC", "/proc")
 ENGLISH = os.environ.get("RB_SPEAK_ENGLISH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "speak-english.txt"))
+ARTICULINO = os.environ.get("RB_SPEAK_ARTICULINO", "/opt/articulino")   # venv of setup-guest.sh, the model in model/
+VOICE_SAMPLE = os.environ.get("RB_SPEAK_VOICE_SAMPLE", os.path.expanduser("~/.local/share/rootbridge/voice.wav"))
+SERVER = os.environ.get("RB_SPEAK_SERVER", os.path.join(os.path.dirname(os.path.abspath(__file__)), "speak-server.py"))
+SOCKET = os.environ.get("RB_SPEAK_SOCKET", os.path.expanduser("~/.cache/rootbridge-speak.sock"))
+REC = os.environ.get("RB_SPEAK_REC", "rec")
+SERVER_RATE = 24000         # what speak-server.py sends
+SERVER_START_SECONDS = float(os.environ.get("RB_SPEAK_SERVER_START", 30))   # loading takes about 5 s on the A9
+RECORD_SECONDS = 12         # Articulino uses the first 8 s after the silence
+MIN_VOICE_SECONDS = 3
 RUN_ARG = "--run"   # the player process; Termux recognises it by "speak.py --run" in its command line
 
 FENCE_RE = re.compile(r"^\s*(```|~~~).*?^\s*\1[^\n]*$", re.S | re.M)
@@ -114,9 +129,10 @@ def summary(text):
     return " ".join(head)
 
 
-def english(text):
+def english(text, articulino=False):
     """text with the words of the list ENGLISH replaced by what Piper should read: phonemes in [[...]] or a German spelling.
-    A line of the list: the word as written (case matters), a tab, the replacement; # starts a comment. No list, no change."""
+    A line of the list: the word as written (case matters), a tab, the replacement; # starts a comment. No list, no change.
+    For Articulino a word with phonemes becomes [en]word[/en] (it reads letters, the English ones in English)."""
     words = {}
     try:
         with open(ENGLISH, encoding="utf-8") as fh:
@@ -132,7 +148,13 @@ def english(text):
     if not words:
         return text
     pattern = r"(?<!\w)(%s)(?!\w)" % "|".join(map(re.escape, sorted(words, key=len, reverse=True)))
-    return re.sub(pattern, lambda m: words[m.group(1)], text)
+
+    def replace(m):
+        word = m.group(1)
+        if articulino and words[word].startswith("[["):
+            return "[en]%s[/en]" % word
+        return words[word]
+    return re.sub(pattern, replace, text)
 
 
 def log(message):
@@ -222,33 +244,126 @@ def write_pidfile(pid):
     os.replace(tmp, PIDFILE)
 
 
-def run():
-    """The player: piper | play, in its own process group (the group id is in speak.pid while it reads)."""
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop still removes speak.pid (finally below)
-    text = english(sys.stdin.buffer.read().decode("utf-8", "replace")).encode("utf-8")
+def pulse_env():
     env = dict(os.environ)
     env.setdefault("PULSE_SERVER", "127.0.0.1")
     if "PULSE_COOKIE" not in env and os.access(PULSE_COOKIE, os.R_OK):
         env["PULSE_COOKIE"] = PULSE_COOKIE
+    return env
+
+
+def play_command(rate):
+    return [PLAY, "-q", "-t", "raw", "-r", str(rate), "-e", "signed", "-b", "16", "-c", "1", "-", "-t", "pulseaudio"]
+
+
+def connect():
+    conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        conn.connect(SOCKET)
+        return conn
+    except OSError:
+        conn.close()
+        return None
+
+
+def server_connection():
+    """A connection to speak-server.py (Articulino with your voice), which is started when none answers. None without
+    Articulino or the voice, or when the server does not come up within SERVER_START_SECONDS: then Piper reads."""
+    python = os.path.join(ARTICULINO, "bin", "python3")
+    model = os.path.join(ARTICULINO, "model")
+    if not (os.path.exists(python) and os.path.isdir(model) and os.path.exists(VOICE_SAMPLE) and os.path.exists(SERVER)):
+        return None
+    conn = connect()
+    if conn:
+        return conn
+    try:
+        os.makedirs(os.path.dirname(SOCKET), exist_ok=True)
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        deadline = time.time() + SERVER_START_SECONDS
+        with open(SOCKET + ".lock", "a") as lock:
+            while True:   # one start at a time; the lock is held by a starting server, which ends within the deadline
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.time() >= deadline:
+                        log("Articulino startet noch immer, es liest Piper")
+                        return None
+                    time.sleep(0.1)
+            conn = connect()
+            if conn:
+                return conn
+            with open(LOG, "a") as err:
+                # its own session: a stop ends the player's process group, not the server; the server holds the lock
+                # (the same open file) until it listens, also when a stop ends this process while it loads
+                server = subprocess.Popen([python, "-I", SERVER, SOCKET, model, VOICE_SAMPLE, str(lock.fileno())],
+                                          stdin=subprocess.DEVNULL, stdout=err, stderr=err, start_new_session=True,
+                                          pass_fds=(lock.fileno(),))
+            deadline = time.time() + SERVER_START_SECONDS
+            while time.time() < deadline and server.poll() is None:
+                conn = connect()
+                if conn:
+                    return conn
+                time.sleep(0.1)
+            if server.poll() is None:   # it hangs: it must not keep the lock (and 500 MB)
+                server.kill()
+            log("Articulino startete nicht (Exit %s), es liest Piper" % server.wait())
+    except OSError as e:
+        log("Articulino: %s, es liest Piper" % e)
+    return None
+
+
+def play_from_server(conn, text, err, env):
+    """Sends text to speak-server.py and plays its audio; the exit codes, or None when no audio came (then Piper reads)."""
+    with conn:
+        conn.sendall(english(text, articulino=True).encode("utf-8"))
+        conn.shutdown(socket.SHUT_WR)
+        audio = conn.recv(65536)
+        if not audio:
+            return None
+        play = subprocess.Popen(play_command(SERVER_RATE), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=err,
+                                env=env)
+        try:
+            while audio:
+                play.stdin.write(audio)
+                audio = conn.recv(65536)
+            play.stdin.close()
+        except BrokenPipeError:
+            pass
+        return 0, play.wait()
+
+
+def run():
+    """The player: speak-server.py or piper | play, in its own process group (the group id is in speak.pid while it reads)."""
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop still removes speak.pid (finally below)
+    text = sys.stdin.buffer.read().decode("utf-8", "replace")
+    env = pulse_env()
     me = str(os.getpid())   # start() registered it in speak.pid
     try:
+        conn = server_connection()
         with tempfile.TemporaryFile() as err:   # what piper and play say, into the log only on a failure
-            piper = subprocess.Popen([PIPER, "-m", VOICE, "--output-raw"], stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE, stderr=err, env=env)
-            play = subprocess.Popen([PLAY, "-q", "-t", "raw", "-r", str(sample_rate()), "-e", "signed", "-b", "16",
-                                     "-c", "1", "-", "-t", "pulseaudio"],
-                                    stdin=piper.stdout, stdout=subprocess.DEVNULL, stderr=err, env=env)
-            piper.stdout.close()
-            try:
-                piper.stdin.write(text)
-                piper.stdin.close()
-            except BrokenPipeError:
-                pass
-            codes = (piper.wait(), play.wait())
+            engine, codes = "Articulino", None
+            if conn:
+                codes = play_from_server(conn, text, err, env)
+                if codes is None:
+                    log("Articulino lieferte kein Audio (siehe oben), es liest Piper")
+            if codes is None:
+                engine = "piper"
+                piper = subprocess.Popen([PIPER, "-m", VOICE, "--output-raw"], stdin=subprocess.PIPE,
+                                         stdout=subprocess.PIPE, stderr=err, env=env)
+                play = subprocess.Popen(play_command(sample_rate()), stdin=piper.stdout, stdout=subprocess.DEVNULL,
+                                        stderr=err, env=env)
+                piper.stdout.close()
+                try:
+                    piper.stdin.write(english(text).encode("utf-8"))
+                    piper.stdin.close()
+                except BrokenPipeError:
+                    pass
+                codes = (piper.wait(), play.wait())
             if codes != (0, 0):
                 err.seek(0)
-                log("piper Exit %d, play Exit %d: %s" % (codes[0], codes[1],
-                                                        err.read()[-2000:].decode("utf-8", "replace").strip()))
+                log("%s Exit %d, play Exit %d: %s" % (engine, codes[0], codes[1],
+                                                     err.read()[-2000:].decode("utf-8", "replace").strip()))
     except OSError as e:
         log("Abspielen ging nicht: %s" % e)
     finally:
@@ -258,6 +373,34 @@ def run():
                     os.remove(PIDFILE)
         except OSError:
             pass
+
+
+def record():
+    """--record: your voice for Articulino, RECORD_SECONDS from the microphone; silence at both ends cut, the level
+    evened out. The old recording stays when the new one is shorter than MIN_VOICE_SECONDS."""
+    stop()
+    os.makedirs(os.path.dirname(VOICE_SAMPLE), exist_ok=True)
+    tmp = VOICE_SAMPLE + ".new.wav"
+    print("Aufnahme läuft %d Sekunden: sprich jetzt ruhig ein paar Sätze." % RECORD_SECONDS, flush=True)
+    rc = subprocess.call([REC, "-q", "-t", "pulseaudio", "default", "-r", str(SERVER_RATE), "-c", "1", "-b", "16", tmp,
+                          "trim", "0", str(RECORD_SECONDS), "silence", "1", "0.1", "1%", "reverse",
+                          "silence", "1", "0.3", "1%", "reverse", "gain", "-n", "-3"], env=pulse_env())
+    try:
+        with wave.open(tmp) as w:
+            seconds = w.getnframes() / w.getframerate()
+    except (OSError, EOFError, wave.Error):
+        seconds = 0
+    if rc != 0 or seconds < MIN_VOICE_SECONDS:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        print("Zu wenig Sprache aufgenommen (%.1f s, rec Exit %d); die alte Aufnahme bleibt." % (seconds, rc),
+              file=sys.stderr)
+        return 1
+    os.replace(tmp, VOICE_SAMPLE)
+    print("Gespeichert: %s (%.1f s). Ab dem nächsten Vorlesen spricht Articulino mit dieser Stimme." % (VOICE_SAMPLE, seconds))
+    return 0
 
 
 def hook_input():
@@ -393,6 +536,8 @@ def main(argv):
         stop()
     elif argv[:1] == [RUN_ARG]:
         run()
+    elif argv[:1] == ["--record"]:
+        return record()
     elif argv[:1] in (["-h"], ["--help"]):
         print(__doc__.strip())
     else:

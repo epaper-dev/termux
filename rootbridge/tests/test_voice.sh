@@ -429,11 +429,11 @@ check "install.sh: Abschlussmeldung nennt /voice und ptt"  1 "$(count "$T/instal
 check "install.sh: Abschlussmeldung nennt das Vorlesen"    1 "$(count "$T/install.log" "^Vorlesen: .*rootbridge voice speak")"
 check "install.sh: Widgets Vorlesen und Stopp in tasks/ (Hintergrund)" "ja ja" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
 check "install.sh: Widget Vorlesen schaltet um, Stopp stoppt" "1 1" "$(count "$H/.shortcuts/tasks/Vorlesen" '^msg="$(rootbridge voice speak toggle') $(count "$H/.shortcuts/tasks/Stopp" '^exec rootbridge voice speak stop$')"
-check "install.sh: Gast hat speak.py, die englischen Wörter und rootbridge-speak" "ja ja ja" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-english.txt") $(has "$T/iguest/usr/local/bin/rootbridge-speak")"
+check "install.sh: Gast hat speak.py, die englischen Wörter, speak-server.py und rootbridge-speak" "ja ja ja ja" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-english.txt") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-server.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak")"
 check "install.sh: Gast-Hooks Stop (vorlesen), PreToolUse (Zwischenstand) und UserPromptSubmit (stoppen)" "1 1 1" "$(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --hook') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --progress') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --stop')"
 irun --no-voice
 check "install.sh --no-voice: Widgets Vorlesen und Stopp entfernt" "nein nein" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
-check "install.sh --no-voice: Gast ohne Vorlesen"          "nein nein nein 0" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-english.txt") $(has "$T/iguest/usr/local/bin/rootbridge-speak") $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py')"
+check "install.sh --no-voice: Gast ohne Vorlesen"          "nein nein nein nein 0" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-english.txt") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-server.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak") $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py')"
 printf '#!/bin/sh\necho mine\n' > "$H/.shortcuts/tasks/Stopp"
 irun --no-voice
 check "install.sh --no-voice: ein eigenes Widget Stopp bleibt" ja "$(has "$H/.shortcuts/tasks/Stopp")"
@@ -654,10 +654,18 @@ piper_present() {
     echo x > "$PIPER/voices/de_DE-kerstin-medium.onnx"; echo x > "$PIPER/voices/de_DE-kerstin-medium.onnx.json"
 }
 piper_present
+# Articulino: present (a venv with python3 and the model) unless a test removes it; never the real /opt/articulino
+ART="$T/articulino"
+articulino_present() {
+    mkdir -p "$ART/bin" "$ART/model/int8"
+    printf '#!/bin/bash\nexit 0\n' > "$ART/bin/python3"; chmod +x "$ART/bin/python3"
+    echo x > "$ART/model/int8/voice.onnx"
+}
+articulino_present
 gs() {   # gs [args]: setup-guest.sh with everything present except what the test removes
     : > "$ILOG"
     env -i PATH="$T/gstubs:$T/gbin" HOME="$T/ghome" ROOTBRIDGE_GUEST_HOME="$T/ghome" ROOTBRIDGE_CA_BUNDLE="$T/ca.crt" STUB_LOG="$ILOG" \
-        PIPER_DIR="$PIPER" STUB_PIPER="$PIPER" STUB_ENSUREPIP="${STUB_ENSUREPIP:-0}" STUB_PIP_RC="${STUB_PIP_RC:-0}" \
+        PIPER_DIR="$PIPER" STUB_PIPER="$PIPER" ARTICULINO_DIR="$ART" STUB_ENSUREPIP="${STUB_ENSUREPIP:-0}" STUB_PIP_RC="${STUB_PIP_RC:-0}" \
         STUB_VOICE_RC="${STUB_VOICE_RC:-0}" bash "$SETUP" "$@" > "$T/setup.log" 2>&1
     SRC_RC=$?
 }
@@ -719,6 +727,20 @@ rm -rf "$PIPER"
 STUB_VOICE_RC=1 gs --codex no
 check "setup-guest: Stimme scheitert, Fehler mit Hinweis"  "1 1" "$SRC_RC $(count "$T/setup.log" 'Stimme de_DE-kerstin-medium ließ sich nicht laden')"
 check "setup-guest: ein halber Download gilt nicht als Stimme" "nein nein" "$(has "$PIPER/voices/de_DE-kerstin-medium.onnx") $(has "$PIPER/voices/.download")"
+piper_present
+gs --codex no
+check "setup-guest: Articulino da, nichts zu tun"          "0 1 0" "$SRC_RC $(count "$T/setup.log" 'Articulino ist schon installiert') $(count "$ILOG" 'articulino')"
+# no Articulino: a venv, huggingface_hub, the download of the fixed revision; the stub downloads nothing, so the check of
+# SHA256SUMS fails: a hint, no model, no staging folder, and the setup still succeeds (Piper reads)
+rm -rf "$ART"
+gs --codex no
+check "setup-guest ohne Articulino: venv und huggingface_hub" "0 1 1" "$SRC_RC $(count "$ILOG" "^python3 -m venv $ART$") $(count "$ILOG" '^pip install -q huggingface_hub$')"
+check "setup-guest ohne Articulino: lädt die feste Revision" 1 "$(count "$ILOG" " eigenhand/Articulino-DE-EN-Realtime-Stream-TTS-ONNX a760ce8d513534111c7679751869fa4c45ef0e54 $ART/.download$")"
+check "setup-guest: Articulino scheitert, Hinweis, kein Modell, weiter mit Piper" "0 1 nein nein" "$SRC_RC $(count "$T/setup.log" 'Articulino ließ sich nicht installieren') $(has "$ART/model") $(has "$ART/.download")"
+rm -rf "$ART"
+gs --codex no --voice no
+check "setup-guest --voice no: kein Articulino"            "0 0" "$SRC_RC $(count "$ILOG" 'articulino')"
+articulino_present
 printf '#!/bin/bash\nexit 0\n' > "$T/gstubs/python3"; chmod +x "$T/gstubs/python3"
 rm -f "$T/gstubs/rec"; piper_present
 

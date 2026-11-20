@@ -339,6 +339,10 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   Los términos ingleses (Pull Request, Commit, Branch, Hook, …) se pronuncian en inglés: `guest/claude/speak-english.txt` los
   lista con su transcripción fonética en `[[…]]` (formas alemanas como «gemergt» con una grafía alemana, «gemörtscht»); otra palabra: una
   línea allí (palabra, tabulador, sustitución) y de nuevo `install-guest.sh` (sobrescribe la copia instalada junto a `speak.py`).
+  **Con tu propia voz:** `setup-guest.sh` instala también Articulino (`/opt/articulino`, unos 230 MB); graba tu voz en el invitado con
+  `rootbridge-speak --record` (habla con calma unos 10 s). A partir de ahí un pequeño servicio (`speak-server.py`, unos 500 MB mientras
+  funciona; termina tras 30 minutos sin texto) lee con tu voz; el primer texto tras su arranque tarda unos 5 s más. Sin grabación o sin
+  Articulino lee Piper.
 
 **Disparadores sin root** (la app Termux de este repositorio, `app/`, muestra «Termux push to talk» a Android; cada uno ejecuta `ptt toggle`: un
 solo evento, el primero empieza a hablar y el siguiente lo detiene):

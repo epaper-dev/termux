@@ -750,6 +750,9 @@ if [ "$DO_GUEST" = 1 ]; then
             [ -e "$GROOT/opt/piper/bin/piper" ] || return 1   # Piper reads the answers aloud
             [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx" ] || return 1
             [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx.json" ] || return 1
+            # Articulino (your own voice): its model comes last, so it stands for the whole step; a failed download is
+            # tried again with the next installation
+            [ -s "$GROOT/opt/articulino/model/int8/voice.onnx" ] || return 1
         fi
         if [ "$USE_CLAUDE" = yes ] && [ "$USE_CODEX" = yes ]; then
             { [ -e "$GROOT/usr/bin/node" ] || [ -e "$GROOT/usr/bin/nodejs" ]; } || return 1
