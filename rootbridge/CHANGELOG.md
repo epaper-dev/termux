@@ -28,6 +28,20 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   `~/.rootbridge/speak-stopped`) or the switch turned off cancels it. The same switches as the Stop hook (`speak-off`, `speak-first`).
   Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
 
+* **Reading aloud: English words in English.** `speak.py` hands the words of `guest/claude/speak-english.txt` (Pull Request, Commit,
+  Merge, Branch, Hook, Check, …; word, tab, replacement, case matters) to Piper as espeak-ng en-us phonemes (`[[…]]`), so the German voice
+  says them in English, and German forms of English verbs as they are said ("gemergt" as "gemörtscht"); everything else stays German ("grün"). `install-guest.sh` installs the list next to `speak.py`
+  (`RB_SPEAK_ENGLISH` points elsewhere). Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
+
+* **Reading aloud in your own voice (Articulino).** `setup-guest.sh` installs Articulino (`eigenhand/Articulino-DE-EN-Realtime-Stream-TTS-ONNX`,
+  int8, a fixed revision checked against its `SHA256SUMS`) in a venv (`/opt/articulino`); when that fails the setup goes on and Piper
+  reads, and `install.sh` runs the setup again while the model is missing. `rootbridge-speak --record` records your voice (12 s from the microphone, silence cut, at least 3 s, in
+  `~/.local/share/rootbridge/voice.wav`). With both, `speak.py` reads through `guest/claude/speak-server.py`: it keeps the model and
+  the voice loaded (started with the first text, about 5 s; then the first sentence comes after about 0.7 s; about 500 MB; ends after
+  30 minutes without a text), takes the text on a socket and sends the audio sentence by sentence, English words of the list in
+  `[en]…[/en]`. A stop ends the player, not the server. Without the voice, or when the server does not come up, Piper reads as before.
+  Tests: `tests/test_speak.py` (stub server), `tests/test_voice.sh`.
+
 ### Changed
 * **The volume keys change the volume while Termux is in front.** The block of the installer in `~/.termux/termux.properties` (with
   the extra keys) sets `volume-keys = volume`; by default Termux takes them as CTRL and FN. Tests: `tests/test_extra_keys.sh`.

@@ -10,6 +10,9 @@
 #   3. Codex with the official standalone installer (only when there is no codex yet)
 #   4. Piper for the speech output (with Claude Code and voice): pip package piper-tts in a venv (PIPER_DIR) and the
 #      German voice de_DE-kerstin-medium (only what is missing; python3-venv from apt when venv cannot be made)
+#   5. Articulino for the speech output in your own voice (with Piper): a venv (ARTICULINO_DIR) with its runtime package
+#      and the int8 model of a fixed revision, checked against its SHA256SUMS. Optional: when it fails (network), the
+#      setup goes on and Piper reads; the next setup tries again. The voice: rootbridge-speak --record
 # The hooks and Codex plugin declaration are written by install-guest.sh. Claude Code fetches the plugin at
 # session start; setup never invokes `claude plugin ...`.
 # Idempotent: with everything in place it changes nothing and does not touch the network.
@@ -23,6 +26,7 @@
 #   ROOTBRIDGE_GUEST_HOME     home of the guest user (default /root, like install-guest.sh)
 #   ROOTBRIDGE_CA_BUNDLE      certificate bundle to look for (default /etc/ssl/certs/ca-certificates.crt)
 #   PIPER_DIR                 venv of Piper (default /opt/piper; the voices in its voices/)
+#   ARTICULINO_DIR            venv of Articulino (default /opt/articulino; the model in its model/)
 
 set -eu
 
@@ -32,6 +36,9 @@ INSTALL_URL="${CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CODEX_URL="${CODEX_INSTALL_URL:-https://chatgpt.com/codex/install.sh}"
 PIPER_DIR="${PIPER_DIR:-/opt/piper}"
 PIPER_VOICE_NAME=de_DE-kerstin-medium   # speak.py reads this voice
+ARTICULINO_DIR="${ARTICULINO_DIR:-/opt/articulino}"
+ARTICULINO_REPO=eigenhand/Articulino-DE-EN-Realtime-Stream-TTS-ONNX
+ARTICULINO_REV=a760ce8d513534111c7679751869fa4c45ef0e54   # 2026-10-15; a new one: check its SHA256SUMS and listen first
 CLAUDE_ON=yes; CODEX_ON=yes; VOICE_ON=yes
 
 say() { printf '%s\n' "$*"; }
@@ -166,5 +173,34 @@ if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
         mv -f "$stage/$PIPER_VOICE_NAME.onnx.json" "$voice.onnx.json"
         mv -f "$stage/$PIPER_VOICE_NAME.onnx" "$voice.onnx"
         rm -rf "$stage"
+    fi
+fi
+
+# ------------------------------------------------------------------ 5. Articulino (speech output in your own voice)
+if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
+    say "== Gast: Articulino (Vorlesen mit deiner Stimme)"
+    if [ -x "$ARTICULINO_DIR/bin/python3" ] && [ -s "$ARTICULINO_DIR/model/int8/voice.onnx" ]; then
+        say "  Articulino ist schon installiert"
+    else
+        # the model into a staging folder, checked against its SHA256SUMS, installed from there, then moved into place:
+        # an interrupted download never looks like a model
+        say "  lade Articulino ($ARTICULINO_REPO, int8, etwa 230 MB)"
+        stage="$ARTICULINO_DIR/.download"
+        if { [ -x "$ARTICULINO_DIR/bin/python3" ] || python3 -m venv "$ARTICULINO_DIR"; } \
+            && "$ARTICULINO_DIR/bin/pip" install -q huggingface_hub \
+            && rm -rf "$stage" \
+            && HF_HUB_DISABLE_PROGRESS_BARS=1 "$ARTICULINO_DIR/bin/python3" -I -c 'import sys
+from huggingface_hub import snapshot_download
+snapshot_download(sys.argv[1], revision=sys.argv[2], local_dir=sys.argv[3], allow_patterns=[
+    "config.json", "pyproject.toml", "README.md", "LICENSE", "NOTICE", "SHA256SUMS", "int8/*", "articulino_onnx/**"])' \
+                "$ARTICULINO_REPO" "$ARTICULINO_REV" "$stage" \
+            && (cd "$stage" && grep -E '  (int8|articulino_onnx)/' SHA256SUMS | sha256sum -c --quiet --strict) \
+            && "$ARTICULINO_DIR/bin/pip" install -q "$stage" \
+            && rm -rf "$stage/.cache" "$ARTICULINO_DIR/model" && mv "$stage" "$ARTICULINO_DIR/model"; then
+            say "  Articulino installiert; deine Stimme aufnehmen: rootbridge-speak --record"
+        else
+            rm -rf "$stage"
+            say "  Articulino ließ sich nicht installieren (Netz?); es liest Piper. Erneut: bash install.sh --setup"
+        fi
     fi
 fi

@@ -2,6 +2,7 @@
 
 piper and play are stubs (RB_SPEAK_PIPER / RB_SPEAK_PLAY), the bridge directory is a temp dir (RB_SPEAK_DIR).
 """
+import fcntl
 import importlib.util
 import json
 import os
@@ -66,6 +67,214 @@ class TestSummary(unittest.TestCase):
         self.assertEqual(speak.summary(""), "")
 
 
+class TestEnglish(unittest.TestCase):
+    """English words of the list go to Piper as phonemes; the rest stays as it is."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old = speak.ENGLISH
+        speak.ENGLISH = os.path.join(self.tmp.name, "english.txt")
+        with open(speak.ENGLISH, "w", encoding="utf-8") as fh:
+            fh.write("# comment\tx\nPull Request\t[[pˈʊl ɹᵻkwˈɛst]]\nCommit\t[[kəmˈɪt]]\nPre-Commit\t[[pɹˈiːkəmˈɪt]]\n"
+                     "Prompt\t[[pɹˈɑːmpt]]\nmain\t[[mˈeɪn]]\ngemergt\tgemörtscht\n")
+
+    def tearDown(self):
+        speak.ENGLISH = self.old
+        self.tmp.cleanup()
+
+    def test_words_become_phonemes(self):
+        self.assertEqual(speak.english("Der Pull Request ist auf main, der Merge-Commit auch."),
+                         "Der [[pˈʊl ɹᵻkwˈɛst]] ist auf [[mˈeɪn]], der Merge-[[kəmˈɪt]] auch.")
+
+    def test_german_spelling_of_english_verbs(self):
+        self.assertEqual(speak.english("Der Pull Request ist gemergt."), "Der [[pˈʊl ɹᵻkwˈɛst]] ist gemörtscht.")
+
+    def test_longest_word_first(self):
+        self.assertEqual(speak.english("Der Pre-Commit prüft."), "Der [[pɹˈiːkəmˈɪt]] prüft.")
+
+    def test_only_whole_words_with_their_case(self):
+        text = "Er antwortet prompt, die Commits und Pull Requests, # comment, Commitment, Main."
+        self.assertEqual(speak.english(text), text)
+
+    def test_articulino_gets_english_words_in_tags(self):
+        self.assertEqual(speak.english("Der Pull Request ist gemergt, der Commit auf main.", articulino=True),
+                         "Der [en]Pull Request[/en] ist gemörtscht, der [en]Commit[/en] auf [en]main[/en].")
+
+    def test_no_list_no_change(self):
+        speak.ENGLISH = os.path.join(self.tmp.name, "fehlt.txt")
+        self.assertEqual(speak.english("Der Pull Request"), "Der Pull Request")
+
+    def test_unreadable_list_is_logged_and_text_stays(self):
+        with open(speak.ENGLISH, "wb") as fh:
+            fh.write("gemergt\tgem\xf6rtscht\n".encode("cp1252"))
+        log = os.path.join(self.tmp.name, "speak.log")
+        old_log, speak.LOG = speak.LOG, log
+        try:
+            self.assertEqual(speak.english("Der Commit"), "Der Commit")
+        finally:
+            speak.LOG = old_log
+        with open(log, encoding="utf-8") as fh:
+            self.assertIn("Liste englischer Wörter", fh.read())
+
+    def test_shipped_list_is_well_formed(self):
+        speak.ENGLISH = self.old
+        with open(self.old, encoding="utf-8") as fh:
+            lines = [l.rstrip("\n") for l in fh if l.strip() and not l.startswith("#")]
+        self.assertTrue(lines)
+        for line in lines:
+            word, tab, replacement = line.partition("\t")
+            self.assertTrue(tab and word.strip() and replacement.strip(), line)
+            if replacement.startswith("["):
+                self.assertRegex(replacement, r"^\[\[[^\[\]]+\]\]$", line)
+        self.assertEqual(speak.english("Der Pull Request ist gemergt"), "Der [[pˈʊl ɹᵻkwˈɛst]] ist gemörtscht")
+
+
+STUB_ARTICULINO = r"""
+import os
+
+
+class Audio:   # stands in for a numpy array: the server only clips, scales, converts and takes the bytes
+    def __init__(self, data):
+        self.data = data
+
+    def clip(self, low, high):
+        return self
+
+    def __mul__(self, factor):
+        return self
+
+    def astype(self, dtype):
+        return self
+
+    def tobytes(self):
+        return self.data
+
+
+class TTS:
+    @classmethod
+    def from_pretrained(cls, path, precision, threads):
+        return cls()
+
+    def set_voice(self, voice):
+        with open(voice, encoding="utf-8") as fh:
+            self.voice = fh.read().strip()
+
+    def stream(self, text, seed):
+        for sentence in text.split(". "):
+            yield Audio(("%s:%s|" % (self.voice, sentence)).encode())
+"""
+
+
+class TestServer(unittest.TestCase):
+    """speak-server.py with a stub of articulino_onnx."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        d = self.tmp.name
+        os.makedirs(os.path.join(d, "lib", "articulino_onnx"))
+        with open(os.path.join(d, "lib", "articulino_onnx", "__init__.py"), "w") as fh:
+            fh.write(STUB_ARTICULINO)
+        self.voice = os.path.join(d, "voice.wav")
+        with open(self.voice, "w") as fh:
+            fh.write("A")
+        self.sock = os.path.join(d, "s.sock")
+        self.lock = self.sock + ".lock"
+        server = os.path.join(HERE, "..", "guest", "claude", "speak-server.py")
+        with open(self.lock, "a") as lock:   # as speak.py starts it: with its start lock, which the server then holds
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            self.proc = subprocess.Popen([sys.executable, "-I", "-c", "import runpy, sys; sys.path.insert(0, sys.argv[1]); "
+                                          "sys.argv = sys.argv[2:]; runpy.run_path(sys.argv[0], run_name='__main__')",
+                                          os.path.join(d, "lib"), server, self.sock, d, self.voice, str(lock.fileno())],
+                                         env=dict(os.environ, RB_SPEAK_SERVER_IDLE="2"), stderr=subprocess.PIPE,
+                                         pass_fds=(lock.fileno(),))
+        end = time.time() + 10
+        while not os.path.exists(self.sock) and time.time() < end and self.proc.poll() is None:
+            time.sleep(0.05)
+
+    def tearDown(self):
+        if self.proc.poll() is None:
+            self.proc.kill()
+        self.proc.wait()
+        self.proc.stderr.close()
+        self.tmp.cleanup()
+
+    def say(self, text):
+        import socket
+        conn = socket.socket(socket.AF_UNIX)
+        conn.connect(self.sock)
+        conn.sendall(text.encode())
+        conn.shutdown(socket.SHUT_WR)
+        data = b""
+        while True:
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        conn.close()
+        return data.decode()
+
+    def test_holds_the_start_lock_until_it_listens(self):
+        self.assertTrue(os.path.exists(self.sock))
+        with open(self.lock, "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)   # raises when the server still held it
+
+    def test_answers_sentence_by_sentence(self):
+        self.assertEqual(self.say("Eins. Zwei"), "A:Eins|A:Zwei|")
+
+    def test_a_new_recording_is_used_with_the_next_text(self):
+        self.assertEqual(self.say("Eins"), "A:Eins|")
+        with open(self.voice, "w") as fh:
+            fh.write("B")
+        os.utime(self.voice, (time.time() + 5, time.time() + 5))   # a new mtime also on a coarse clock
+        self.assertEqual(self.say("Zwei"), "B:Zwei|")
+
+    def test_ends_when_idle_and_takes_its_socket(self):
+        self.assertEqual(self.say("Eins"), "A:Eins|")
+        self.assertEqual(self.proc.wait(timeout=10), 0)
+        self.assertFalse(os.path.exists(self.sock))
+
+
+STUB_SERVER = r"""
+import os, socket, sys
+import time
+with open(os.path.join(os.environ["OUT"], "server.starts"), "a") as fh:
+    fh.write("%d %s\n" % (os.getpid(), " ".join(sys.argv[1:])))
+if os.environ.get("STUB_SERVER_FAIL"):
+    sys.exit(3)
+if os.environ.get("STUB_SERVER_HANG"):
+    time.sleep(60)
+srv = socket.socket(socket.AF_UNIX)
+srv.bind(sys.argv[1])
+srv.listen(4)
+srv.settimeout(5)
+try:
+    while True:
+        try:
+            conn, _ = srv.accept()
+        except socket.timeout:
+            break
+        data = b""
+        while True:
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        if not os.environ.get("STUB_SERVER_SILENT"):
+            conn.sendall(b"PCM:" + data)
+        conn.close()
+finally:
+    os.unlink(sys.argv[1])
+"""
+
+STUB_REC = r"""#!/bin/bash
+# rec of sox: writes a WAV of STUB_SECONDS to its output file (the argument after "-b 16")
+while [ "$1" != "-b" ]; do shift; done
+python3 -c 'import sys, wave
+w = wave.open(sys.argv[1], "wb"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
+w.writeframes(b"\0\0" * int(24000 * float(sys.argv[2]))); w.close()' "$3" "${STUB_SECONDS:-5}"
+"""
+
+
 class TestPlayer(unittest.TestCase):
     """speak.py as Claude Code runs it, with stubs for piper and play."""
 
@@ -103,7 +312,9 @@ class TestPlayer(unittest.TestCase):
 
     def env(self, **extra):
         env = dict(os.environ, RB_SPEAK_DIR=self.bridge, RB_SPEAK_PIPER=self.piper, RB_SPEAK_PLAY=self.play,
-                   PIPER_VOICE=self.voice, OUT=self.out, RB_SPEAK_LOG=self.log)
+                   PIPER_VOICE=self.voice, OUT=self.out, RB_SPEAK_LOG=self.log,
+                   RB_SPEAK_ENGLISH=os.path.join(self.tmp.name, "keine-liste.txt"),   # the text as it is, unless a test sets one
+                   RB_SPEAK_ARTICULINO=os.path.join(self.tmp.name, "kein-articulino"))   # Piper, unless a test sets one
         env.update(extra)
         return env
 
@@ -182,6 +393,95 @@ class TestPlayer(unittest.TestCase):
         open(os.path.join(self.bridge, "speak-off"), "w").close()
         self.run_speak(["Hallo", "Welt"])
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Hallo Welt"))
+
+    def test_player_hands_english_words_as_phonemes(self):
+        english = os.path.join(self.tmp.name, "english.txt")
+        with open(english, "w", encoding="utf-8") as fh:
+            fh.write("Commit\t[[kəmˈɪt]]\n")
+        self.run_speak(["Der Commit ist grün."], RB_SPEAK_ENGLISH=english)
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Der [[kəmˈɪt]] ist grün."))
+
+    def articulino(self, voice=True):
+        """Articulino in the temp dir: a venv whose python3 is this one, a model dir, the voice, a stub server."""
+        venv = os.path.join(self.tmp.name, "articulino")
+        os.makedirs(os.path.join(venv, "bin"), exist_ok=True)
+        os.makedirs(os.path.join(venv, "model"), exist_ok=True)
+        if not os.path.exists(os.path.join(venv, "bin", "python3")):
+            os.symlink(sys.executable, os.path.join(venv, "bin", "python3"))
+        sample = os.path.join(self.tmp.name, "voice.wav")
+        if voice:
+            open(sample, "w").close()
+        server = os.path.join(self.tmp.name, "speak-server.py")
+        with open(server, "w") as fh:
+            fh.write(STUB_SERVER)
+        english = os.path.join(self.tmp.name, "english.txt")
+        with open(english, "w", encoding="utf-8") as fh:
+            fh.write("Commit\t[[kəmˈɪt]]\ngemergt\tgemörtscht\n")
+        return dict(RB_SPEAK_ARTICULINO=venv, RB_SPEAK_VOICE_SAMPLE=sample, RB_SPEAK_SERVER=server,
+                    RB_SPEAK_SOCKET=os.path.join(self.tmp.name, "s.sock"), RB_SPEAK_ENGLISH=english)
+
+    def test_articulino_reads_through_its_server(self):
+        env = self.articulino()
+        self.run_speak(["Der Commit ist gemergt."], **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "PCM:Der [en]Commit[/en] ist gemörtscht."))
+        self.assertIn("-r 24000", self.out_file("play.args"))
+        self.assertIsNone(self.out_file("piper.in"))
+
+    def test_articulino_server_is_started_once(self):
+        env = self.articulino()
+        self.run_speak(["Eins."], **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "PCM:Eins."))
+        self.run_speak(["Zwei."], **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "PCM:Zwei."))
+        self.assertEqual(len(self.out_file("server.starts").splitlines()), 1)
+
+    def test_piper_reads_when_the_server_does_not_come_up(self):
+        env = self.articulino()
+        self.run_speak(["Der Commit."], STUB_SERVER_FAIL="1", **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Der [[kəmˈɪt]]."))
+        self.assertTrue(self.wait_for(lambda: "Articulino startete nicht" in self.read_log()))
+
+    def test_piper_reads_when_the_server_sends_no_audio(self):
+        env = self.articulino()
+        self.run_speak(["Hallo."], STUB_SERVER_SILENT="1", **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Hallo."))
+        self.assertTrue(self.wait_for(lambda: "Articulino lieferte kein Audio" in self.read_log()))
+
+    def test_a_hanging_server_is_ended_and_piper_reads(self):
+        env = self.articulino()
+        self.run_speak(["Hallo."], STUB_SERVER_HANG="1", RB_SPEAK_SERVER_START="1", **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Hallo."))
+        pid = int(self.out_file("server.starts").split()[0])
+        self.assertTrue(self.wait_for(lambda: not os.path.exists("/proc/%d" % pid) or
+                                      open("/proc/%d/stat" % pid).read().split()[2] == "Z"), "der Dienst läuft noch")
+        os.remove(os.path.join(self.out, "piper.in"))
+        self.run_speak(["Nochmal."], STUB_SERVER_FAIL="1", RB_SPEAK_SERVER_START="1", **env)   # the lock is free again
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Nochmal."))
+        self.assertEqual(len(self.out_file("server.starts").splitlines()), 2)
+
+    def test_piper_reads_without_a_recorded_voice(self):
+        env = self.articulino(voice=False)
+        self.run_speak(["Hallo."], **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Hallo."))
+        self.assertIsNone(self.out_file("server.starts"))
+
+    def test_record_keeps_a_long_enough_voice(self):
+        env = self.articulino(voice=False)
+        rec = self.stub("rec", STUB_REC.split("\n", 1)[1])
+        r = self.run_speak(["--record"], RB_SPEAK_REC=rec, STUB_SECONDS="6", **env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.getsize(env["RB_SPEAK_VOICE_SAMPLE"]) > 24000 * 2 * 5)
+
+    def test_record_too_short_keeps_the_old_voice(self):
+        env = self.articulino()
+        with open(env["RB_SPEAK_VOICE_SAMPLE"], "w") as fh:
+            fh.write("alt")
+        rec = self.stub("rec", STUB_REC.split("\n", 1)[1])
+        r = self.run_speak(["--record"], RB_SPEAK_REC=rec, STUB_SECONDS="1", **env)
+        self.assertEqual(r.returncode, 1)
+        with open(env["RB_SPEAK_VOICE_SAMPLE"]) as fh:
+            self.assertEqual(fh.read(), "alt")
+        self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"] + ".new.wav"))
 
     def test_bad_input_is_harmless(self):
         for stdin in ("kein json", "[]", json.dumps({"last_assistant_message": 3}), json.dumps({})):

@@ -1,0 +1,78 @@
+# English words for speak.py: the word as it is written (case matters: "Prompt", not the German "prompt"), a tab, and what Piper
+# reads instead: English phonemes in [[...]] (Piper takes those as they are, so the German voice says the word in English), or a
+# German spelling of how it is said, for German forms of English verbs ("gemergt" would be read as "gemerkt").
+# Phonemes: espeak-ng en-us, as Piper makes them; e.g. /opt/piper/bin/python -c 'from piper.phonemize_espeak import
+# ESPEAK_DATA_DIR, EspeakPhonemizer; print(EspeakPhonemizer(ESPEAK_DATA_DIR).phonemize("en-us", "Pull Request"))'.
+# Only words that are said in English in German speech; "grün" stays German.
+Pull Request	[[pˈʊl ɹᵻkwˈɛst]]
+Pull Requests	[[pˈʊl ɹᵻkwˈɛsts]]
+Commit	[[kəmˈɪt]]
+Commits	[[kəmˈɪts]]
+Push	[[pˈʊʃ]]
+Merge	[[mˈɜːdʒ]]
+Branch	[[bɹˈæntʃ]]
+Branches	[[bɹˈæntʃᵻz]]
+Hook	[[hˈʊk]]
+Hooks	[[hˈʊks]]
+Check	[[tʃˈɛk]]
+Checks	[[tʃˈɛks]]
+Continuous Integration	[[kəntˈɪnjuːəs ˌɪntᵻɡɹˈeɪʃən]]
+Daemon	[[dˈiːmən]]
+Root	[[ɹˈuːt]]
+Repo	[[ɹˈiːpoʊ]]
+Main	[[mˈeɪn]]
+Release	[[ɹᵻlˈiːs]]
+Update	[[ˈʌpdeɪt]]
+Updates	[[ˈʌpdeɪts]]
+Feature	[[fˈiːtʃɚ]]
+Bug	[[bˈʌɡ]]
+Bugfix	[[bˈʌɡfɪks]]
+Workflow	[[wˈɜːkfloʊ]]
+Pipeline	[[pˈaɪplaɪn]]
+Prompt	[[pɹˈɑːmpt]]
+Token	[[tˈoʊkən]]
+Session	[[sˈɛʃən]]
+Widget	[[wˈɪdʒɪt]]
+Widgets	[[wˈɪdʒɪts]]
+Timeout	[[tˈaɪmaʊt]]
+Countdown	[[kˈaʊntdaʊn]]
+Review	[[ɹᵻvjˈuː]]
+Issue	[[ˈɪʃuː]]
+Issues	[[ˈɪʃuːz]]
+Pre-Commit	[[pɹˈiːkəmˈɪt]]
+Cache	[[kˈæʃ]]
+Download	[[dˈaʊnloʊd]]
+Upload	[[ˈʌploʊd]]
+Default	[[dᵻfˈɔlt]]
+Managed Settings	[[mˈænɪdʒd sˈɛɾɪŋz]]
+Settings	[[sˈɛɾɪŋz]]
+Plugin	[[plˈʌɡɪn]]
+Server	[[sˈɜːvɚ]]
+Login	[[lˈɑːɡɪn]]
+Push-to-Talk	[[pˈʊʃtətˈɔːk]]
+Voice	[[vˈɔɪs]]
+README	[[ɹˈiːdmiː]]
+Changelog	[[tʃˈeɪndʒlɑːɡ]]
+GitHub	[[ɡˈɪt hˈʌb]]
+Claude	[[klˈɔːd]]
+Codex	[[kˈoʊdɛks]]
+MongoMind	[[mˈɔŋɡoʊ mˈaɪnd]]
+Piper	[[pˈaɪpɚ]]
+main	[[mˈeɪn]]
+root	[[ɹˈuːt]]
+# German forms of English verbs
+mergen	mörtschen
+merge	mörtsche
+mergt	mörtscht
+gemergt	gemörtscht
+gemerged	gemörtscht
+pushen	puschen
+pusht	puscht
+gepusht	gepuscht
+committen	kommitten
+committet	kommittet
+checken	tschecken
+checkt	tschekt
+gecheckt	getschekt
+updaten	apdeiten
+geupdatet	geapdeitet
