@@ -264,37 +264,38 @@ check "voice: unbekannter Befehl"                         "1 1" "$RC $(count "$T
 
 # speak: the switch for reading aloud (the file speak-off in the bridge directory) and stopping the player of the guest
 rm -rf "$BRIDGE_DIR"
-rb bash "$T/bin/rootbridge" voice speak
+# voice speak checks the player through the real /proc (RB_PROC_DIR is the fake one of the PulseAudio cases above)
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak
 check "voice speak (status): standardmäßig an"            "0 Vorlesen: an" "$RC $(cat "$T/out.txt")"
-rb bash "$T/bin/rootbridge" voice speak off
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak off
 check "voice speak off: Schalterdatei, Meldung"           "0 ja Vorlesen: aus" "$RC $(has "$BRIDGE_DIR/speak-off") $(cat "$T/out.txt")"
-rb bash "$T/bin/rootbridge" voice speak toggle
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak toggle
 check "voice speak toggle (aus): wieder an"               "nein Vorlesen: an" "$(has "$BRIDGE_DIR/speak-off") $(cat "$T/out.txt")"
-rb bash "$T/bin/rootbridge" voice speak toggle
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak toggle
 check "voice speak toggle (an): aus"                      "ja Vorlesen: aus" "$(has "$BRIDGE_DIR/speak-off") $(cat "$T/out.txt")"
-rb bash "$T/bin/rootbridge" voice speak status
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak status
 check "voice speak status: aus"                           "Vorlesen: aus" "$(cat "$T/out.txt")"
 rb bash "$T/bin/rootbridge" status
 check "status zeigt den Schalter fürs Vorlesen"           1 "$(count "$T/out.txt" '^  Vorlesen: *aus$')"
-rb bash "$T/bin/rootbridge" voice speak on
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak on
 check "voice speak on: Schalterdatei weg"                 "nein Vorlesen: an" "$(has "$BRIDGE_DIR/speak-off") $(cat "$T/out.txt")"
 # the guest can write the bridge directory: a link there must not let `off` write into a file of Termux
 echo wertvoll > "$T/termux-datei"; ln -s "$T/termux-datei" "$BRIDGE_DIR/speak-off"
-rb bash "$T/bin/rootbridge" voice speak off
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak off
 check "voice speak off über einem Link: Ziel unberührt, Schalter ist eine eigene Datei" "0 wertvoll ja nein" \
     "$RC $(cat "$T/termux-datei") $([ -f "$BRIDGE_DIR/speak-off" ] && echo ja || echo nein) $([ -L "$BRIDGE_DIR/speak-off" ] && echo ja || echo nein)"
-rb bash "$T/bin/rootbridge" voice speak on
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak on
 mkdir -p "$T/boot"; ln -s "$T/boot" "$BRIDGE_DIR/speak-off"
-rb bash "$T/bin/rootbridge" voice speak off
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak off
 check "voice speak off über einem Link auf einen Ordner: nichts landet darin" "0 0 ja" \
     "$RC $(find "$T/boot" -mindepth 1 | wc -l | tr -d ' ') $([ -f "$BRIDGE_DIR/speak-off" ] && [ ! -L "$BRIDGE_DIR/speak-off" ] && echo ja || echo nein)"
-rb bash "$T/bin/rootbridge" voice speak on
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak on
 # a FIFO in place of speak.pid must not hold up a stop (ptt start runs it before its key)
 mkfifo "$BRIDGE_DIR/speak.pid"
 s=$SECONDS; rb bash "$T/bin/rootbridge" voice speak stop
 check "voice speak stop: eine FIFO als speak.pid hält nicht auf" "0 ja" "$RC $([ $((SECONDS - s)) -le 2 ] && echo ja || echo nein)"
 rm -f "$BRIDGE_DIR/speak.pid"
-rb bash "$T/bin/rootbridge" voice speak nope
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak nope
 check "voice speak: unbekannter Befehl"                   "1 1" "$RC $(count "$T/out.txt" 'voice speak: on')"
 # a stand-in for the player of the guest: a process group leader whose command line says "speak.py --run"
 player() {   # player <argv0>: starts it, its pid in $PLAYER
@@ -305,27 +306,27 @@ player() {   # player <argv0>: starts it, its pid in $PLAYER
 alive() { kill -0 "$1" 2>/dev/null && echo läuft || echo beendet; }
 player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
 echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
-rb bash "$T/bin/rootbridge" voice speak stop
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak stop
 sleep 0.3
 check "voice speak stop: beendet den Abspieler, Exit 0"  "0 beendet" "$RC $(alive "$PLAYER")"
 player "sleep-ohne-kennung"
 echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
-rb bash "$T/bin/rootbridge" voice speak stop
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak stop
 sleep 0.3
 check "voice speak stop: ein fremder Prozess in speak.pid bleibt" "0 läuft" "$RC $(alive "$PLAYER")"
 kill "$PLAYER" 2>/dev/null
 echo "1; rm -rf /" > "$BRIDGE_DIR/speak.pid"
-rb bash "$T/bin/rootbridge" voice speak stop
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak stop
 check "voice speak stop: Unsinn in speak.pid ist harmlos" 0 "$RC"
 rm -f "$BRIDGE_DIR/speak.pid"
-rb bash "$T/bin/rootbridge" voice speak stop
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak stop
 check "voice speak stop ohne Abspieler: Exit 0"           0 "$RC"
 player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
 echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"
-rb bash "$T/bin/rootbridge" voice speak off
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak off
 sleep 0.3
 check "voice speak off: beendet auch, was gerade gelesen wird" beendet "$(alive "$PLAYER")"
-rb bash "$T/bin/rootbridge" voice speak on
+rb env RB_PROC_DIR=/proc bash "$T/bin/rootbridge" voice speak on
 
 # the command line of `rootbridge help` and `status`
 rb bash "$T/bin/rootbridge" help
