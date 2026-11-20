@@ -349,7 +349,7 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   Skriptlauf gibt er nur den Hinweis aus. `rootbridge voice grant` holt sie jederzeit, `rootbridge voice status` zeigt PulseAudio und Mikrofon,
   `rootbridge voice start|stop` steuern den Audio-Server von Hand.
 * **Vorlesen**: Claudes Antworten liest **Piper** vor, eine lokale Sprachausgabe ohne Netz (im Gast in `/opt/piper`, Stimme
-  `de_DE-kerstin-medium`). Ein Stop-Hook in den Managed Settings gibt jede Antwort weiter, ohne Codeblöcke, Tabellen und URLs und ohne
+  `de_DE-kerstin-medium`), oder Articulino mit deiner eigenen Stimme, sobald du sie aufgenommen hast (siehe unten). Ein Stop-Hook in den Managed Settings gibt jede Antwort weiter, ohne Codeblöcke, Tabellen und URLs und ohne
   Markdown-Zeichen; der Ton geht über dasselbe PulseAudio wie das Mikrofon. Ein PreToolUse-Hook liest außerdem Claudes kurze Zwischenstände
   zwischen zwei Werkzeugaufrufen („Ich baue jetzt …“) vor, jeden einmal, aus dem Sitzungsprotokoll. Ein neuer Text beendet den alten. Still wird es sofort, wenn du
   etwas abschickst (UserPromptSubmit-Hook) und wenn `ptt` startet (Home-Langdruck, Seitentaste), sonst nähme das Mikrofon die Stimme auf.
@@ -357,7 +357,7 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   Widget **Stopp** (nur jetzt still), beide in `~/.shortcuts/tasks/` (sie laufen im Hintergrund), oder `rootbridge voice speak on|off|toggle|stop`.
   `rootbridge voice speak first` liest nur eine Kurzfassung jeder Antwort: den ersten Absatz, höchstens drei Sätze, und die letzte Frage weiter unten (Datei `~/.rootbridge/speak-first`; den Hinweis an Claude, das
   Wichtigste dorthin zu schreiben, gehört in deine `CLAUDE.md`), `all` wieder die ganze Antwort.
-  Im Gast liest `rootbridge-speak "Text"` beliebigen Text vor, `rootbridge-speak --stop` beendet ihn. Eine andere Piper-Stimme: `PIPER_VOICE`
+  Im Gast liest `rootbridge-speak "Text"` beliebigen Text vor, `rootbridge-speak --stop` beendet ihn, `rootbridge-speak --record` nimmt deine Stimme auf. Eine andere Piper-Stimme: `PIPER_VOICE`
   (Pfad zur `.onnx`-Datei, die `.onnx.json` daneben). Auf dem A9 braucht Piper etwa so lange, wie der Text dauert; es liefert satzweise.
   Englische Fachbegriffe (Pull Request, Commit, Branch, Hook, …) spricht die Stimme englisch aus: `guest/claude/speak-english.txt`
   führt sie mit ihrer Lautschrift in `[[…]]` (eingedeutschte Formen wie „gemergt“ mit deutscher Schreibung, „gemörtscht“); ein weiteres Wort:
@@ -406,7 +406,7 @@ Kurzfassung (Details: [docs/LOGIN.md](docs/LOGIN.md)):
 | Login-Hook (19 Tests: Antwortformen, URL-Regeln, Modi) | — |
 | Installer: Staging-Root, Idempotenz, v1-Migration, Deinstallation | — |
 | Codex neben Claude Code: Installationsoptionen und gespeicherte Wahl, Update-Schritte mit Stempeln und Sperre, tmux-Fenster, `codex-login` / `codex-off` / `status`, die Pre-Commit-Schleife (Stub-`node`) | `codex-login` und das Widget **Codex** auf einem Gerät; `claude plugin update`, `codex update` und `onFailure: "block"` nach einem Absturz des Hooks; `bwrap` auf anderen Geräten |
-| Sprache und Seitentaste: Installationsoptionen und gespeicherte Wahl, `default.pa` (unsere, deine, Update mit Backup), `rootbridge voice`, Einstellungen und Tastenbelegung im Gast ohne deine zu überschreiben, `sox` und Piper nur mit Claude Code, Vorlesen (Schalter, Stopp eines echten Prozesses, Widgets, Hooks; `tests/test_speak.py` mit Stubs für `piper` / `play`), Deinstallation (Stubs für `pulseaudio` / `pactl` / `su` / `pkg`) | das Mikrofon mit echter Hardware, der Ton von Piper am Lautsprecher, `pm grant` mit echtem Root (Magisk-Rückfrage), `sidekey-ptt` an der echten Taste, die Mikrofon-Berechtigung nach einer Neuinstallation von Termux |
+| Sprache und Seitentaste: Installationsoptionen und gespeicherte Wahl, `default.pa` (unsere, deine, Update mit Backup), `rootbridge voice`, Einstellungen und Tastenbelegung im Gast ohne deine zu überschreiben, `sox` und Piper nur mit Claude Code, Vorlesen (Schalter, Stopp eines echten Prozesses, Widgets, Hooks; `tests/test_speak.py` mit Stubs für `piper` / `play`, den Articulino-Dienst und `articulino_onnx`), Deinstallation (Stubs für `pulseaudio` / `pactl` / `su` / `pkg`) | das Mikrofon mit echter Hardware, der Ton von Piper und Articulino am Lautsprecher, der Download von Articulino, `pm grant` mit echtem Root (Magisk-Rückfrage), `sidekey-ptt` an der echten Taste, die Mikrofon-Berechtigung nach einer Neuinstallation von Termux |
 
 Auf einem Gerät bestätigt (Hisense A9, 04.11.2026): Installer, Farben und Theme, apt-Upgrade, `claude update`, das
 Dateideskriptor-Limit, Widgets, Sitzungsende mit `/exit`, die Root-Rückfrage im Bypass-Modus (der Hook fragte in Claude Code, `androidsu` lief erst nach

@@ -326,7 +326,7 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   el aviso. `rootbridge voice grant` lo concede en cualquier momento, `rootbridge voice status` muestra PulseAudio y el micrófono,
   `rootbridge voice start|stop` controlan el servidor de audio a mano.
 * **Lectura en voz alta**: **Piper**, una salida de voz local sin red (en el invitado en `/opt/piper`, voz `de_DE-kerstin-medium`), lee las
-  respuestas de Claude. Un hook Stop en los managed settings le pasa cada respuesta, sin bloques de código, tablas, URL ni marcas de Markdown;
+  respuestas de Claude, o Articulino con tu propia voz una vez grabada (ver abajo). Un hook Stop en los managed settings le pasa cada respuesta, sin bloques de código, tablas, URL ni marcas de Markdown;
   el sonido va por el mismo PulseAudio que el micrófono. Un hook PreToolUse lee además las notas breves de Claude entre dos llamadas a
   herramientas («Ich baue jetzt …»), cada una una vez, desde el registro de la sesión. Un texto nuevo termina el anterior. Se calla en seguida cuando envías algo (hook
   UserPromptSubmit) y cuando arranca `ptt` (pulsación larga en Inicio, tecla lateral); si no, el micrófono grabaría la voz. Tras la
@@ -334,7 +334,7 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   el widget **Stopp** (silencio ahora), ambos en `~/.shortcuts/tasks/` (se ejecutan en segundo plano), o con
   `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` lee solo una versión corta de cada respuesta: su primer párrafo, como mucho tres frases, y la última pregunta más abajo (el archivo
   `~/.rootbridge/speak-first`; la indicación a Claude de poner ahí lo esencial va en tu `CLAUDE.md`), `all` vuelve a leerla entera. En el invitado `rootbridge-speak "texto"` lee cualquier texto y `rootbridge-speak --stop` lo
-  termina. Otra voz de Piper: `PIPER_VOICE` (ruta del archivo `.onnx`, con su `.onnx.json` al lado). En el A9 Piper tarda más o menos lo que
+  termina, `rootbridge-speak --record` graba tu voz. Otra voz de Piper: `PIPER_VOICE` (ruta del archivo `.onnx`, con su `.onnx.json` al lado). En el A9 Piper tarda más o menos lo que
   dura el texto; entrega frase a frase.
   Los términos ingleses (Pull Request, Commit, Branch, Hook, …) se pronuncian en inglés: `guest/claude/speak-english.txt` los
   lista con su transcripción fonética en `[[…]]` (formas alemanas como «gemergt» con una grafía alemana, «gemörtscht»); otra palabra: una
@@ -406,7 +406,7 @@ Remote Control (nunca `--continue`) y lo omite para `-p`, `--version` y `--help`
 | Hook de inicio de sesión (19 pruebas: formas de respuesta, reglas de URL, modos) | — |
 | Instaladores: raíz de staging, idempotencia, migración de la v1, desinstalación | — |
 | Codex junto a Claude Code: opciones de instalación y la elección guardada, pasos de actualización con marcas y bloqueo, ventanas de tmux, `codex-login` / `codex-off` / `status`, el bucle de revisión previa al commit (`node` simulado) | `codex-login` y el widget **Codex** en un dispositivo; `claude plugin update`, `codex update` y `onFailure: "block"` tras un fallo del hook; `bwrap` en otros dispositivos |
-| Voz y tecla lateral: opciones del instalador y la elección guardada, `default.pa` (la nuestra, la tuya, actualización con copia), `rootbridge voice`, ajustes y asignación de teclas en el invitado sin sobrescribir las tuyas, `sox` y Piper solo con Claude Code, lectura en voz alta (interruptor, parada de un proceso real, widgets, hooks; `tests/test_speak.py` con stubs de `piper` / `play`), desinstalación (stubs de `pulseaudio` / `pactl` / `su` / `pkg`) | el micrófono con hardware real, el sonido de Piper en el altavoz, `pm grant` con root real (aviso de Magisk), `sidekey-ptt` con la tecla real, el permiso de micrófono tras una nueva instalación de Termux |
+| Voz y tecla lateral: opciones del instalador y la elección guardada, `default.pa` (la nuestra, la tuya, actualización con copia), `rootbridge voice`, ajustes y asignación de teclas en el invitado sin sobrescribir las tuyas, `sox` y Piper solo con Claude Code, lectura en voz alta (interruptor, parada de un proceso real, widgets, hooks; `tests/test_speak.py` con stubs de `piper` / `play`, el servicio de Articulino y `articulino_onnx`), desinstalación (stubs de `pulseaudio` / `pactl` / `su` / `pkg`) | el micrófono con hardware real, el sonido de Piper y Articulino en el altavoz, la descarga de Articulino, `pm grant` con root real (aviso de Magisk), `sidekey-ptt` con la tecla real, el permiso de micrófono tras una nueva instalación de Termux |
 
 Confirmado en un dispositivo (Hisense A9, 04/11/2026): instalador, colores y tema, actualización de apt,
 `claude update`, límite de descriptores de archivo, widgets, fin de la sesión con `/exit`, la confirmación de root en modo bypass (el hook preguntó en Claude Code y `androidsu` solo

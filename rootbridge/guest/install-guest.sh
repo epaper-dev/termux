@@ -29,7 +29,7 @@
 #                     meta+k = voice:pushToTalk (Chat context; an existing binding for that action stays), and
 #                     ~/.claude/settings.json "voice": {"enabled": true, "mode": "tap"} where you have not set it yet;
 #                     speech output: rootbridge-speak and three hooks in the managed settings (Stop reads Claude's answer
-#                     aloud with Piper, PreToolUse its notes between tool calls, UserPromptSubmit ends it). no removes the
+#                     aloud with Piper or Articulino, PreToolUse its notes between tool calls, UserPromptSubmit ends it). no removes the
 #                     command and the hooks again.
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
 #                     (no warning dialog for bypass mode) and, if settings.json has no default mode yet,
@@ -467,7 +467,8 @@ if [ "$CODEX_ON" = yes ]; then
 else
     rm -f "$ROOT$BINDIR/rootbridge-codex"
 fi
-# speech output (part of voice, Claude Code only): reads Claude's answers aloud (Piper, installed by setup-guest.sh)
+# speech output (part of voice, Claude Code only): reads Claude's answers aloud (Piper or Articulino with speak-server.py,
+# both installed by setup-guest.sh)
 if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
     put "$SRC/claude/speak.py"       "$LIBDIR/speak.py"
     put "$SRC/claude/speak-english.txt" "$LIBDIR/speak-english.txt"
