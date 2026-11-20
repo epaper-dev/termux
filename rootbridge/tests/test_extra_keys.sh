@@ -158,6 +158,7 @@ done
 check "Vorlage: Wisch nach oben liefert nur HOME und END" "HOME END" "$(line popups)"
 check "Vorlage: Reihenfolge der Tasten"               "|ESC|CTRL|macro:SHIFT TAB|BKSP|UP|ENTER|KEYBOARD|/|TAB|LEFT|DOWN|RIGHT|" "$names"
 check "Vorlage: S-TAB beschriftet"                    1 "$(grep -c 'display: "S-TAB"' "$SNIP")"
+check "Vorlage: Lautstärketasten regeln die Lautstärke" 1 "$(grep -c '^volume-keys = volume$' "$SNIP")"
 check "Vorlage: keine Zeilenfortsetzung mit Backslash" 0 "$(grep -c '\\$' "$SNIP")"
 
 # ------------------------------------------------ 2. fresh device (no termux.properties yet)
@@ -170,6 +171,7 @@ check "frisch: Block genau einmal"                    1 "$(blocks "$TP1")"
 check "frisch: Blockinhalt = Vorlage"                 0 "$(inner "$TP1" | cmp -s - "$SNIP"; echo $?)"
 check "frisch: Endmarke genau einmal"                 1 "$(grep -c -F -x "$END" "$TP1")"
 check "frisch: genau eine aktive extra-keys-Zeile"    1 "$(grep -c '^extra-keys *=' "$TP1")"
+check "frisch: volume-keys = volume"                  1 "$(grep -c '^volume-keys = volume$' "$TP1")"
 check "frisch: Reload genau einmal"                   1 "$(reloads)"
 check "frisch: keine Sicherung (nichts zu sichern)"   0 "$(baks "$H1")"
 check "frisch: Hinweis am Ende"                       1 "$(grep -c '^Zusatztasten: S-TAB' "$T/install.log")"

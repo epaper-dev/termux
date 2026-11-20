@@ -142,7 +142,9 @@ markierten Block, die Datei wird vorher gesichert, danach lädt Termux seine Ein
 `ESC` `CTRL` `S-TAB` `BKSP` `↑` `ENTER` und `KEYBOARD` `/` `TAB` `←` `↓` `→`. **S-TAB** sendet Umschalt+Tab, **TAB**
 vervollständigt Slash-Befehle und `@`-Dateien. **KEYBOARD** blendet die Bildschirmtastatur ein oder aus (eine
 ausgeblendete Tastatur kommt nicht von selbst zurück; `ENTER`, die Pfeile, `ESC` und `S-TAB` beantworten weiter Rückfragen
-und Menüs). Wisch nach oben auf `←` ergibt `HOME`, auf `→` `END`. Eine eigene Leiste (eine `extra-keys`-Zeile
+und Menüs). Wisch nach oben auf `←` ergibt `HOME`, auf `→` `END`. Derselbe Block setzt
+`volume-keys = volume`: Die Lautstärketasten regeln die Lautstärke auch, wenn Termux vorne ist (sonst nimmt Termux sie als
+CTRL und FN). Eine eigene Leiste (eine `extra-keys`-Zeile
 außerhalb unseres Blocks) wird nie ersetzt, der Installer nennt dann nur die Taste, die du selbst ergänzen kannst (Vorlage:
 `termux/extra-keys.snippet`). `--no-extra-keys` überspringt das Ganze, `uninstall.sh` entfernt den Block. Die Farben der
 Leiste legt Termux fest, sie lassen sich von hier aus nicht ändern.

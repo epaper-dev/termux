@@ -145,7 +145,9 @@ The installer therefore sets the Termux extra keys row in `~/.termux/termux.prop
 backed up first, Termux reloads its settings afterwards): two rows of six keys,
 `ESC` `CTRL` `S-TAB` `BKSP` `↑` `ENTER` and `KEYBOARD` `/` `TAB` `←` `↓` `→`. **S-TAB** sends Shift+Tab, **TAB** completes
 slash commands and `@` files. **KEYBOARD** shows or hides the soft keyboard (a hidden keyboard does not reappear by itself;
-`ENTER`, the arrows, `ESC` and `S-TAB` still answer prompts and menus). Swipe up on `←` for `HOME`, on `→` for `END`. A row of your own (an `extra-keys` line outside our block) is never replaced, the installer
+`ENTER`, the arrows, `ESC` and `S-TAB` still answer prompts and menus). Swipe up on `←` for `HOME`, on `→` for `END`. The same
+block sets `volume-keys = volume`: the volume keys change the volume also while Termux is in front (by default Termux takes them as
+CTRL and FN). A row of your own (an `extra-keys` line outside our block) is never replaced, the installer
 only tells you which key to add by hand (template: `termux/extra-keys.snippet`). `--no-extra-keys` skips all of this,
 `uninstall.sh` removes the block. The colours of the bar are fixed by Termux and cannot be changed from here.
 

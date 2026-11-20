@@ -83,7 +83,8 @@
 #      earlier names "Claude Code" / "Ubuntu Shell" / "Claude >_" / "Ubuntu >_" are carried
 #      over; --no-widgets skips all this), optional boot script, an extra keys row in
 #      ~/.termux/termux.properties (S-TAB = Shift+Tab, KEYBOARD = soft keyboard on/off; an
-#      extra-keys line of your own stays; --no-extra-keys skips it)
+#      extra-keys line of your own stays; --no-extra-keys skips it) and volume-keys = volume
+#      in the same block (the volume keys change the volume, not CTRL/FN)
 #   4. migrates the old popup based bridge (v1) away
 #   5. installs the guest part (hooks, androidsu, managed settings, Claude Code
 #      theme "Auto epaper" = custom:epaper, colour-blind friendly, follows light/dark) via proot-distro. The guest runs apt-get update + upgrade
@@ -496,7 +497,7 @@ else
 fi
 if [ "$DO_EXTRAKEYS" = 1 ]; then
     # S-TAB (a phone keyboard has no Shift+Tab, Claude Code switches its permission mode with it) and
-    # KEYBOARD (show/hide the soft keyboard) in the Termux extra keys row
+    # KEYBOARD (show/hide the soft keyboard) in the Termux extra keys row; volume-keys = volume in the same block
     TP="$HOME/.termux/termux.properties"
     mkdir -p "$HOME/.termux"
     if own_extra_keys "$TP"; then
