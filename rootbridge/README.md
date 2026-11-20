@@ -359,6 +359,9 @@ side key use `--sidekey` below.
 `sidekey-ptt` into `$PREFIX/bin`; it keeps a root `cat` on `/dev/input/event2` (the key, scan code 766) and calls `ptt start` / `ptt stop`.
 Short and double presses stay with the E-Ink app; set its long press to "Nothing". `rootbridge start|attach` start the reader (one instance), and
 `--no-sidekey` removes it. It is a bridge until the E-Ink app and the Termux app do this themselves.
+The **key of a wired headset** works the same way (hold = record, let go = stop; a short press still plays and pauses the music): the reader
+also keeps a root `cat` on the buttons of the headset jack (the input device named "… Button Jack", `KEY_MEDIA`), also with the phone locked.
+A long press on that key also starts Android's voice search: no app should answer it, or its window opens as well.
 
 ## Logins and MCP links
 
