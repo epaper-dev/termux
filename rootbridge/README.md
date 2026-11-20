@@ -50,7 +50,7 @@ The Termux:API of this repository, `api/`, shows them in the language of the pho
   within `ASK_TIMEOUT` (120 s), a missing dialog or a command longer than 4000 characters means refused. With the Termux:API of
   this repository (`api/`) the dialog has the buttons in the language of the phone (Ja/Nein, Sí/No, else Yes/No), a title that
   counts down to the deadline and closes itself then, and only a tap on a button answers it. With any other Termux:API build
-  the buttons are English, the deadline stands in the text, and a dialog you swipe away (or a keyboard that hides it) shows
+  the buttons are English, there is no countdown, and a dialog you swipe away (or a keyboard that hides it) shows
   again until you tap Yes or No; a Yes within one second of the dialog appearing counts as a slip and is asked again.
 * **Refusals reach the agent.** The daemon leaves a note for the agent that asked (`~/.rootbridge/events/`), and the hook
   `rootbridge-hook.py` (PostToolUse and UserPromptSubmit, in the managed settings of Claude Code and in

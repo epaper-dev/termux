@@ -22,6 +22,8 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   still reads everything. Tests: `tests/test_speak.py`, `tests/test_voice.sh`.
 
 ### Changed
+* **The root dialog no longer shows the deadline as a clock time.** The countdown in the title says the same; the text is the command
+  only. With a stock Termux:API (no countdown) the dialog says nothing about the deadline. Tests: `tests/test_daemon.sh`.
 * **`/voice` is set up in `tap` mode instead of `hold`.** `tap` fits both triggers: the side key starts on press and sends on release, the
   long press on Home starts and the next one sends (Android reports no release; you talk hands-free in between). With `hold` the side key
   broke off on a short press (the repeats of `ptt` start 1.2 s late), and Home left the text in the input. Tested on the A9. As before, only

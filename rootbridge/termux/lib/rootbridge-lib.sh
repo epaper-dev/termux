@@ -144,9 +144,9 @@ rb_ask_texts() {
     [ -n "$lang" ] || lang="$(getprop persist.sys.language 2>/dev/null)"
     lang="${lang%%[-_]*}"
     case "${lang,,}" in
-        de) RB_T_YES="Ja";  RB_T_NO="Nein"; RB_T_LEFT="noch %d s";    RB_T_UNTIL="Antwort bis" ;;
-        es) RB_T_YES="Sí";  RB_T_NO="No";   RB_T_LEFT="quedan %d s";  RB_T_UNTIL="Responde hasta" ;;
-        *)  RB_T_YES="Yes"; RB_T_NO="No";   RB_T_LEFT="%d s left";    RB_T_UNTIL="Answer by" ;;
+        de) RB_T_YES="Ja";  RB_T_NO="Nein"; RB_T_LEFT="noch %d s" ;;
+        es) RB_T_YES="Sí";  RB_T_NO="No";   RB_T_LEFT="quedan %d s" ;;
+        *)  RB_T_YES="Yes"; RB_T_NO="No";   RB_T_LEFT="%d s left" ;;
     esac
 }
 
@@ -154,25 +154,24 @@ rb_ask_texts() {
 # guest could write. Returns 0 = yes, 1 = no, 2 = no answer in time, 3 = dialog failed (termux-api missing, ...).
 # The dialog is asked through the termux-api client with a few extras that our Termux:API build understands: the buttons in
 # the language of the phone, a title that counts down to ASK_TIMEOUT (the dialog closes itself then) and a dialog that only
-# a tap on Yes or No answers. The stock Termux:API ignores the extras: English buttons, no countdown (the deadline stands in
-# the text), and a dismissed dialog (a tap outside, the keyboard, another app) shows again until ASK_TIMEOUT; a Yes within
-# RB_ASK_MIN_MS of the dialog appearing is a slip while typing and is asked again.
+# a tap on Yes or No answers. The stock Termux:API ignores the extras: English buttons, no countdown, and a dismissed dialog
+# (a tap outside, the keyboard, another app) shows again until ASK_TIMEOUT; a Yes within RB_ASK_MIN_MS of the dialog
+# appearing is a slip while typing and is asked again.
 # One dialog at a time: flock on a file in the private tmp directory of Termux (not in the bridge directory). The lock
 # goes away with the process, also when it is killed; a mkdir lock is not atomic everywhere (not under proot). A lock that
 # cannot be opened or taken (no flock, no writable tmp directory) means no dialog: result 3, the request is refused.
 rb_ask() {
-    local who="$1" cmd="$2" out rc start deadline left ms hint result=3
+    local who="$1" cmd="$2" out rc start deadline left ms result=3
     { exec 9>"${TMPDIR:-/tmp}/rootbridge-ask.flock"; } 2>/dev/null || return 3     # no lock, no dialog
     if ! flock 9 2>/dev/null; then exec 9>&-; return 3; fi
     rb_ask_texts
     deadline=$(( $(date +%s) + ASK_TIMEOUT ))
-    hint="$cmd"$'\n\n'"$RB_T_UNTIL $(date -d "@$deadline" +%T 2>/dev/null)"
     while :; do
         left=$(( deadline - $(date +%s) ))
         if [ "$left" -le 0 ]; then result=2; break; fi
         start="$(date +%s%N)"
         out="$(timeout "$left" "$RB_ASK_CMD" Dialog --es input_method confirm \
-                  --es input_title "Android-Root: ${who:-Shell}" --es input_hint "$hint" \
+                  --es input_title "Android-Root: ${who:-Shell}" --es input_hint "$cmd" \
                   --es input_yes "$RB_T_YES" --es input_no "$RB_T_NO" \
                   --ei input_timeout "$left" --es input_timeout_text "$RB_T_LEFT" --ez input_modal true \
                   2>/dev/null < /dev/null 9>&-)"
