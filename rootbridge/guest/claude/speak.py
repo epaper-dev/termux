@@ -15,8 +15,8 @@ the PreToolUse hook; a new text ends the one still being read.
 What is read: the text without code blocks, tables, URLs and Markdown marks. The English words of the list
 speak-english.txt next to this file go to Piper as phonemes ([[...]]) and to Articulino in [en]...[/en], so the German voice
 says them in English, and German forms of English verbs as they are said ("gemergt" as "gemörtscht"). With the file speak-first in the bridge
-directory (`rootbridge voice speak first|all`) the hooks read only a short version of an answer or note: its first paragraph,
-at most SUMMARY_SENTENCES sentences, and the last question of the text when it stands further down.
+directory (`rootbridge voice speak first|all`) the hooks read only a short version of an answer or note: its whole first
+paragraph, and the last question of the text when it stands further down.
 --progress remembers the id of the note it read in speak-progress, so each note is read once.
 The switch: the file speak-off in the bridge directory (Termux and the guest both see it; `rootbridge voice speak
 on|off|toggle` in Termux, the widget "Vorlesen"). The player runs in its own process group, its id in speak.pid next to
@@ -83,7 +83,6 @@ PREFIX_RE = re.compile(r"^\s*(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s+)?)")
 RULE_RE = re.compile(r"^\s*([-*_]\s*){3,}$")
 SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
 # a dot after these does not end a sentence (lower case, without their dots)
-SUMMARY_SENTENCES = 3
 ABBREVIATIONS = {"z.b", "d.h", "u.a", "bzw", "ca", "usw", "vgl", "ggf", "inkl", "evtl", "etc", "nr", "dr", "bspw", "e.g", "i.e", "vs"}
 
 
@@ -122,10 +121,10 @@ def sentences(line):
 
 
 def summary(text):
-    """The short version of a speakable text: its first line (paragraph, heading, list item), at most SUMMARY_SENTENCES
-    sentences, and the last question of the text when it is not among them (a question at the end must be heard)."""
+    """The short version of a speakable text: its first line (paragraph, heading, list item) and the last question of
+    the text when it is not in there (a question at the end must be heard)."""
     lines = text.split("\n")
-    head = sentences(lines[0])[:SUMMARY_SENTENCES]
+    head = sentences(lines[0])
     questions = [s for line in lines for s in sentences(line) if s.endswith("?")]
     if questions and questions[-1] not in head:
         head.append(questions[-1])

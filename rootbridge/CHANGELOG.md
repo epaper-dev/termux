@@ -5,6 +5,8 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **`rootbridge voice speak first` reads the whole first paragraph.** No longer at most three sentences: the information of the
+  summary came across cut off. Still the last question further down. Tests: `tests/test_speak.py`.
 * **Reading aloud (part of `--voice`).** `setup-guest.sh` installs Piper (pip `piper-tts` in a venv, `/opt/piper`) and the voice
   `de_DE-kerstin-medium`; `python3-venv` comes from apt when the guest cannot make a venv. `install-guest.sh` installs
   `guest/claude/speak.py` and `rootbridge-speak` and adds two hooks to the managed settings: Stop reads `last_assistant_message` aloud

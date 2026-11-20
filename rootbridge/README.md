@@ -325,7 +325,7 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   baue jetzt …"), each once, from the transcript of the session. A new text ends the old one. It goes quiet at once when you send something
   (UserPromptSubmit hook) and when `ptt` starts (long press on Home, side key), or the microphone would record the voice. Reading aloud is on
   after the installation. Switch it with the widget **Vorlesen** (on/off, with a toast; off also ends what is being read) and the widget
-  **Stopp** (quiet now), both in `~/.shortcuts/tasks/` (they run in the background), or `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` reads only a short version of each answer: its first paragraph, at most three sentences, and the last question further down (the file
+  **Stopp** (quiet now), both in `~/.shortcuts/tasks/` (they run in the background), or `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` reads only a short version of each answer: its whole first paragraph and the last question further down (the file
   `~/.rootbridge/speak-first`; a hint for Claude to put the essentials there belongs in your `CLAUDE.md`), `all` the whole answer again. In the
   guest `rootbridge-speak "text"` reads any text, `rootbridge-speak --stop` ends it, `rootbridge-speak --record` records your voice. Another Piper voice: `PIPER_VOICE` (path of the `.onnx`
   file, its `.onnx.json` next to it). On the A9 Piper takes about as long as the text lasts; it delivers sentence by sentence.
