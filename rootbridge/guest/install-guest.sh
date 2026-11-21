@@ -29,8 +29,9 @@
 #                     meta+k = voice:pushToTalk (Chat context; an existing binding for that action stays), and
 #                     ~/.claude/settings.json "voice": {"enabled": true, "mode": "tap"} where you have not set it yet;
 #                     speech output: rootbridge-speak and three hooks in the managed settings (Stop reads Claude's answer
-#                     aloud with Piper or Articulino, PreToolUse its notes between tool calls, UserPromptSubmit ends it). no removes the
-#                     command and the hooks again.
+#                     aloud with Piper or Articulino, PreToolUse its notes between tool calls, UserPromptSubmit ends it), and a
+#                     text in our block of ~/.claude/CLAUDE.md (templates/speech.claude.md: summary first, questions last, for
+#                     the short version read aloud). no removes the command, the hooks and that text again.
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
 #                     (no warning dialog for bypass mode) and, if settings.json has no default mode yet,
 #                     permissions.defaultMode = bypassPermissions (Claude Code starts in bypass mode; every
@@ -905,25 +906,37 @@ EOF
 commit_file "$B.new.$$" "$B"
 say "  ~/.bashrc: Block (PATH$([ "$CLAUDE_ON" = yes ] && echo ', claude()')$([ "$CODEX_ON" = yes ] && echo ', codex()'))"
 
-# code quality guidelines: a marked block in the guidance file of each agent (Markdown: the markers are HTML comments)
+# guidelines: a marked block in the guidance file of each agent (Markdown: the markers are HTML comments)
 GL_BEGIN='<!-- >>> termux-rootbridge >>> -->'
 GL_END='<!-- <<< termux-rootbridge <<< -->'
-# guidelines <on|off> <template> <file in the guest home>: our block in the file; off takes it out (an empty file goes)
+# guidelines <file in the guest home> [template...]: our block in the file, the texts of the templates one after the other;
+# without a template the block goes (an empty file goes). One block, so the file is written once per run.
 guidelines() {
-    local file="$ROOT$HOME_DIR/$3" src
-    if [ "$1" = on ]; then
+    local file="$ROOT$HOME_DIR/$1" src t
+    shift
+    if [ "$#" -gt 0 ]; then
         mkdir -p "$(dirname "$file")"
+        for t in "$@"; do cat "$SRC/templates/$t"; echo; done > "$file.text.$$"
         src="$file"; [ -e "$src" ] || src=/dev/null
-        python3 -I "$SRC/lib/rbfile.py" set "$src" "$file.new.$$" "$GL_BEGIN" "$GL_END" "$SRC/templates/$2"
+        python3 -I "$SRC/lib/rbfile.py" set "$src" "$file.new.$$" "$GL_BEGIN" "$GL_END" "$file.text.$$"
+        rm -f "$file.text.$$"
         commit_file "$file.new.$$" "$file"
-        say "  ~/$3: Richtlinien-Block (Code Quality)"
+        say "  ~/${file#"$ROOT$HOME_DIR/"}: Richtlinien-Block ($*)"
     elif [ -f "$file" ] && grep -qxF "$GL_BEGIN" "$file"; then
         python3 -I "$SRC/lib/rbfile.py" drop "$file" "$GL_BEGIN" "$GL_END"
         grep -q '[^[:space:]]' "$file" || rm -f "$file"
-        say "  ~/$3: Richtlinien-Block entfernt"
+        say "  ~/${file#"$ROOT$HOME_DIR/"}: Richtlinien-Block entfernt"
     fi
 }
-guidelines "$([ "$GUIDE_ON" = yes ] && [ "$CLAUDE_ON" = yes ] && echo on || echo off)" code-quality.claude.md .claude/CLAUDE.md
-guidelines "$([ "$GUIDE_ON" = yes ] && [ "$CODEX_ON" = yes ] && echo on || echo off)" code-quality.codex.md .codex/AGENTS.md
+# Claude Code: code quality (--guidelines) and, with voice, the summary first and the question last, so the short version
+# read aloud (speak-first) carries the answer. Codex: code quality.
+claude_texts=(); codex_texts=()
+if [ "$CLAUDE_ON" = yes ]; then
+    [ "$GUIDE_ON" = yes ] && claude_texts+=(code-quality.claude.md)
+    [ "$VOICE_ON" = yes ] && claude_texts+=(speech.claude.md)
+fi
+[ "$GUIDE_ON" = yes ] && [ "$CODEX_ON" = yes ] && codex_texts+=(code-quality.codex.md)
+guidelines .claude/CLAUDE.md "${claude_texts[@]}"
+guidelines .codex/AGENTS.md "${codex_texts[@]}"
 
 say "Fertig. Gast-Teil installiert."

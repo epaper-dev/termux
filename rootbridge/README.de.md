@@ -357,8 +357,9 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   etwas abschickst (UserPromptSubmit-Hook) und wenn `ptt` startet (Home-Langdruck, Seitentaste), sonst nähme das Mikrofon die Stimme auf.
   Nach der Installation ist das Vorlesen an. Schalten: Widget **Vorlesen** (an/aus, mit Toast; aus beendet auch das laufende Lesen) und
   Widget **Stopp** (nur jetzt still), beide in `~/.shortcuts/tasks/` (sie laufen im Hintergrund), oder `rootbridge voice speak on|off|toggle|stop`.
-  `rootbridge voice speak first` liest nur eine Kurzfassung jeder Antwort: den ganzen ersten Absatz und die letzte Frage weiter unten (Datei `~/.rootbridge/speak-first`; den Hinweis an Claude, das
-  Wichtigste dorthin zu schreiben, gehört in deine `CLAUDE.md`), `all` wieder die ganze Antwort.
+  `rootbridge voice speak first` liest nur eine Kurzfassung jeder Antwort: den ganzen ersten Absatz und die letzte Frage weiter unten (Datei `~/.rootbridge/speak-first`; die erste Installation mit Sprache schaltet sie ein, `SPEAK_SHORT=set` in der Konfig merkt sich das), `all` wieder die ganze Antwort.
+  Damit die Kurzfassung trägt, steht im Block des Installers in `~/.claude/CLAUDE.md` (Vorlage `guest/templates/speech.claude.md`): zuerst eine
+  Zusammenfassung von höchstens fünf Sätzen, Fragen an dich ganz am Ende.
   Im Gast liest `rootbridge-speak "Text"` beliebigen Text vor, `rootbridge-speak --stop` beendet ihn, `rootbridge-speak --record` nimmt deine Stimme auf. Eine andere Piper-Stimme: `PIPER_VOICE`
   (Pfad zur `.onnx`-Datei, die `.onnx.json` daneben). Auf dem A9 braucht Piper etwa so lange, wie der Text dauert; es liefert satzweise.
   Englische Fachbegriffe (Pull Request, Commit, Branch, Hook, …) spricht die Stimme englisch aus: `guest/claude/speak-english.txt`

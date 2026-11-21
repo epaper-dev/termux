@@ -180,10 +180,12 @@ check "install.sh: Abschlussmeldung nennt Bypass+work"    1 "$(grep -c 'Bypass-M
 
 # Termux config written by an earlier version: old default is migrated (no folder in the guest), the guest follows
 mkdir -p "$H/.config/termux-rootbridge"
+rm -f "$H/.config/termux-rootbridge"/config.bak-*   # backups of the earlier runs
 printf 'DISTRO=ubuntu\nWORKDIR=/root/workspace\nSESSION=ubuntu\n' > "$H/.config/termux-rootbridge/config"
 rinstall
 check "install.sh: alte Termux-Konfig wird auf /root/work gestellt" 1 "$(grep -c '^WORKDIR=/root/work$' "$H/.config/termux-rootbridge/config")"
 check "install.sh: alte Termux-Konfig: Sicherung angelegt"          1 "$(ls "$H/.config/termux-rootbridge"/config.bak-* 2>/dev/null | wc -l | tr -d ' ')"
+check "install.sh: alte Termux-Konfig: die Sicherung ist der Stand vor dem Lauf" 1 "$(cat "$H/.config/termux-rootbridge"/config.bak-* 2>/dev/null | grep -c '^WORKDIR=/root/workspace$')"
 check "install.sh: alte Konfig: /root/work im Gast"                 yes "$(isdir "$GUEST_ROOT/root/work")"
 printf 'DISTRO=ubuntu\nWORKDIR=/root/workspace\n' > "$H/.config/termux-rootbridge/config"
 mkdir -p "$GROOT/root/workspace"

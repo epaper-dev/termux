@@ -335,7 +335,9 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   instalación la lectura está activada. Se cambia con el widget **Vorlesen** (sí/no, con un aviso; no también termina la lectura en curso) y
   el widget **Stopp** (silencio ahora), ambos en `~/.shortcuts/tasks/` (se ejecutan en segundo plano), o con
   `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` lee solo una versión corta de cada respuesta: su primer párrafo entero y la última pregunta más abajo (el archivo
-  `~/.rootbridge/speak-first`; la indicación a Claude de poner ahí lo esencial va en tu `CLAUDE.md`), `all` vuelve a leerla entera. En el invitado `rootbridge-speak "texto"` lee cualquier texto y `rootbridge-speak --stop` lo
+  `~/.rootbridge/speak-first`; la primera instalación con voz lo activa, `SPEAK_SHORT=set` en la configuración lo recuerda), `all` vuelve a leerla entera.
+  Para que la versión corta lleve la respuesta, el bloque del instalador en `~/.claude/CLAUDE.md` (plantilla `guest/templates/speech.claude.md`) pide
+  primero un resumen de cinco frases como mucho y todas las preguntas al final. En el invitado `rootbridge-speak "texto"` lee cualquier texto y `rootbridge-speak --stop` lo
   termina, `rootbridge-speak --record` graba tu voz. Otra voz de Piper: `PIPER_VOICE` (ruta del archivo `.onnx`, con su `.onnx.json` al lado). En el A9 Piper tarda más o menos lo que
   dura el texto; entrega frase a frase.
   Los términos ingleses (Pull Request, Commit, Branch, Hook, …) se pronuncian en inglés: `guest/claude/speak-english.txt` los

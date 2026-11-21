@@ -9,6 +9,11 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   runs `rootbridge-speak --offer-record` before Claude Code: `j` records at once, Enter or `n` asks again at the next start, "nie" never again
   (`voice-never` next to the voice). Silent without a terminal; without an answer (Termux:Boot, `rootbridge start --no-attach`)
   Claude Code starts after 60 s (`RB_SPEAK_OFFER_SECONDS`). Tests: `tests/test_speak.py`.
+* **Answers written to be read aloud.** With voice, the installer's block in `~/.claude/CLAUDE.md` also carries
+  `guest/templates/speech.claude.md`: a summary of at most five sentences first, every question to the user at the very end. The first
+  installation with voice switches reading aloud to that short version (`speak-first`; `SPEAK_SHORT=set` in the config, so
+  `rootbridge voice speak all` stays your choice). Code quality and this text share one block, so the file is written once per run.
+  Tests: `tests/test_voice.sh`, `tests/test_codex.sh`.
 * **Beeps for push to talk.** After `ptt start` a short high beep (800 Hz) says that Claude Code's recorder runs and has opened the
   microphone (speak now), a lower, longer one (400 Hz) that it ended (by `ptt stop` or by Claude Code). Only the watcher of the newest
   start beeps. Played with `pacat` through PulseAudio; `PTT_BEEP=off` in the Termux config turns them off. Tests: `tests/test_ptt.sh`.

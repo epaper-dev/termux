@@ -499,6 +499,10 @@ guestargs() { grep 'install-guest.sh' "$ILOG" | tail -n 1; }
 
 irun
 check "install.sh ohne Option: läuft"                      0 "$IRC"
+check "install.sh: Vorlesen beim ersten Mal nur die Kurzfassung, SPEAK_SHORT=set" "ja set" "$(has "$H/.rootbridge/speak-first") $(iget SPEAK_SHORT)"
+rm -f "$H/.rootbridge/speak-first"   # as rootbridge voice speak all
+irun
+check "install.sh: danach bleibt die eigene Wahl (die ganze Antwort)" nein "$(has "$H/.rootbridge/speak-first")"
 check "install.sh: default.pa angelegt"                    ja "$(has "$PA")"
 check "install.sh: default.pa bindet Termux' eigene Datei ein (PREFIX eingesetzt)" 1 "$(count "$PA" "^\.include $P/etc/pulse/default.pa$")"
 check "install.sh: default.pa: TCP nur auf 127.0.0.1 (listen)" 1 "$(count "$PA" '^load-module module-native-protocol-tcp listen=127.0.0.1$')"
@@ -666,6 +670,8 @@ check "Gast frisch: Stop-Hook liest vor (mit Marker für die Deinstallation)" "/
 check "Gast frisch: UserPromptSubmit-Hook stoppt das Vorlesen" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --stop" "$(hookcmd "$MS" UserPromptSubmit)"
 check "Gast frisch: speak.py und rootbridge-speak"         "ja ja" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak")"
 check "Gast frisch: rootbridge-speak mit dem Python des Gasts" 1 "$(count "$GA/usr/local/bin/rootbridge-speak" '^exec /usr/bin/python3 -I .*/usr/local/lib/termux-rootbridge/speak.py')"
+check "Gast frisch: CLAUDE.md, ein Block mit Code Quality und dem Text fürs Vorlesen" "1 1 1" \
+      "$(count "$GA/root/.claude/CLAUDE.md" '^<!-- >>> termux-rootbridge >>> -->$') $(count "$GA/root/.claude/CLAUDE.md" '^## Code quality requirements') $(count "$GA/root/.claude/CLAUDE.md" '^## Answers read aloud')"
 KBSUM="$(cksum < "$GA/root/.claude/keybindings.json")"; SSUM="$(cksum < "$GA/root/.claude/settings.json")"
 gi "$GA" --claude yes --codex no
 check "Gast zweimal: keybindings.json unverändert"         "$KBSUM" "$(cksum < "$GA/root/.claude/keybindings.json")"
@@ -706,6 +712,12 @@ check "Gast --voice no: keine Tastenbelegung, kein voice" "nein null" "$(has "$G
 check "Gast --voice no: kein Vorlesen (Programm, Hooks)"   "nein nein 0" "$(has "$GF/usr/local/lib/termux-rootbridge/speak.py") $(has "$GF/usr/local/bin/rootbridge-speak") $(count "$GF/etc/claude-code/managed-settings.json" 'speak.py')"
 gi "$GA" --claude yes --codex no --voice no
 check "Gast erst mit, dann --voice no: Vorlesen wieder weg" "nein nein 0" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak") $(count "$MS" 'speak.py')"
+check "Gast --voice no: Text fürs Vorlesen weg, Code Quality bleibt" "0 1" "$(count "$GA/root/.claude/CLAUDE.md" '^## Answers read aloud') $(count "$GA/root/.claude/CLAUDE.md" '^## Code quality requirements')"
+gi "$GA" --claude yes --codex no --voice no --guidelines no
+check "Gast ohne Sprache und Richtlinien: CLAUDE.md (nur unser Block) weg" nein "$(has "$GA/root/.claude/CLAUDE.md")"
+gi "$GA" --claude yes --codex no --voice yes --guidelines no
+check "Gast nur mit Sprache: der Block hat nur den Text fürs Vorlesen" "1 0" "$(count "$GA/root/.claude/CLAUDE.md" '^## Answers read aloud') $(count "$GA/root/.claude/CLAUDE.md" '^## Code quality requirements')"
+gi "$GA" --claude yes --codex no --voice no --guidelines yes
 check "Gast --voice no: die Hooks von rootbridge bleiben"  2 "$(count "$MS" 'rootbridge-hook.py')"
 gi "$GA" --claude yes --codex no
 gi "$GA" --uninstall

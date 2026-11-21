@@ -207,29 +207,29 @@ check "Eigene requirements.toml: das Flag wird trotzdem gesetzt" "\"$BFLAG\"" "$
 ginstall "$T/gnocodex" --codex no
 check "--codex no: keine requirements.toml, kein Flag"     "nein " "$(has "$T/gnocodex/etc/codex/requirements.toml") $(gval "$T/gnocodex" CODEX_ARGS)"
 
-# --- code quality guidelines (--guidelines): a marked block in ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md
+# --- code quality guidelines (--guidelines): a marked block in ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md (without voice: its text would share the block, see test_voice.sh)
 GL="$T/ggl"; GLC="$GL/home/tester/.claude/CLAUDE.md"; GLA="$GL/home/tester/.codex/AGENTS.md"
 GLB='<!-- >>> termux-rootbridge >>> -->'
-ginstall "$GL"
+ginstall "$GL" --voice no
 check "Richtlinien Standard: Installer läuft"              0 "$?"
 check "Richtlinien Standard: beide Dateien mit Block"      "1 1" "$(count "$GLC" "$GLB") $(count "$GLA" "$GLB")"
 check "Richtlinien Standard: Claude-Text in CLAUDE.md, Codex-Text in AGENTS.md" "1 0 1 0" \
       "$(count "$GLC" '^## Code quality requirements') $(count "$GLC" '^## Code Quality') $(count "$GLA" '^## Code Quality') $(count "$GLA" '^## Code quality requirements')"
 cp "$GLC" "$T/gl.before"
-ginstall "$GL"
+ginstall "$GL" --voice no
 check "Richtlinien zweiter Lauf: Datei unverändert, keine Sicherung" "ja nein" "$(cmp -s "$GLC" "$T/gl.before" && echo ja || echo nein) $(has "$GLC.bak-"*)"
 { printf '# Mein Text\nbleibt\n\n'; cat "$GLC"; } > "$T/gl.mine" && cp "$T/gl.mine" "$GLC"
-ginstall "$GL"
+ginstall "$GL" --voice no
 check "Richtlinien mit eigenem Text: der bleibt, der Block einmal" "1 1" "$(count "$GLC" '^# Mein Text') $(count "$GLC" "$GLB")"
-ginstall "$GL" --guidelines no
+ginstall "$GL" --voice no --guidelines no
 check "--guidelines no: Block aus CLAUDE.md weg, eigener Text bleibt" "0 1" "$(count "$GLC" "$GLB") $(count "$GLC" '^# Mein Text')"
 check "--guidelines no: AGENTS.md (nur unser Block) ganz weg" nein "$(has "$GLA")"
 check "--guidelines no: GUIDELINES=off"                    off "$(gval "$GL" GUIDELINES)"
-ginstall "$GL"
+ginstall "$GL" --voice no
 check "Richtlinien ohne Option danach: die Wahl bleibt (aus)" "0 nein" "$(count "$GLC" "$GLB") $(has "$GLA")"
-ginstall "$GL" --guidelines yes --codex no
+ginstall "$GL" --voice no --guidelines yes --codex no
 check "--guidelines yes --codex no: nur der Claude-Block"  "1 nein" "$(count "$GLC" "$GLB") $(has "$GLA")"
-ginstall "$GL" --guidelines maybe
+ginstall "$GL" --voice no --guidelines maybe
 check "--guidelines maybe: Code 2"                         2 "$?"
 bash "$GUEST" --root "$GL" --uninstall > "$T/guest.log" 2>&1
 check "Richtlinien Deinstallation: Block weg, eigener Text bleibt" "0 1" "$(count "$GLC" "$GLB") $(count "$GLC" '^# Mein Text')"

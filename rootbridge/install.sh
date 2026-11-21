@@ -264,6 +264,7 @@ backup() {
             mkdir -p "$BRIDGE_DIR/backups"
             dest="$BRIDGE_DIR/backups/${1##*/}.bak-$STAMP" ;;
     esac
+    [ -e "$dest" ] && return 0   # a second change in the same run: the first backup holds the state before the run
     cp -p "$1" "$dest" && say "  Sicherung: $dest" || true
 }
 
@@ -346,6 +347,7 @@ AUTOSTART_DELAY=3
 # GUIDELINES=on         # on | off: code quality block in the guest's CLAUDE.md / AGENTS.md; set with install.sh --guidelines / --no-guidelines
 # CODEX_BYPASS=on       # on | off: Codex without its own sandbox (CODEX_ARGS in the guest config); set with install.sh --codex-bypass / --no-codex-bypass
 # VOICE=on              # on | off: voice dictation for Claude Code (PulseAudio, microphone); set with install.sh --voice / --no-voice
+# SPEAK_SHORT=set       # set by install.sh the first time it installs voice, after it switched reading aloud to the short version
 # SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
 # PTT_TARGET=ubuntu:claude   # `ptt`: tmux window it presses its key in (default <SESSION>:claude)
 # PTT_KEY=M-k           # `ptt`: tmux key name (Claude Code: voice:pushToTalk is bound to meta+k)
@@ -530,6 +532,16 @@ set_block "$HOME/.bashrc" "$TMP_RC"; rm -f "$TMP_RC"
 # Voice dictation (/voice of Claude Code) and reading aloud work only with Claude Code: without it there is nothing to talk to.
 VOICE_ON=no
 if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then VOICE_ON=yes; fi
+# Reading aloud reads the short version (speak-first: the summary paragraph and the last question; the guest's CLAUDE.md asks
+# Claude to write them). Set once: SPEAK_SHORT=set remembers it, so `rootbridge voice speak all` stays your choice.
+if [ "$VOICE_ON" = yes ] && [ -z "$(cfg_get SPEAK_SHORT)" ]; then
+    # mktemp + mv replaces a link instead of writing through it; only a switch that is in place is remembered
+    if mkdir -p "$BRIDGE_DIR" && tmp="$(mktemp "$BRIDGE_DIR/.speak-first.XXXXXX")" && mv -fT "$tmp" "$BRIDGE_DIR/speak-first"; then
+        cfg_set SPEAK_SHORT set "Vorlesen: nur die Kurzfassung (die ganze Antwort: rootbridge voice speak all)"
+    else
+        say "  Vorlesen: Kurzfassung ließ sich nicht einschalten (rootbridge voice speak first)"
+    fi
+fi
 if [ "$DO_WIDGETS" = 1 ]; then
     SC="$HOME/.shortcuts"
     mkdir -p "$SC/icons" "$BRIDGE_DIR/backups"
