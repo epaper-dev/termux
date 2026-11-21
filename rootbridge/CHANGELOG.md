@@ -5,6 +5,10 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Texts are read one after another.** A new answer or note no longer cuts off the one being read: each player takes a
+  ticket in `~/.rootbridge/speak-queue` and reads when the older ones are done (tickets of dead players go). A stop
+  (`rootbridge voice speak stop`, the widget "Stopp", `ptt start`) ends the one that reads, and the waiting ones see it in
+  `speak-stopped` and end too. Tests: `tests/test_speak.py`.
 * **Music quieter while you speak.** The daemon holds the audio focus for speech also while Claude Code records for `/voice`
   (its recorder `rec ... --buffer 1024 -t raw`, found by `rb_find_recorders`, which `ptt` now shares), not only while the guest
   reads aloud; with `VOICE=off` only for reading aloud. Tests: `tests/test_voice.sh`.

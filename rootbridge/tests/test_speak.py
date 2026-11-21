@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import pty
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -630,23 +631,49 @@ class TestPlayer(unittest.TestCase):
         out = subprocess.run(["pgrep", "-g", str(pid)], capture_output=True)
         self.assertEqual(out.stdout, b"", "ein Kind des Abspielers läuft noch")
 
-    def test_the_player_is_registered_before_the_hook_returns(self):
-        # a stop that comes while the player is still starting (the long press on Home right after an answer) must find it
+    def test_a_stop_right_after_the_hook_ends_the_player(self):
+        # a stop that comes while the player is still starting (the long press on Home right after an answer)
         self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Hallo"}), SLOW="1")
-        self.assertTrue(os.path.exists(self.pidfile()), "speak.pid fehlt, wenn der Hook zurückkehrt")
-        with open(self.pidfile()) as fh:
-            pid = int(fh.read())
-        self.pids.append(pid)
-        with open("/proc/%d/cmdline" % pid, "rb") as fh:
-            self.assertIn(b"speak.py\0--run", fh.read())
+        self.run_speak(["--stop"])
+        self.assertTrue(self.wait_for(lambda: os.listdir(os.path.join(self.bridge, "speak-queue")) == []),
+                        "der Abspieler läuft noch")
+        self.assertFalse(os.path.exists(self.pidfile()))
 
-    def test_new_answer_ends_the_old_one(self):
+    def queued(self):
+        """An old answer that is being read (piper hangs) and a new one behind it; the pid of the old player."""
         self.run_speak(["--hook"], json.dumps({"last_assistant_message": "alt"}), SLOW="1")
         old = self.player_pid()
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "alt"))
         self.run_speak(["--hook"], json.dumps({"last_assistant_message": "neu"}))
-        self.assertTrue(self.wait_for(lambda: not os.path.exists("/proc/%d" % old)), "der alte Abspieler läuft noch")
+        self.assertTrue(self.wait_for(lambda: len(os.listdir(os.path.join(self.bridge, "speak-queue"))) == 2))
+        return old
+
+    def test_new_answer_waits_for_the_old_one(self):
+        old = self.queued()
+        time.sleep(0.5)
+        self.assertEqual((self.out_file("piper.in"), self.player_pid()), ("alt", old), "die neue Antwort unterbricht die alte")
+        os.killpg(old, 15)   # the old one is done (not a stop: no speak-stopped)
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "neu"))
+        self.assertTrue(self.wait_for(lambda: os.listdir(os.path.join(self.bridge, "speak-queue")) == []))
+
+    def test_stop_ends_the_waiting_ones_too(self):
+        old = self.queued()
+        self.run_speak(["--stop"])
+        self.assertTrue(self.wait_for(lambda: not os.path.exists("/proc/%d" % old)))
+        self.assertTrue(self.wait_for(lambda: os.listdir(os.path.join(self.bridge, "speak-queue")) == []))
+        time.sleep(0.3)
+        self.assertEqual(self.out_file("piper.in"), "alt")
+
+    def test_a_ticket_of_a_dead_player_is_skipped_and_goes(self):
+        dead = subprocess.Popen(["true"])
+        dead.wait()
+        queue = os.path.join(self.bridge, "speak-queue")
+        os.makedirs(queue)
+        stale = os.path.join(queue, "%020d.%d" % (1, dead.pid))
+        open(stale, "w").close()
+        self.run_speak(["Hallo."])
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Hallo."))
+        self.assertFalse(os.path.exists(stale))
 
     def test_stop_leaves_a_foreign_process_alone(self):
         other = subprocess.Popen(["sleep", "30"], start_new_session=True)
@@ -752,6 +779,17 @@ class TestPlayer(unittest.TestCase):
         self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Auch leise."}), RB_SPEAK_PROC=proc_dir)
         time.sleep(0.5)
         self.assertIsNone(self.out_file("piper.in"))
+
+    def test_a_waiting_text_starts_only_after_the_recording(self):
+        proc_dir = os.path.join(self.tmp.name, "proc")
+        os.makedirs(os.path.join(proc_dir, "4711"))
+        with open(os.path.join(proc_dir, "4711", "cmdline"), "wb") as fh:
+            fh.write(b"/usr/bin/rec\0-q\0--buffer\0" + b"1024\0-t\0raw\0-")
+        self.run_speak(["Danach."], RB_SPEAK_PROC=proc_dir)
+        time.sleep(0.5)
+        self.assertIsNone(self.out_file("piper.in"))
+        shutil.rmtree(os.path.join(proc_dir, "4711"))   # the recording is over
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Danach."))
 
     def test_progress_with_speak_first_reads_the_short_version(self):
         open(os.path.join(self.bridge, "speak-first"), "w").close()

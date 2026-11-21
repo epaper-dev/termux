@@ -22,8 +22,10 @@ directory (`rootbridge voice speak first|all`) the hooks read only a short versi
 paragraph, and the last question of the text when it stands further down.
 --progress remembers the id of the note it read in speak-progress, so each note is read once.
 The switch: the file speak-off in the bridge directory (Termux and the guest both see it; `rootbridge voice speak
-on|off|toggle` in Termux, the widget "Vorlesen"). The player runs in its own process group, its id in speak.pid next to
-it: Termux ends it from there (`rootbridge voice speak stop`, the widget "Stopp", `ptt start` before the microphone).
+on|off|toggle` in Termux, the widget "Vorlesen"). Texts are read one after another: each player has a ticket in speak-queue
+and waits until the older ones are done. The one that reads runs in its own process group, its id in speak.pid next to
+it: Termux ends it from there (`rootbridge voice speak stop`, the widget "Stopp", `ptt start` before the microphone), and the
+waiting ones see the stop in speak-stopped.
 
 Errors of piper and play go to ~/.cache/rootbridge-speak.log (the hook and the player run detached); the command line
 also says when Piper or the voice is missing.
@@ -53,6 +55,7 @@ BRIDGE_DIR = os.environ.get("RB_SPEAK_DIR", "/data/data/com.termux/files/home/.r
 OFF = os.path.join(BRIDGE_DIR, "speak-off")
 FIRST = os.path.join(BRIDGE_DIR, "speak-first")
 PIDFILE = os.path.join(BRIDGE_DIR, "speak.pid")
+QUEUE = os.path.join(BRIDGE_DIR, "speak-queue")       # a ticket "<time_ns>.<pid>" for each player; the oldest reads
 PROGRESS = os.path.join(BRIDGE_DIR, "speak-progress")
 FOCUS = os.path.join(BRIDGE_DIR, "speak-focus")       # the daemon's answer for the player: "<pid> <answer>"
 ALIVE = os.path.join(BRIDGE_DIR, ".alive")             # the daemon's heartbeat (every round)
@@ -175,16 +178,22 @@ def log(message):
         pass
 
 
+def is_player(pid):
+    try:
+        with open("/proc/%d/cmdline" % pid, "rb") as fh:
+            return b"speak.py " + RUN_ARG.encode() in fh.read().replace(b"\0", b" ")
+    except OSError:
+        return False
+
+
 def player_pid():
     """The pid in speak.pid when that process is our player (the file lies where others can write), else None."""
     try:
         with open(PIDFILE, encoding="ascii") as fh:
             pid = int(fh.read().strip())
-        with open("/proc/%d/cmdline" % pid, "rb") as fh:
-            cmdline = fh.read().replace(b"\0", b" ")
     except (OSError, ValueError):
         return None
-    return pid if b"speak.py " + RUN_ARG.encode() in cmdline else None
+    return pid if is_player(pid) else None
 
 
 def stop():
@@ -208,6 +217,15 @@ def mark_stopped():
         pass
 
 
+def stop_mark():
+    """The state of speak-stopped (its inode and mtime): a stop changes it (Termux puts a new file in place, --stop touches it)."""
+    try:
+        st = os.lstat(STOPPED)
+        return "%d-%d" % (st.st_ino, st.st_mtime_ns)
+    except OSError:
+        return "0"
+
+
 def stopped_since(moment):
     try:
         return os.lstat(STOPPED).st_mtime >= moment
@@ -224,7 +242,7 @@ def sample_rate():
 
 
 def start(text):
-    """End what is being read and read text in a detached process (the hook and the caller do not wait).
+    """Read text in a detached process after what is being read now (the hook and the caller do not wait).
     Returns an error message when Piper or the voice is missing, else None."""
     text = text.strip()
     if not text:
@@ -234,13 +252,31 @@ def start(text):
             error = "%s fehlt: %s (bash install.sh --setup in Termux)" % (what, path)
             log(error)
             return error
-    stop()
-    proc = subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), RUN_ARG],
-                            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            start_new_session=True)
-    # registered here, before it can play: a stop that comes while the player is still starting must find it (Popen returns
-    # after the exec, so its command line already says "speak.py --run"; it leads its own process group)
-    write_pidfile(proc.pid)
+    # The player reads when no older ticket of a live player is left; a stop after the start changes speak-stopped
+    # (wait_turn compares stop_mark). The stamp, the start and the ticket under one lock: a start at the same time gets a
+    # newer stamp only after this ticket is in the queue.
+    try:
+        os.makedirs(QUEUE, mode=0o700, exist_ok=True)
+        lock = os.open(QUEUE + ".lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except OSError as e:
+        log("Warteschlange %s: %s" % (QUEUE, e))
+        lock = None   # the player reads anyway, maybe at the same time as another
+    try:
+        if lock is not None:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        ticket = "%020d" % time.time_ns()
+        proc = subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), RUN_ARG, ticket, stop_mark()],
+                                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                start_new_session=True)
+        if lock is not None:
+            try:
+                os.close(os.open(os.path.join(QUEUE, "%s.%d" % (ticket, proc.pid)),
+                                 os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600))
+            except OSError as e:
+                log("Warteschlange %s: %s" % (QUEUE, e))
+    finally:
+        if lock is not None:
+            os.close(lock)
     proc.stdin.write(text.encode("utf-8"))
     proc.stdin.close()
     return None
@@ -371,13 +407,46 @@ def play_from_server(conn, text, err, env):
         return 0, play.wait()
 
 
-def run():
-    """The player: speak-server.py or piper | play, in its own process group (the group id is in speak.pid while it reads)."""
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop still removes speak.pid (finally below)
+def wait_turn(ticket, mark):
+    """Waits until no older ticket of a live player is in the queue (tickets of dead players go) and nobody records for
+    /voice (a text that waited must not play into the microphone). False when a stop came after the start (speak-stopped
+    is no longer as it was then, mark): then the player does not read."""
+    while stop_mark() == mark:
+        try:
+            names = os.listdir(QUEUE)
+        except OSError:
+            return True
+        ahead = False
+        for name in names:
+            stamp, _, pid = name.partition(".")
+            if stamp >= ticket or not pid.isdigit():
+                continue
+            if is_player(int(pid)):
+                ahead = True
+            else:
+                try:
+                    os.remove(os.path.join(QUEUE, name))
+                except OSError:
+                    pass
+        if not ahead and not recording():
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def run(ticket, mark):
+    """The player: waits for its turn, then speak-server.py or piper | play, in its own process group (the group id is in
+    speak.pid while it reads)."""
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop still removes speak.pid and the ticket (finally below)
     text = sys.stdin.buffer.read().decode("utf-8", "replace")
     env = pulse_env()
-    me = str(os.getpid())   # start() registered it in speak.pid
+    me = str(os.getpid())
     try:
+        if not wait_turn(ticket, mark):
+            return
+        write_pidfile(os.getpid())   # for a stop and for the daemon's audio focus
+        if stop_mark() != mark:   # a stop between the check and speak.pid missed this player
+            return
         conn = server_connection()
         with tempfile.TemporaryFile() as err:   # what piper and play say, into the log only on a failure
             engine, codes = "Articulino", None
@@ -413,11 +482,16 @@ def run():
                     os.remove(PIDFILE)
         except OSError:
             pass
+        try:
+            os.remove(os.path.join(QUEUE, "%s.%s" % (ticket, me)))
+        except OSError:
+            pass
 
 
 def record():
     """--record: your voice for Articulino, RECORD_SECONDS from the microphone; silence at both ends cut, the level
     evened out. The old recording stays when the new one is shorter than MIN_VOICE_SECONDS."""
+    mark_stopped()   # the waiting texts too: none may play into the microphone
     stop()
     os.makedirs(os.path.dirname(VOICE_SAMPLE), exist_ok=True)
     tmp = VOICE_SAMPLE + ".new.wav"
@@ -591,8 +665,9 @@ def progress():
             # switched off or stopped while it waited for the transcript: the note counts as read, nothing starts
             if not os.path.exists(OFF) and not stopped_since(begun):
                 speak_answer(note[1])
-                # a stop between that check and speak.pid missed the player: end it before Piper has the first sound
+                # a stop between that check and the ticket missed the player: a new stop ends it before the first sound
                 if os.path.exists(OFF) or stopped_since(begun):
+                    mark_stopped()
                     stop()
     except OSError as e:
         log("Zwischenstand nicht vorgelesen, %s: %s" % (PROGRESS, e))   # without the memory every tool call would read it again
@@ -606,8 +681,8 @@ def main(argv):
     elif argv[:1] == ["--stop"]:
         mark_stopped()
         stop()
-    elif argv[:1] == [RUN_ARG]:
-        run()
+    elif argv[:1] == [RUN_ARG] and len(argv) == 3 and argv[1].isdigit():
+        run(argv[1], argv[2])
     elif argv[:1] == ["--record"]:
         return record()
     elif argv[:1] == ["--offer-record"]:
