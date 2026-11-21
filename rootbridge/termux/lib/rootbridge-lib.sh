@@ -242,9 +242,21 @@ rb_speak_player() {
     printf '%s\n' "$pid"
 }
 
-# rb_speak_focus: called by the daemon every round. While the guest reads aloud (a live player in speak.pid), our
+# rb_find_recorders <proc dir>: REC_PIDS = the running recorders of Claude Code's /voice (SoX: `rec ... --buffer 1024 -t raw ...`),
+# read from the proc dir without starting a process
+rb_find_recorders() {
+    local d args
+    REC_PIDS=()
+    for d in "$1"/[0-9]*; do
+        mapfile -d '' -t args 2>/dev/null < "$d/cmdline" || continue   # 2> first: a process can be gone by now
+        if [[ ${args[0]-} == *rec && " ${args[*]} " == *" --buffer 1024 -t raw "* ]]; then REC_PIDS+=("${d##*/}"); fi
+    done
+}
+
+# rb_speak_focus: called by the daemon every round. While the guest reads aloud (a live player in speak.pid) or Claude Code
+# records for /voice (a recorder, rb_find_recorders), our
 # Termux:API holds the audio focus for speech (AudioFocus): Android turns music down, like for a navigation app, and
-# lets it up again when the player is gone. A phone call (or the focus lost to one) ends the reading: PulseAudio would
+# lets it up again when the player and the recorder are gone. A phone call (or the focus lost to one) ends the reading: PulseAudio would
 # play right into it. The answer for a new player goes to speak-focus ("<pid> <answer>"); the player waits for it before
 # it plays, and does not play during a call.
 # Once asked for, the focus counts as held until Android confirms the release (a request without an answer in time may
@@ -272,7 +284,9 @@ rb_focus_missed() {
 rb_speak_focus() {
     local pid answer
     [ "$rb_focus_skip" -eq 0 ] || rb_focus_skip=$((rb_focus_skip - 1))
-    if pid="$(rb_speak_player)"; then
+    REC_PIDS=()
+    [ "$VOICE" != on ] || rb_find_recorders "$RB_PROC_DIR"
+    if pid="$(rb_speak_player)" || [ "${#REC_PIDS[@]}" -gt 0 ]; then
         if [ "$rb_focus_skip" -gt 0 ]; then answer=off
         else
             answer="$(rb_audio_focus status)"
@@ -288,7 +302,7 @@ rb_speak_focus() {
             esac
             [ "$answer" = off ] || rb_focus_miss=0
         fi
-        if [ "$pid" != "$RB_SPEAK_FOCUS_PID" ]; then
+        if [ -n "$pid" ] && [ "$pid" != "$RB_SPEAK_FOCUS_PID" ]; then
             rb_speak_focus_tell "$pid $answer" && RB_SPEAK_FOCUS_PID="$pid"
         fi
     elif [ "$RB_SPEAK_FOCUS" = held ] && [ "$rb_focus_skip" -eq 0 ]; then

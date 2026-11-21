@@ -439,6 +439,21 @@ check "Fokus: speak-focus über einem Link: Ziel unberührt, eigene Datei" "wert
     "$(cat "$T/wertvoll4") $([ -L "$BRIDGE_DIR/speak-focus" ] && echo ja || echo nein) $(head -n 1 "$BRIDGE_DIR/speak-focus")"
 kill "$PLAYER" 2>/dev/null; rm -f "$BRIDGE_DIR/speak.pid" "$BRIDGE_DIR/speak-stopped" "$BRIDGE_DIR/speak-focus"
 
+# the audio focus while Claude Code records for /voice (its recorder `rec ... --buffer 1024 -t raw`): music quieter as well
+bash -c 'exec -a rec python3 -c "import time; time.sleep(30)" --buffer 1024 -t raw' & REC=$!
+sleep 0.3
+echo none > "$T/af.status"; echo granted > "$T/af.request"; echo released > "$T/af.release"; : > "$T/af.log"
+check "Fokus: Claude Code nimmt auf, Termux holt den Fokus, ohne speak-focus" "held;1;nein" "$(focus 1)$(grep -c request "$T/af.log");$(has "$BRIDGE_DIR/speak-focus")"
+# shellcheck disable=SC2034  # VOICE and RB_ASK_CMD are read by rb_speak_focus in $LIB
+check "Fokus: bei VOICE=off nicht für die Aufnahme"        "leer;0" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+    VOICE=off; : > "$T/af.log"; rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"; wc -l < "$T/af.log" | tr -d ' ' ) )"
+: > "$T/af.log"
+# shellcheck disable=SC2034  # VOICE and RB_ASK_CMD are read by rb_speak_focus in $LIB
+check "Fokus: Ende der Aufnahme gibt ihn frei"             "held;leer;1" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+    rb_speak_focus; printf '%s;' "$RB_SPEAK_FOCUS"; kill "$REC"; wait "$REC" 2>/dev/null; sleep 0.3
+    rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"; grep -c 'action release' "$T/af.log" ) )"
+kill "$REC" 2>/dev/null; rm -f "$T/ftmp/rootbridge-audio-focus"
+
 # the command line of `rootbridge help` and `status`
 rb bash "$T/bin/rootbridge" help
 check "help nennt voice start|stop|status|grant"          1 "$(count "$T/out.txt" 'rootbridge voice start|stop|status|grant')"
@@ -594,16 +609,16 @@ check "--sidekey: Shebang zeigt auf das Python von Termux" "#!$P/bin/python3" "$
 check "--sidekey: Meldung zum Langdruck 'Nothing'"         1 "$(count "$T/install.log" "Langdruck auf 'Nothing'")"
 check "--sidekey (HEADSET offen: die Headset-Taste folgt wie bisher): Leser neu gestartet, beide Tasten" "1 1 1" "$(count "$ILOG" "^pkill -f .*python.* $P/bin/sidekey-ptt") $(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt keys=side headset$") $(count "$T/install.log" 'Tasten-Leser gestartet: side')"
 STUB_READER_STAYS=1 irun --sidekey
-check "--sidekey: alter Leser endet nicht, kein zweiter, Meldung" "0 1" "$(count "$ILOG" '^setsid') $(count "$T/install.log" 'der alte läuft noch')"
+check "--sidekey: alter Leser endet nicht, kein zweiter, Meldung" "0 1" "$(count "$ILOG" '^setsid nohup .*sidekey-ptt') $(count "$T/install.log" 'der alte läuft noch')"
 rm -f "$ILOG.reader"
 STUB_READER_DIES=1 irun --sidekey
-check "--sidekey: neuer Leser endet sofort, Meldung"        "1 1" "$(count "$ILOG" '^setsid') $(count "$T/install.log" 'Start fehlgeschlagen')"
+check "--sidekey: neuer Leser endet sofort, Meldung"        "1 1" "$(count "$ILOG" '^setsid nohup .*sidekey-ptt') $(count "$T/install.log" 'Start fehlgeschlagen')"
 irun
 check "ohne Option nach --sidekey: bleibt installiert (Konfig)" "ja" "$(has "$P/bin/sidekey-ptt")"
 check "ohne Option nach --sidekey: Meldung aus der Konfig" 1 "$(count "$T/install.log" 'Seitentaste: an (aus der Konfig')"
 irun --no-sidekey
 check "--no-sidekey: entfernt, SIDEKEY=off gespeichert"    "nein off" "$(has "$P/bin/sidekey-ptt") $(iget SIDEKEY)"
-check "--no-sidekey: beendet einen laufenden Leser, startet keinen" "1 0" "$(count "$ILOG" "^pkill -f .*python.* $P/bin/sidekey-ptt") $(count "$ILOG" "^setsid")"
+check "--no-sidekey: beendet einen laufenden Leser, startet keinen" "1 0" "$(count "$ILOG" "^pkill -f .*python.* $P/bin/sidekey-ptt") $(count "$ILOG" "^setsid nohup .*sidekey-ptt")"
 irun
 check "ohne Option nach --no-sidekey: bleibt aus"          nein "$(has "$P/bin/sidekey-ptt")"
 irun --sidekey --no-voice

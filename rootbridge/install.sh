@@ -331,11 +331,11 @@ inst "$REPO/termux/bin/ptt"               "$PREFIX/bin/ptt"
 inst "$REPO/termux/lib/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
 chmod 644 "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
 # A running daemon keeps its old code in memory (an old one wants tickets that nothing issues any more): stop it. The new
-# one starts with the next session, with Termux:Boot or with `rootbridge start`.
+# one starts at the end of the installation.
 old_pid="$(cat "$BRIDGE_DIR/.lock/pid" 2>/dev/null || true)"
 if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
     "$PREFIX/bin/rootbridge" daemon-stop >/dev/null 2>&1 || kill "$old_pid" 2>/dev/null || true
-    say "  laufender Daemon beendet (der neue startet mit der nächsten Sitzung oder mit: rootbridge start)"
+    say "  laufender Daemon beendet (der neue startet am Ende der Installation)"
 fi
 
 say "== 2/5 Konfiguration"
@@ -869,6 +869,13 @@ if [ "$DO_GUEST" = 1 ]; then
     rm -rf "$STAGE"
 else
     say "  übersprungen (--no-guest)"
+fi
+
+# start the daemon with the new code: without it nothing reads aloud and no root request gets through until the next session
+if "$PREFIX/bin/rootbridge" daemon-start >/dev/null 2>&1; then
+    say "Daemon läuft."
+else
+    say "Daemon startet nicht (siehe $BRIDGE_DIR/daemon.log; erneut mit: rootbridge daemon-start)"
 fi
 
 say
