@@ -763,6 +763,12 @@ echo '{"bindings":[{"context":"Chat","bindings":{"ctrl+g":null}},{"context":"Glo
 gi "$GC" --claude yes --codex no
 check "Gast: meta+k kommt in den Chat-Block, der Rest bleibt" '{"bindings": [{"bindings": {"ctrl+g": null, "meta+k": "voice:pushToTalk"}, "context": "Chat"}, {"bindings": {"ctrl+o": "app:toggleTranscript"}, "context": "Global"}]}' "$(kb "$GC/root/.claude/keybindings.json")"
 check "Gast: ... mit Backup"                               1 "$(baks "$GC/root/.claude/keybindings.json.bak*")"
+# Claude Code answers in German: the German texts
+GH="$T/gh"; rm -rf "$GH"; mkdir -p "$GH/root/.claude"
+echo '{"language":"German"}' > "$GH/root/.claude/settings.json"
+gi "$GH" --claude yes --codex no
+check "Gast language=German: CLAUDE.md auf Deutsch"        "1 1 0 0" \
+      "$(count "$GH/root/.claude/CLAUDE.md" '^## Anforderungen an die Codequalität') $(count "$GH/root/.claude/CLAUDE.md" '^## Antworten werden vorgelesen') $(count "$GH/root/.claude/CLAUDE.md" '^## Code quality requirements') $(count "$GH/root/.claude/CLAUDE.md" '^## Answers read aloud')"
 # meta+k is taken by something else
 GD="$T/gd"; rm -rf "$GD"; mkdir -p "$GD/root/.claude"
 echo '{"bindings":[{"context":"Chat","bindings":{"meta+k":"chat:other"}}]}' > "$GD/root/.claude/keybindings.json"
