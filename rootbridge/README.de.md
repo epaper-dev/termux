@@ -389,6 +389,12 @@ schaut 3,5 s später noch einmal nach, damit das Mikrofon nach dem Stoppen nicht
 Die Bedienungshilfen des A9 bieten für die Seitentaste nur feste Aktionen (Bildschirm leeren, Musik, Home, Menü, Hintergrundlicht, nichts), keine
 App: Für die Seitentaste nimm `--sidekey` (unten).
 
+**Die Tasten bei der Installation:** Auf einem Terminal fragt `install.sh` nach jeder Taste, über die noch nicht entschieden ist:
+Seitentaste (`--sidekey`, Standard nein), langer Druck auf Home (`--home-key`, Standard ja) und Headset-Taste (`--headset`, Standard ja).
+Die Antwort steht danach in der Konfig (`SIDEKEY`, `HOMEKEY`, `HEADSET`), spätere Läufe fragen nicht mehr; die `--no-…`-Formen schalten ab.
+Der Installer richtet im selben Lauf alles ein: den Tasten-Leser für Seiten- und Headset-Taste und die Assistenten-Rolle für Home (Root;
+bei jedem Lauf neu, falls „Beenden erzwingen“ sie genommen hat). Ohne Terminal fragt er nicht und nennt den Befehl für Home.
+
 **Seitentaste des Hisense A9** (`--sidekey`, standardmäßig aus, gespeichert als `SIDEKEY`): Seitentaste halten = aufnehmen, loslassen = stoppen. Der Installer legt
 `sidekey-ptt` nach `$PREFIX/bin`; es hält ein root-`cat` auf `/dev/input/event2` (die Taste, Scancode 766) und ruft `ptt start` / `ptt stop`.
 Kurz- und Doppeldruck bleiben bei der E-Ink-App; ihren Langdruck auf „Nothing“ stellen. `rootbridge start|attach` starten den Leser (eine Instanz),

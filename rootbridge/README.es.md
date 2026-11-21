@@ -367,6 +367,12 @@ y cada grabación nueva recibe silencio. `ptt start` en modo hold termina ese gr
 Los ajustes de accesibilidad del A9 solo ofrecen acciones fijas para su tecla lateral (borrar pantalla, música, inicio, menú, luz de fondo,
 nada), ninguna app: para la tecla lateral usa `--sidekey` (abajo).
 
+**Las teclas en la instalación:** en una terminal `install.sh` pregunta por cada tecla aún sin decidir: la tecla lateral (`--sidekey`,
+por defecto no), la pulsación larga en Inicio (`--home-key`, por defecto sí) y la tecla del auricular (`--headset`, por defecto sí). La
+respuesta se guarda en la configuración (`SIDEKEY`, `HOMEKEY`, `HEADSET`) y las ejecuciones siguientes ya no preguntan; las formas `--no-…`
+desactivan una tecla. La misma ejecución lo deja todo listo: el lector de las teclas lateral y del auricular y el rol de asistente para
+Inicio (root; en cada ejecución, por si «Forzar detención» lo quitó). Sin terminal no pregunta y nombra la orden para Inicio.
+
 **Tecla lateral del Hisense A9** (`--sidekey`, desactivada por defecto, se guarda como `SIDEKEY`): mantener la tecla lateral = grabar, soltar = parar. El instalador coloca
 `sidekey-ptt` en `$PREFIX/bin`; mantiene un `cat` de root sobre `/dev/input/event2` (la tecla, código 766) y llama a `ptt start` / `ptt stop`.
 La pulsación corta y la doble siguen con la app E-Ink; ajusta su pulsación larga a «Nothing». `rootbridge start|attach` arrancan el lector (una instancia),

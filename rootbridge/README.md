@@ -359,6 +359,12 @@ the microphone does not stay on after a stop.
 The accessibility settings of the A9 offer only fixed actions for its side key (clear screen, music, home, menu, backlight, nothing), no app: for the
 side key use `--sidekey` below.
 
+**The keys at installation:** on a terminal `install.sh` asks about each key nobody decided yet: the side key (`--sidekey`, default
+no), a long press on Home (`--home-key`, default yes) and the headset key (`--headset`, default yes). The answer is stored in the config
+(`SIDEKEY`, `HOMEKEY`, `HEADSET`) and later runs do not ask again; the `--no-…` forms switch a key off. The same run sets everything up:
+the key reader for the side and headset keys and the assistant role for Home (root; on every run, in case "Force stop" took it away).
+Without a terminal it asks nothing and names the command for Home.
+
 **Side key of the Hisense A9** (`--sidekey`, off by default, stored as `SIDEKEY`): hold the side key to record, let go to stop. The installer puts
 `sidekey-ptt` into `$PREFIX/bin`; it keeps a root `cat` on `/dev/input/event2` (the key, scan code 766) and calls `ptt start` / `ptt stop`.
 Short and double presses stay with the E-Ink app; set its long press to "Nothing". `rootbridge start|attach` start the reader (one instance), and

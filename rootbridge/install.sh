@@ -9,7 +9,8 @@
 #                   [--model NAME|none] [--claude | --no-claude] [--codex | --no-codex]
 #                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update] [--codex-bypass | --no-codex-bypass]
 #                   [--guidelines | --no-guidelines]
-#                   [--voice | --no-voice] [--sidekey | --no-sidekey]
+#                   [--voice | --no-voice] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
+#                   [--headset | --no-headset]
 #
 # Setup: an interactive Termux shell asks for the device name used in Claude Remote Control
 # (Enter accepts the suggested name; --remote-name NAME skips the question).
@@ -64,6 +65,12 @@
 # --sidekey / --no-sidekey: the side key of the Hisense A9 as push to talk (hold = record, release = stop): installs sidekey-ptt,
 #   which keeps a root `cat` on /dev/input/event2 running, and starts it with the session. Off by default, stored as SIDEKEY.
 #   Set the long press of the E-Ink app to "Nothing". A bridge until the E-Ink app does it itself.
+# --home-key / --no-home-key: a long press on Home starts and stops push to talk: the installer makes Termux the digital
+#   assistant (root, `rootbridge voice assistant on`), on every run on a terminal ("Force stop" in the app info takes the role
+#   away). Needs the Termux app of this repository (Termux push to talk). Stored as HOMEKEY; --no-home-key takes the role back.
+# --headset / --no-headset: a long press on the key of a wired headset starts and stops push to talk (sidekey-ptt reads it as
+#   root). Stored as HEADSET.
+# Keys nobody decided yet (no option, nothing in the config) are asked on a terminal, one question each; the answer is stored.
 #
 # Claude Code starts in /root/work in the guest (WORKDIR; the installer creates the folder).
 #
@@ -115,6 +122,8 @@ CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
 USE_CLAUDE=yes; USE_CLAUDE_SET=0; USE_CODEX=yes; USE_CODEX_SET=0   # which tools: yes | no
 USE_VOICE=yes; USE_VOICE_SET=0; USE_SIDEKEY=no; USE_SIDEKEY_SET=0   # voice dictation / side key as push to talk
+USE_HOMEKEY=no; USE_HOMEKEY_SET=0; USE_HEADSET=no; USE_HEADSET_SET=0   # long press on Home / on the headset key as push to talk
+HOMEKEY_OFF_OPT=0   # --no-home-key given: the assistant role is taken back in any case
 USE_BYPASS=yes; USE_BYPASS_SET=0   # Codex without its own sandbox
 USE_GUIDE=yes; USE_GUIDE_SET=0     # code quality guidelines in CLAUDE.md / AGENTS.md
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
@@ -158,6 +167,10 @@ while [ $# -gt 0 ]; do
         --no-voice) USE_VOICE=no; USE_VOICE_SET=1 ;;
         --sidekey) USE_SIDEKEY=yes; USE_SIDEKEY_SET=1 ;;
         --no-sidekey) USE_SIDEKEY=no; USE_SIDEKEY_SET=1 ;;
+        --home-key) USE_HOMEKEY=yes; USE_HOMEKEY_SET=1 ;;
+        --no-home-key) USE_HOMEKEY=no; USE_HOMEKEY_SET=1; HOMEKEY_OFF_OPT=1 ;;
+        --headset) USE_HEADSET=yes; USE_HEADSET_SET=1 ;;
+        --no-headset) USE_HEADSET=no; USE_HEADSET_SET=1 ;;
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift ;;
@@ -349,6 +362,8 @@ AUTOSTART_DELAY=3
 # VOICE=on              # on | off: voice dictation for Claude Code (PulseAudio, microphone); set with install.sh --voice / --no-voice
 # SPEAK_SHORT=set       # set by install.sh the first time it installs voice, after it switched reading aloud to the short version
 # SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
+# HOMEKEY=off           # on | off: long press on Home as push to talk (Termux is the assistant); install.sh --home-key / --no-home-key
+# HEADSET=off           # on | off: long press on the key of a wired headset as push to talk; install.sh --headset / --no-headset
 # PTT_TARGET=ubuntu:claude   # `ptt`: tmux window it presses its key in (default <SESSION>:claude)
 # PTT_KEY=M-k           # `ptt`: tmux key name (Claude Code: voice:pushToTalk is bound to meta+k)
 # PTT_MODE=auto         # `ptt`: auto (the mode of Claude Code's /voice, read from its settings) | hold (repeat the key until stop) | tap (one press each); PTT_INTERVAL=50 (ms), PTT_WARMUP=1200 (ms before the first repeat), PTT_MAX=120 (s), PTT_BEEP=on (high beep: recording, low: ended)
@@ -432,11 +447,9 @@ fi
 if [ "$USE_SIDEKEY_SET" != 1 ] && [ "$(cfg_get SIDEKEY)" = on ]; then
     USE_SIDEKEY=yes; say "  Seitentaste: an (aus der Konfig; aus mit --no-sidekey)"
 fi
+OLD_VOICE="$(cfg_get VOICE)"   # off before this run, or on (also empty): switching voice off gives the Home key role back
 if [ "$USE_VOICE_SET" = 1 ]; then
     cfg_set VOICE "$(onoff "$USE_VOICE")" "Sprache: $USE_VOICE"
-fi
-if [ "$USE_SIDEKEY_SET" = 1 ]; then
-    cfg_set SIDEKEY "$(onoff "$USE_SIDEKEY")" "Seitentaste: $USE_SIDEKEY"
 fi
 # Resolve the device name after the enabled tools, so Codex-only installs ask no Claude question.
 if [ "$REMOTE_NAME_SET" != 1 ]; then
@@ -461,6 +474,50 @@ fi
 if [ "$REMOTE_NAME_SET" = 1 ]; then
     # store the name in the Termux config: it survives a reinstall of the guest
     cfg_set REMOTE_NAME "$REMOTE_NAME" "Remote-Control-Name gespeichert: $REMOTE_NAME"
+fi
+if [ "$USE_HOMEKEY_SET" != 1 ] && [ "$(cfg_get HOMEKEY)" = on ]; then USE_HOMEKEY=yes; fi
+# HEADSET not decided yet (a config from before it): the headset key follows the side key, as the reader always read both
+if [ "$USE_HEADSET_SET" != 1 ]; then
+    case "$(cfg_get HEADSET)" in
+        on) USE_HEADSET=yes ;;
+        "") USE_HEADSET="$USE_SIDEKEY" ;;
+    esac
+fi
+OLD_HOMEKEY="$(cfg_get HOMEKEY)"   # on before this run: --no-home-key takes the assistant role back
+# the keys for push to talk, after the device name (its question comes first on the terminal)
+# ask_key <yes|no var> <set var> <config key> <default yes|no> <question>: on a terminal, a key that neither an option nor
+# the config decided; the answer counts as an option (it is stored). No answer (end of input): undecided, asked next time.
+ask_key() {
+    local answer hint="[j/N]"
+    [ "${!2}" != 1 ] && [ -z "$(cfg_get "$3")" ] || return 0
+    [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ] || return 0
+    [ "$4" = yes ] && hint="[J/n]"
+    printf '%s %s ' "$5" "$hint"
+    IFS= read -r answer || { echo; return 0; }
+    case "$answer" in
+        j|J|ja|Ja|JA|y|Y|yes) answer=yes ;;
+        n|N|nein|Nein|NEIN|no) answer=no ;;
+        *) answer="$4" ;;
+    esac
+    printf -v "$1" '%s' "$answer"; printf -v "$2" '%s' 1
+}
+# the keys for push to talk work only with voice dictation
+if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then
+    ask_key USE_SIDEKEY USE_SIDEKEY_SET SIDEKEY no \
+        "Seitentaste als Push to Talk (halten = sprechen; nur Hisense A9, braucht Root)?"
+    ask_key USE_HOMEKEY USE_HOMEKEY_SET HOMEKEY yes \
+        "Langer Druck auf Home startet und stoppt die Spracheingabe (Termux wird digitaler Assistent, braucht Root)?"
+    ask_key USE_HEADSET USE_HEADSET_SET HEADSET yes \
+        "Langer Druck auf die Taste eines Kabel-Headsets startet und stoppt die Spracheingabe (braucht Root)?"
+fi
+if [ "$USE_SIDEKEY_SET" = 1 ]; then
+    cfg_set SIDEKEY "$(onoff "$USE_SIDEKEY")" "Seitentaste: $USE_SIDEKEY"
+fi
+if [ "$USE_HOMEKEY_SET" = 1 ]; then
+    cfg_set HOMEKEY "$(onoff "$USE_HOMEKEY")" "Home-Taste: $USE_HOMEKEY"
+fi
+if [ "$USE_HEADSET_SET" = 1 ]; then
+    cfg_set HEADSET "$(onoff "$USE_HEADSET")" "Headset-Taste: $USE_HEADSET"
 fi
 if [ "$CODEX_UPD_SET" = 1 ]; then
     cfg_set CODEX_UPDATE "$CODEX_UPD_MODE" "codex-update-Modus gespeichert: $CODEX_UPD_MODE"
@@ -653,11 +710,34 @@ if [ "$VOICE_ON" = yes ]; then
 else
     say "  übersprungen ($([ "$USE_CLAUDE" = yes ] && echo '--no-voice' || echo 'ohne Claude Code gibt es kein /voice'))"
 fi
+# Home key: Termux as the digital assistant (root), on every run: "Force stop" in the app info takes the role away. Taken back
+# when the key was on before this run, or always with --no-home-key (also without voice, also a role set by hand), and when
+# voice goes off (HOMEKEY stays on: voice on again sets the role again).
+role=""
+if [ "$USE_HOMEKEY" = yes ] && [ "$VOICE_ON" = yes ]; then
+    role=on
+elif [ "$USE_HOMEKEY" = no ] && { [ "$OLD_HOMEKEY" = on ] || [ "$HOMEKEY_OFF_OPT" = 1 ]; }; then
+    role=off
+elif [ "$USE_HOMEKEY" = yes ] && [ "$OLD_VOICE" != off ] && [ "$VOICE_ON" = no ]; then
+    role=off
+fi
+if [ -n "$role" ]; then
+    if [ "$DO_SETUP" = 1 ] && { [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; }; then
+        say "  Home-Taste: Assistenten-Rolle $role (Root; der Root-Manager fragt):"
+        "$PREFIX/bin/rootbridge" voice assistant "$role" \
+            || say "  Hinweis: Assistenten-Rolle nicht geändert. Später:  rootbridge voice assistant $role"
+    else
+        say "  Home-Taste: einmal von Hand   rootbridge voice assistant $role   (braucht Root)"
+    fi
+fi
 # the side key reader (Hisense A9): installed on request only; a reader of an earlier install goes when it is switched off.
 # It runs as "<python> $PREFIX/bin/sidekey-ptt" (its shebang): only that command line is the reader, not an editor or a `tail`
 # on its file or log.
 SIDEKEY_RE="^[^ ]*python[^ ]* $PREFIX/bin/sidekey-ptt\$"
-if [ "$USE_SIDEKEY" = yes ] && [ "$VOICE_ON" = yes ]; then
+SIDEKEY_KEYS=""   # what the reader reads (as rootbridge sidekey_keys): side, headset
+[ "$USE_SIDEKEY" = yes ] && SIDEKEY_KEYS="side"
+[ "$USE_HEADSET" = yes ] && SIDEKEY_KEYS="${SIDEKEY_KEYS:+$SIDEKEY_KEYS }headset"
+if [ -n "$SIDEKEY_KEYS" ] && [ "$VOICE_ON" = yes ]; then
     inst "$REPO/termux/bin/sidekey-ptt" "$PREFIX/bin/sidekey-ptt" python3
     # start it now (otherwise only the next `rootbridge start` does), and a reader of an earlier install with the new code. The
     # old one has to be gone first: it holds the lock, and a new one that does not get it leaves without a word.
@@ -666,10 +746,10 @@ if [ "$USE_SIDEKEY" = yes ] && [ "$VOICE_ON" = yes ]; then
     if pgrep -f "$SIDEKEY_RE" >/dev/null 2>&1; then
         say "  Seitentasten-Leser: der alte läuft noch, nicht neu gestartet (pkill -f sidekey-ptt, dann rootbridge start)"
     else
-        setsid nohup "$PREFIX/bin/sidekey-ptt" >/dev/null 2>&1 < /dev/null &
+        SIDEKEY_KEYS="$SIDEKEY_KEYS" setsid nohup "$PREFIX/bin/sidekey-ptt" >/dev/null 2>&1 < /dev/null &
         sleep 0.5
         if pgrep -f "$SIDEKEY_RE" >/dev/null 2>&1; then
-            say "  Seitentasten-Leser gestartet (fragt einmal nach Root; Log: ~/.cache/sidekey-ptt.log)"
+            say "  Tasten-Leser gestartet: $SIDEKEY_KEYS (fragt einmal nach Root; Log: ~/.cache/sidekey-ptt.log)"
         else
             say "  Seitentasten-Leser: Start fehlgeschlagen (siehe ~/.cache/sidekey-ptt.log; rootbridge start versucht es erneut)"
         fi
@@ -678,8 +758,8 @@ elif [ -f "$PREFIX/bin/sidekey-ptt" ] && grep -q 'sidekey-ptt' "$PREFIX/bin/side
     pkill -f "$SIDEKEY_RE" 2>/dev/null || true
     rm -f "$PREFIX/bin/sidekey-ptt"
     say "  Seitentasten-Leser entfernt (abgewählt)"
-elif [ "$USE_SIDEKEY" = yes ]; then
-    say "  Seitentaste: ohne die Sprachsteuerung nicht eingerichtet"
+elif [ -n "$SIDEKEY_KEYS" ]; then
+    say "  Seitentaste / Headset-Taste: ohne die Sprachsteuerung nicht eingerichtet"
 fi
 
 say "== 4/5 Migration der alten Popup-Bridge (v1)"
@@ -836,6 +916,12 @@ if [ "$VOICE_ON" = yes ]; then
     say "Vorlesen: Claudes Antworten liest Piper vor, mit deiner eigenen Stimme nach 'rootbridge-speak --record' im Gast; aus/an mit dem Widget 'Vorlesen' oder 'rootbridge voice speak off|on', sofort still mit 'Stopp' oder einem Start von ptt."
     if [ "$USE_SIDEKEY" = yes ]; then
         say "Seitentaste: Langdruck = aufnehmen, loslassen = stoppen. In den E-Ink-Einstellungen den Langdruck auf 'Nothing' stellen."
+    fi
+    if [ "$USE_HOMEKEY" = yes ]; then
+        say "Home-Taste: Langdruck startet die Spracheingabe, der nächste schickt ab (nach 'Beenden erzwingen' von Termux: bash install.sh)."
+    fi
+    if [ "$USE_HEADSET" = yes ]; then
+        say "Headset-Taste: Langdruck startet, loslassen und sprechen, der nächste Langdruck schickt ab. Das Headset vor dem Start der Sitzung einstecken."
     fi
 fi
 if [ "$DO_EXTRAKEYS" = 1 ]; then

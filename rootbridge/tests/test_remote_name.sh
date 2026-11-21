@@ -180,7 +180,8 @@ pid, master = pty.fork()
 if pid == 0:
     env = os.environ.copy()
     env.update(HOME=home, PREFIX=prefix, PATH=path, ROOTBRIDGE_ALLOW_GUEST="1", BRIDGE_DIR=home+"/.rootbridge")
-    os.execvpe("bash", ["bash", installer, "--no-boot", "--no-migrate", "--no-deps-check", "--no-extra-keys", "--no-setup", "--autonomous", "no", *options], env)
+    os.execvpe("bash", ["bash", installer, "--no-boot", "--no-migrate", "--no-deps-check", "--no-extra-keys", "--no-setup", "--autonomous", "no",
+               "--no-sidekey", "--no-home-key", "--no-headset", *options], env)   # the key questions: test_voice.sh
 if answers:
     os.write(master, answers.encode())
 output = bytearray()

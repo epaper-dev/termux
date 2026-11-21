@@ -12,7 +12,8 @@ the E-Ink app, and with the music (play, pause). Set the long press of the E-Ink
 well; a long press on the headset key also starts Android's voice search, so no app should answer that (the A9 has
 none once Whisper is gone).
 
-Installed by `install.sh --sidekey` (SIDEKEY=on in the rootbridge config) and started by `rootbridge start|attach`.
+Installed by `install.sh` when the side key or the headset key is chosen (SIDEKEY=on / HEADSET=on in the rootbridge config,
+passed as SIDEKEY_KEYS="side headset") and started by `rootbridge start|attach`.
 Runs in Termux as the Termux user; root is only the `cat` (su). One instance (flock). Log: ~/.cache/sidekey-ptt.log
 Stop it:  pkill -f sidekey-ptt        (a stray `cat` ends with the next key press)
 
@@ -37,7 +38,9 @@ LOCK = os.path.join(CACHE, "sidekey-ptt.lock")
 DEV = "/dev/input/event2"
 SCAN = 766                                           # KEY 0x2fe
 KEY_MEDIA = 226                                      # the key of a headset
-KEYS = {SCAN, KEY_MEDIA}
+# which keys to read: SIDEKEY_KEYS="side headset" (rootbridge and install.sh pass SIDEKEY=on and HEADSET=on of the config)
+CHOSEN = os.environ.get("SIDEKEY_KEYS", "side headset").split()
+KEYS = {key for name, key in (("side", SCAN), ("headset", KEY_MEDIA)) if name in CHOSEN}
 # the headset buttons, found by name (their event number depends on the kernel; apps may not read /sys/class/input)
 # (exit 1 when the list cannot be read at all: the reader starts over; a phone without a jack finds nothing, exit 0)
 FIND_HEADSET = ('ls /sys/class/input/event0 >/dev/null || exit 1; '
@@ -93,6 +96,9 @@ def sources():
     of the headset failed (the reader starts over, as when a stream ends)."""
     if TEST_CMDS:
         return TEST_CMDS
+    side = [DEV] if SCAN in KEYS else []
+    if KEY_MEDIA not in KEYS:
+        return [["su", "-c", "echo $$; exec cat " + d] for d in side]
     try:
         r = subprocess.run(["su", "-c", FIND_HEADSET], stdin=subprocess.DEVNULL, capture_output=True, text=True,
                            timeout=20)
@@ -102,7 +108,10 @@ def sources():
     if r.returncode != 0:
         log("Headset-Suche fehlgeschlagen: su Exit %d" % r.returncode)
         return None
-    devices = [DEV] + [d for d in r.stdout.split() if d.startswith("/dev/input/event") and d != DEV]
+    devices = side + [d for d in r.stdout.split() if d.startswith("/dev/input/event") and d not in side]
+    if not devices:
+        log("keine Headset-Buchse gefunden")
+        return None
     # the root pid first: ending the su client leaves Magisk's `cat` waiting on a quiet device, so it is ended by pid
     return [["su", "-c", "echo $$; exec cat " + d] for d in devices]
 
