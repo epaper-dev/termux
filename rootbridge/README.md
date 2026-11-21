@@ -323,8 +323,9 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
 * **Reading aloud**: **Piper**, a local speech output without network (in the guest in `/opt/piper`, voice `de_DE-kerstin-medium`), reads
   Claude's answers, or Articulino in your own voice once you recorded it (see below). A Stop hook in the managed settings hands over every answer, without code blocks, tables, URLs and Markdown marks; the
   sound goes through the same PulseAudio as the microphone. A PreToolUse hook also reads Claude's short notes between tool calls ("Ich
-  baue jetzt …"), each once, from the transcript of the session. A new text ends the old one. It goes quiet at once when you send something
-  (UserPromptSubmit hook) and when `ptt` starts (long press on Home, side key), or the microphone would record the voice. Reading aloud is on
+  baue jetzt …"), each once, from the transcript of the session. Texts are read one after another. It goes quiet at once when you send something
+  (UserPromptSubmit hook). When `ptt` starts (long press on Home, side key) and while Claude Code records, the reading pauses, or the microphone
+  would record the voice, and goes on afterwards where it stopped. Reading aloud is on
   after the installation. Switch it with the widget **Vorlesen** (on/off, with a toast; off also ends what is being read) and the widget
   **Stopp** (quiet now), both in `~/.shortcuts/tasks/` (they run in the background), or `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` reads only a short version of each answer: its whole first paragraph and the last question further down (the file
   `~/.rootbridge/speak-first`; the first installation with voice switches it on, `SPEAK_SHORT=set` in the config remembers that), `all` the whole answer again.

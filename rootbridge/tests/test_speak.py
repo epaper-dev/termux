@@ -295,7 +295,8 @@ class TestPlayer(unittest.TestCase):
             json.dump({"audio": {"sample_rate": 16000}}, fh)
         self.piper = self.stub("piper", 'echo "$@" > "$OUT/piper.args"; cat > "$OUT/piper.in"\n'
                                         '[ -z "${SLOW:-}" ] || sleep 30\nprintf RAW\n')
-        self.play = self.stub("play", 'echo "$@" > "$OUT/play.args"; cat > "$OUT/play.in"\n')
+        self.play = self.stub("play", 'echo "$@" > "$OUT/play.args"; echo "$PULSE_LATENCY_MSEC" > "$OUT/play.latency"; '
+                                      'cat > "$OUT/play.in"\n')
         self.pids = []
 
     def tearDown(self):
@@ -362,7 +363,9 @@ class TestPlayer(unittest.TestCase):
         self.assertEqual(self.out_file("piper.in"), "Fertig: alles gut.")
         self.assertEqual(self.out_file("piper.args").split(), ["-m", self.voice, "--output-raw"])
         self.assertIn("-r 16000", self.out_file("play.args"))          # the rate of the voice, from its .json
+        self.assertIn("--buffer 4096", self.out_file("play.args"))
         self.assertIn("-t pulseaudio", self.out_file("play.args"))
+        self.assertEqual(self.out_file("play.latency"), "200\n")   # a short buffer: a pause is heard at once
         self.assertTrue(self.wait_for(lambda: not os.path.exists(self.pidfile())), "speak.pid bleibt liegen")
 
     def test_hook_with_speak_first_reads_the_short_version(self):
@@ -769,26 +772,53 @@ class TestPlayer(unittest.TestCase):
             self.assertEqual(fh.read(), "wertvoll")
         self.assertIsNone(self.out_file("piper.in"))
 
-    def test_nothing_is_read_while_voice_records(self):
+    def fake_recorder(self):
+        """A recorder of Claude Code in a fake /proc; RB_SPEAK_PROC for the player, and the directory that ends it."""
         proc_dir = os.path.join(self.tmp.name, "proc")
         os.makedirs(os.path.join(proc_dir, "4711"))
         with open(os.path.join(proc_dir, "4711", "cmdline"), "wb") as fh:
             fh.write(b"/usr/bin/rec\0-q\0--buffer\0" + b"1024\0-t\0raw\0-")
-        self.run_speak(["--progress"], self.transcript(("a1", "assistant", [{"type": "text", "text": "Leise."}])),
-                       RB_SPEAK_PROC=proc_dir)
-        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Auch leise."}), RB_SPEAK_PROC=proc_dir)
+        return {"RB_SPEAK_PROC": proc_dir}, os.path.join(proc_dir, "4711")
+
+    def test_answers_during_a_recording_are_read_afterwards_in_order(self):
+        env, rec = self.fake_recorder()
+        piper = self.stub("piper-all", 'cat >> "$OUT/piper.all"; echo >> "$OUT/piper.all"\n')
+        self.run_speak(["--progress"], self.transcript(("a1", "assistant", [{"type": "text", "text": "Erst."}])),
+                       RB_SPEAK_PIPER=piper, **env)
+        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Dann."}), RB_SPEAK_PIPER=piper, **env)
         time.sleep(0.5)
+        self.assertIsNone(self.out_file("piper.all"))
+        shutil.rmtree(rec)   # the recording is over
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.all") == "Erst.\nDann.\n"))
+
+    def test_reading_pauses_while_the_microphone_is_on_and_goes_on(self):
+        piper = self.stub("piper-long", 'cat > /dev/null; for i in $(seq 40); do head -c 4096 /dev/zero; sleep 0.05; done\n')
+        self.run_speak(["Lang."], RB_SPEAK_PIPER=piper)
+        size = lambda: len(self.out_file("play.in") or "")
+        self.assertTrue(self.wait_for(lambda: size() >= 8192))
+        hold = os.path.join(self.bridge, "speak-hold")
+        open(hold, "w").close()   # ptt start
+        time.sleep(0.5)
+        held = size()
+        time.sleep(0.5)
+        self.assertEqual(size(), held, "es liest weiter, obwohl das Mikrofon gleich angeht")
+        self.assertLess(held, 40 * 4096)
+        os.remove(hold)
+        self.assertTrue(self.wait_for(lambda: size() == 40 * 4096), "es geht nach der Pause nicht weiter")
+
+    def test_a_hold_without_a_recording_ends_after_a_few_seconds(self):
+        open(os.path.join(self.bridge, "speak-hold"), "w").close()
+        self.run_speak(["Gleich."])
+        time.sleep(1)
         self.assertIsNone(self.out_file("piper.in"))
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Gleich.", 6))
 
     def test_a_waiting_text_starts_only_after_the_recording(self):
-        proc_dir = os.path.join(self.tmp.name, "proc")
-        os.makedirs(os.path.join(proc_dir, "4711"))
-        with open(os.path.join(proc_dir, "4711", "cmdline"), "wb") as fh:
-            fh.write(b"/usr/bin/rec\0-q\0--buffer\0" + b"1024\0-t\0raw\0-")
-        self.run_speak(["Danach."], RB_SPEAK_PROC=proc_dir)
+        env, rec = self.fake_recorder()
+        self.run_speak(["Danach."], **env)
         time.sleep(0.5)
         self.assertIsNone(self.out_file("piper.in"))
-        shutil.rmtree(os.path.join(proc_dir, "4711"))   # the recording is over
+        shutil.rmtree(rec)   # the recording is over
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Danach."))
 
     def test_progress_with_speak_first_reads_the_short_version(self):

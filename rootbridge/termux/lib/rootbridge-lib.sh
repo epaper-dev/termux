@@ -219,17 +219,41 @@ rb_url_host() {
 }
 
 # --- speech output (guest/claude/speak.py) -------------------------------------
+# rb_speak_mark <name>: a new file <name> in the bridge directory (its mtime tells the guest when). Made in the own temp folder
+# of Termux and moved with mv -T (replaces a link instead of following it), like the switches of reading aloud.
+rb_speak_mark() {
+    local tmp
+    tmp="$(mktemp 2>/dev/null)" || return 1
+    mv -fT "$tmp" "$BRIDGE_DIR/$1" 2>/dev/null && return 0
+    rm -f "$tmp"
+    return 1
+}
+
 # rb_speak_stop: end what the guest is reading aloud. Its player writes the id of its process group to speak.pid in the
 # bridge directory (no pid namespace under proot). The guest can write there, so the pid only counts when that process is
 # really the player ("speak.py --run"); the same check as player_pid() in speak.py. Only a regular file, read with a time
-# limit: a FIFO there must not hold up `ptt start` before its key. It also puts a new speak-stopped in place: a --progress
-# hook of the guest that is still waiting for its note then does not start reading after the stop. Made in the own temp
-# folder of Termux and moved with mv -T (replaces a link instead of following it), like the switches of reading aloud.
+# limit: a FIFO there must not hold up a caller. It also puts a new speak-stopped in place: the texts that wait for their
+# turn, and a --progress hook of the guest that is still waiting for its note, then do not start reading after the stop.
 rb_speak_stop() {
-    local pid tmp
-    tmp="$(mktemp 2>/dev/null)" && mv -fT "$tmp" "$BRIDGE_DIR/speak-stopped" 2>/dev/null || rm -f "${tmp:-}"
+    local pid
+    rb_speak_mark speak-stopped || true
     pid="$(rb_speak_player)" || return 0
     kill -TERM -- "-$pid" 2>/dev/null || true
+}
+
+# rb_speak_hold: the guest pauses its reading for a few seconds (speak-hold), until the recorder of Claude Code runs, which
+# keeps it paused; afterwards it goes on where it stopped. ptt calls it before its key, so nothing is read into the start of
+# the recording. What is already on its way (the player looks every 0.1 s; its pipe and SoX hold 4 KiB each, PulseAudio
+# 200 ms; see speak.py) is heard while Claude Code starts its recorder, which takes half a second or more after the key.
+# (A stop signal does not hold a process under proot, so the player holds itself.) Without speak-hold, or with a player of
+# an older guest (it does not know speak-hold: no "pauses" at the end of its command line), the reading ends as before.
+rb_speak_hold() {
+    local pid
+    if rb_speak_mark speak-hold; then
+        pid="$(rb_speak_player)" || return 0
+        tr '\0' ' ' < "$RB_PROC_DIR/$pid/cmdline" 2>/dev/null | grep -qE 'speak\.py --run [0-9]{20} [0-9-]+ pauses ' && return 0
+    fi
+    rb_speak_stop
 }
 
 # rb_speak_player: prints the pid in speak.pid when that process is the player of the guest (see rb_speak_stop), else fails.

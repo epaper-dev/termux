@@ -248,24 +248,37 @@ check "ausdruecklich tap gewinnt gegen Claudes hold (je ein Druck)"      2 "$(pr
 check "PTT_MODE=auto steht in der Konfig"                                auto "$(printf 'PTT_MODE=auto\n' > "$CONF"; . "$LIB"; ROOTBRIDGE_CONFIG="$CONF" rb_load_config; echo "$PTT_MODE")"
 rm -f "$PTT_CLAUDE_SETTINGS"
 
-# ------------------------------------------------------------------ reading aloud ends before the microphone starts
+# ------------------------------------------------------------------ reading aloud pauses before the microphone starts
 # the player of the guest (speak.py --run) is stood in for by a process group leader with that command line; its pid in speak.pid
 export BRIDGE_DIR="$T/bridge"; mkdir -p "$BRIDGE_DIR"
-player() {
-    setsid bash -c 'exec -a "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run" sleep 30' < /dev/null > /dev/null 2>&1 &
+player() {   # player [old]: a player that pauses itself (speak.py --run <ticket> <mark> pauses), or one of an older guest
+    local argv0="python3 -I /usr/local/lib/termux-rootbridge/speak.py --run 00000000000000000001 0 pauses"
+    [ "${1:-}" = old ] && argv0="python3 -I /usr/local/lib/termux-rootbridge/speak.py --run 00000000000000000001 0"
+    setsid bash -c 'exec -a "$1" sleep 30' _ "$argv0" < /dev/null > /dev/null 2>&1 &
     echo $! > "$BRIDGE_DIR/speak.pid"; sleep 0.3
 }
 alive() { kill -0 "$(cat "$BRIDGE_DIR/speak.pid")" 2>/dev/null && echo laeuft || echo beendet; }
 reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\nPTT_MODE=hold\n' > "$CONF"; player
 runptt start; sleep 0.3
-check "hold: start beendet das Vorlesen"                  beendet "$(alive)"
+check "hold: start pausiert das Vorlesen (speak-hold), beendet es nicht" "laeuft ja" "$(alive) $([ -f "$BRIDGE_DIR/speak-hold" ] && echo ja || echo nein)"
+kill -- "-$(cat "$BRIDGE_DIR/speak.pid")" 2>/dev/null; rm -f "$BRIDGE_DIR/speak-hold"
 runptt stop; sleep 0.2
 reset; printf 'PTT_MODE=tap\n' > "$CONF"; player
 runptt toggle
-check "tap: toggle (Home-Langdruck) beendet das Vorlesen" beendet "$(alive)"
+check "tap: toggle (Home-Langdruck) pausiert das Vorlesen" "laeuft ja" "$(alive) $([ -f "$BRIDGE_DIR/speak-hold" ] && echo ja || echo nein)"
+kill -- "-$(cat "$BRIDGE_DIR/speak.pid")" 2>/dev/null; rm -f "$BRIDGE_DIR/speak-hold"
 reset; printf 'PTT_MODE=tap\n' > "$CONF"; player
 PTT_TEST_NOWINDOW=1 runptt start
-check "start ohne Fenster beendet das Vorlesen trotzdem"  beendet "$(alive)"
+check "start ohne Fenster pausiert das Vorlesen trotzdem" ja "$([ -f "$BRIDGE_DIR/speak-hold" ] && echo ja || echo nein)"
+kill -- "-$(cat "$BRIDGE_DIR/speak.pid")" 2>/dev/null; rm -f "$BRIDGE_DIR/speak-hold"
+reset; printf 'PTT_MODE=tap\n' > "$CONF"; player; mkdir "$BRIDGE_DIR/speak-hold"   # speak-hold cannot be put in place
+runptt toggle
+check "ohne speak-hold beendet start das Vorlesen wie früher" beendet "$(alive)"
+rmdir "$BRIDGE_DIR/speak-hold"
+reset; printf 'PTT_MODE=tap\n' > "$CONF"; player old
+runptt toggle
+check "Player eines älteren Gasts: start beendet das Vorlesen wie früher" beendet "$(alive)"
+rm -f "$BRIDGE_DIR/speak-hold"
 unset BRIDGE_DIR
 
 # ------------------------------------------------------------------ install

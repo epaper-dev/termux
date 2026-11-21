@@ -24,8 +24,9 @@ paragraph, and the last question of the text when it stands further down.
 The switch: the file speak-off in the bridge directory (Termux and the guest both see it; `rootbridge voice speak
 on|off|toggle` in Termux, the widget "Vorlesen"). Texts are read one after another: each player has a ticket in speak-queue
 and waits until the older ones are done. The one that reads runs in its own process group, its id in speak.pid next to
-it: Termux ends it from there (`rootbridge voice speak stop`, the widget "Stopp", `ptt start` before the microphone), and the
-waiting ones see the stop in speak-stopped.
+it: Termux ends it from there (`rootbridge voice speak stop`, the widget "Stopp"), and the waiting ones see the stop in
+speak-stopped. While Claude Code records for /voice (and right after `ptt start`, speak-hold) the reading pauses and goes on
+afterwards where it stopped.
 
 Errors of piper and play go to ~/.cache/rootbridge-speak.log (the hook and the player run detached); the command line
 also says when Piper or the voice is missing.
@@ -48,6 +49,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import wave
 
@@ -61,6 +63,10 @@ FOCUS = os.path.join(BRIDGE_DIR, "speak-focus")       # the daemon's answer for 
 ALIVE = os.path.join(BRIDGE_DIR, ".alive")             # the daemon's heartbeat (every round)
 FOCUS_WAIT_SECONDS = 1.5   # a round of the daemon is 0.5 s, its question to Android up to 2 s more
 STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop (--stop here, rb_speak_stop in Termux)
+HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about to record (rb_speak_hold in Termux)
+HOLD_SECONDS = 3          # how long that pauses reading when no recorder comes (ptt waits PTT_WARMUP + 2 s for one)
+CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
+PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key
 TAIL_BYTES = 512 * 1024   # the newest note stands near the end of the transcript; the hook runs before every tool call
 WAIT_SECONDS = 2          # how long --progress waits for its tool call (and the note before it) to reach the transcript
 PIPER = os.environ.get("RB_SPEAK_PIPER", "/opt/piper/bin/piper")
@@ -82,6 +88,7 @@ SERVER_START_SECONDS = float(os.environ.get("RB_SPEAK_SERVER_START", 30))   # lo
 RECORD_SECONDS = 12         # Articulino uses the first 8 s after the silence
 MIN_VOICE_SECONDS = 3
 RUN_ARG = "--run"   # the player process; Termux recognises it by "speak.py --run" in its command line
+PAUSES_ARG = "pauses"   # last on its command line: this player pauses itself for a recording (rb_speak_hold in Termux)
 
 FENCE_RE = re.compile(r"^\s*(```|~~~).*?^\s*\1[^\n]*$", re.S | re.M)
 IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
@@ -265,7 +272,8 @@ def start(text):
         if lock is not None:
             fcntl.flock(lock, fcntl.LOCK_EX)
         ticket = "%020d" % time.time_ns()
-        proc = subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), RUN_ARG, ticket, stop_mark()],
+        proc = subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), RUN_ARG, ticket, stop_mark(),
+                                 PAUSES_ARG],
                                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                 start_new_session=True)
         if lock is not None:
@@ -292,13 +300,17 @@ def write_pidfile(pid):
 def pulse_env():
     env = dict(os.environ)
     env.setdefault("PULSE_SERVER", "127.0.0.1")
+    # a short buffer in PulseAudio (libpulse reads it for every stream): a pause is heard at once
+    env.setdefault("PULSE_LATENCY_MSEC", str(PULSE_LATENCY_MS))
     if "PULSE_COOKIE" not in env and os.access(PULSE_COOKIE, os.R_OK):
         env["PULSE_COOKIE"] = PULSE_COOKIE
     return env
 
 
 def play_command(rate):
-    return [PLAY, "-q", "-t", "raw", "-r", str(rate), "-e", "signed", "-b", "16", "-c", "1", "-", "-t", "pulseaudio"]
+    # --buffer: SoX holds no more than one piece of pump(), so a pause is heard at once
+    return [PLAY, "-q", "--buffer", str(CHUNK), "-t", "raw", "-r", str(rate), "-e", "signed", "-b", "16", "-c", "1", "-",
+            "-t", "pulseaudio"]
 
 
 def connect():
@@ -390,21 +402,56 @@ def play_from_server(conn, text, err, env):
     with conn:
         conn.sendall(english(text, articulino=True).encode("utf-8"))
         conn.shutdown(socket.SHUT_WR)
-        audio = conn.recv(65536)
+        audio = conn.recv(CHUNK)   # small like the rest: pump checks for a pause between its pieces
         if not audio:
             return None
         if not focus_allows():
             return 0, 0
         play = subprocess.Popen(play_command(SERVER_RATE), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=err,
-                                env=env)
-        try:
-            while audio:
-                play.stdin.write(audio)
-                audio = conn.recv(65536)
-            play.stdin.close()
-        except BrokenPipeError:
-            pass
-        return 0, play.wait()
+                                env=env, bufsize=0)
+        return 0, pump(play, conn.recv, audio)
+
+
+def paused():
+    """True while the microphone is on or about to be: Claude Code records for /voice, or ptt announced a recording less
+    than HOLD_SECONDS ago (before its key, so nothing is read into the start of the recording)."""
+    try:
+        if time.time() - os.lstat(HOLD).st_mtime < HOLD_SECONDS:
+            return True
+    except OSError:
+        pass
+    return recording()
+
+
+def pump(play, read, data=b""):
+    """Hands the audio from read() to play in pieces of CHUNK. While paused() nothing more goes: play has only what is in its
+    small pipe left and then waits in silence, and the reading goes on where it stopped. Returns the exit code of play.
+    (A stop signal does not hold a process under proot, so the player holds itself.)"""
+    try:
+        fcntl.fcntl(play.stdin, fcntl.F_SETPIPE_SZ, CHUNK)
+    except (OSError, AttributeError):
+        pass
+    try:
+        while True:
+            data = data or read(CHUNK)
+            if not data:
+                break
+            while paused():
+                time.sleep(0.1)
+            play.stdin.write(data)
+            data = b""
+        play.stdin.close()
+    except BrokenPipeError:
+        pass
+    return play.wait()
+
+
+def feed(pipe, data):
+    try:
+        pipe.write(data)
+        pipe.close()
+    except BrokenPipeError:
+        pass
 
 
 def wait_turn(ticket, mark):
@@ -428,7 +475,7 @@ def wait_turn(ticket, mark):
                     os.remove(os.path.join(QUEUE, name))
                 except OSError:
                     pass
-        if not ahead and not recording():
+        if not ahead and not paused():
             return True
         time.sleep(0.1)
     return False
@@ -460,15 +507,12 @@ def run(ticket, mark):
                 engine = "piper"
                 piper = subprocess.Popen([PIPER, "-m", VOICE, "--output-raw"], stdin=subprocess.PIPE,
                                          stdout=subprocess.PIPE, stderr=err, env=env)
-                play = subprocess.Popen(play_command(sample_rate()), stdin=piper.stdout, stdout=subprocess.DEVNULL,
-                                        stderr=err, env=env)
-                piper.stdout.close()
-                try:
-                    piper.stdin.write(english(text).encode("utf-8"))
-                    piper.stdin.close()
-                except BrokenPipeError:
-                    pass
-                codes = (piper.wait(), play.wait())
+                play = subprocess.Popen(play_command(sample_rate()), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                        stderr=err, env=env, bufsize=0)
+                threading.Thread(target=feed, args=(piper.stdin, english(text).encode("utf-8")), daemon=True).start()
+                played = pump(play, piper.stdout.read1)
+                piper.stdout.close()   # play ended early: Piper must not hang on output nobody reads
+                codes = (piper.wait(), played)
             if codes != (0, 0):
                 err.seek(0)
                 log("%s Exit %d, play Exit %d: %s" % (engine, codes[0], codes[1],
@@ -562,7 +606,7 @@ def hook_input():
 
 def recording():
     """True while Claude Code records for /voice: its recorder is SoX `rec ... --buffer 1024 -t raw ...` (the same test as
-    find_recorders in ptt). The microphone would take what is read into the prompt."""
+    rb_find_recorders in rootbridge-lib.sh). The microphone would take what is read into the prompt."""
     try:
         pids = [p for p in os.listdir(PROC) if p.isdigit()]
     except OSError:
@@ -579,8 +623,6 @@ def recording():
 
 
 def speak_answer(message):
-    if recording():
-        return
     text = speakable(message)
     if os.path.exists(FIRST):
         text = summary(text)
@@ -681,7 +723,7 @@ def main(argv):
     elif argv[:1] == ["--stop"]:
         mark_stopped()
         stop()
-    elif argv[:1] == [RUN_ARG] and len(argv) == 3 and argv[1].isdigit():
+    elif argv[:1] == [RUN_ARG] and len(argv) == 4 and argv[1].isdigit() and argv[3] == PAUSES_ARG:
         run(argv[1], argv[2])
     elif argv[:1] == ["--record"]:
         return record()
