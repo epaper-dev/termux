@@ -342,7 +342,9 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   Taste, denn dann startet Claude Code seinen Recorder, und ein Loslass-Zeitgeber, der in diesen Moment läuft, beendet die Aufnahme immer wieder; alle Tasten laufen über einen `tmux -C`-Client, und endet Claudes Recorder `rec`, hören die Wiederholungen auf),
   und nur dein eigenes `stop` beendet die Aufnahme; ohne Stopp enden die Wiederholungen nach `PTT_MAX` Sekunden (120). Im Modus `tap` drücken `start`,
   `stop` und `toggle` je einmal, und Claude Code entscheidet: Der erste Druck startet (das Eingabefeld muss leer sein), der nächste stoppt und sendet. `ptt` drückt nur eine Taste in einem tmux-Fenster (`PTT_TARGET`, Standard
-  `ubuntu:claude`; `PTT_KEY`, Standard `M-k`) und passt damit zu jedem Programm, das auf eine Taste hört.
+  `ubuntu:claude`; `PTT_KEY`, Standard `M-k`) und passt damit zu jedem Programm, das auf eine Taste hört. Ein kurzer hoher Ton sagt,
+  dass Claude Codes Recorder läuft (das Mikrofon ist offen, jetzt sprechen), ein tieferer, dass er beendet ist (`PTT_BEEP=off` in der
+  Termux-Konfig schaltet sie ab).
 * **Mikrofon-Berechtigung von Android** für Termux (eine Laufzeit-Berechtigung: sie ist mit jeder Neuinstallation der App weg; die Termux-Apps teilen
   eine Benutzerkennung, und nur die **App Termux:API** deklariert `RECORD_AUDIO`, sie muss also installiert sein). Sie braucht Root:
   auf einem Terminal fragt der Installer danach (der Root-Manager meldet sich) und überspringt es, wenn das Mikrofon schon geht; in einem
@@ -389,7 +391,8 @@ App: Für die Seitentaste nimm `--sidekey` (unten).
 `sidekey-ptt` nach `$PREFIX/bin`; es hält ein root-`cat` auf `/dev/input/event2` (die Taste, Scancode 766) und ruft `ptt start` / `ptt stop`.
 Kurz- und Doppeldruck bleiben bei der E-Ink-App; ihren Langdruck auf „Nothing“ stellen. `rootbridge start|attach` starten den Leser (eine Instanz),
 `--no-sidekey` entfernt ihn. Es ist eine Brücke, bis die E-Ink-App und die Termux-App das selbst können.
-Die **Taste eines Kabel-Headsets** geht genauso (halten = aufnehmen, loslassen = stoppen; ein kurzer Druck startet und stoppt weiter die Musik):
+Die **Taste eines Kabel-Headsets** schaltet um (Langdruck startet, loslassen und sprechen, der nächste Langdruck schickt ab: Die Taste
+schließt beim Halten das Mikrofon kurz; ein kurzer Druck startet und stoppt weiter die Musik):
 Der Leser hält zusätzlich ein root-`cat` auf den Tasten der Headset-Buchse (das Eingabegerät „… Button Jack“, `KEY_MEDIA`), auch bei gesperrtem
 Handy. Ein Langdruck auf diese Taste startet außerdem Androids Sprachsuche: Keine App sollte sie übernehmen, sonst geht deren Fenster mit auf.
 
