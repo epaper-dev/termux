@@ -116,8 +116,9 @@ check "warmup: in der Pause nur die erste Taste"          1 "$(presses)"
 sleep 1.5
 check "warmup: danach wird die Taste wiederholt"          ja "$([ "$(presses)" -ge 4 ] && echo ja || echo nein)"
 runptt stop; sleep 0.2
-reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=400\n' > "$CONF"
-runptt start; sleep 0.1; runptt stop; sleep 0.8
+# a warmup well above how long `ptt stop` takes to come (under proot up to a second; hold: no Python for the mode)
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=2000\nPTT_MODE=hold\n' > "$CONF"
+runptt start; sleep 0.1; runptt stop; sleep 2.5
 check "warmup: stop in der Pause, danach keine Wiederholung" 1 "$(presses)"
 
 # the recorder of Claude Code: the repeater keeps going while the recorder that started after it runs, stops when that
@@ -155,6 +156,9 @@ sleep 3.5
 check "stop: liegengebliebener Recorder nach 3,5 s beendet" weg "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
 wait "$FAKE" 2>/dev/null
 reset; PTT_TEST_PANE=$$ runptt start; sleep 0.2; fake_rec; sleep 0.3; PTT_TEST_PANE=$$ runptt stop; sleep 1
+# the new session must still run when the clean-up looks (3.5 s after the stop): without a new recorder it ends about
+# warmup + 2 s after its start, so a long warmup, however fast the start was
+printf 'PTT_INTERVAL=20\nPTT_WARMUP=4000\nPTT_MODE=hold\n' > "$CONF"
 PTT_TEST_PANE=$$ runptt start; sleep 3.5
 check "stop: neuer Start dazwischen, Recorder bleibt"     laeuft "$(kill -0 "$FAKE" 2>/dev/null && echo laeuft || echo weg)"
 runptt stop; kill "$FAKE"; wait "$FAKE" 2>/dev/null; sleep 4
