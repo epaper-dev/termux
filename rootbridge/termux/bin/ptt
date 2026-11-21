@@ -32,7 +32,9 @@
 # Settings (~/.config/termux-rootbridge/config, read as data): PTT_TARGET (tmux target, default
 # "<SESSION>:claude"), PTT_KEY (tmux key name, default M-k = Alt+K, the key that Claude Code's
 # "voice:pushToTalk" is bound to in ~/.claude/keybindings.json), PTT_MODE, PTT_INTERVAL (ms), PTT_WARMUP (ms), PTT_MAX (s).
-# Test hook, from the environment only: PTT_TMUX (tmux binary), PTT_STATE_DIR, PTT_CLAUDE_SETTINGS (settings file of Claude Code),
+# PTT_BEEP (on/off): a short high beep when the recorder of Claude Code runs after `start` (the microphone is open,
+# speak now) and a lower one when it ends (the recording is over); through PulseAudio (pacat).
+# Test hook, from the environment only: PTT_PACAT (pacat binary), PTT_TMUX (tmux binary), PTT_STATE_DIR, PTT_CLAUDE_SETTINGS (settings file of Claude Code),
 # PTT_PROC (/proc, where the recorder of Claude Code is looked for).
 
 set -u
@@ -59,6 +61,8 @@ KEYS_END="$STATE/hold.end"   # written when the repeater stops sending keys (sto
 SESSION_RECS="$STATE/hold.recs"   # the recorders that started in the session, written by `stop`
 SESSION_OLD="$STATE/hold.old"     # the recorders that ran before the session, written by the repeater at its start
 PROC="${PTT_PROC:-/proc}"
+PACAT="${PTT_PACAT:-pacat}"
+BEEP_TOKEN="$STATE/beep.token"   # the start whose watcher may beep (an older watcher would see the same recorder)
 
 usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$self"; }
 
@@ -202,6 +206,57 @@ hold_loop() {   # hold_loop <token>
     return 0
 }
 
+# tone <period> <count>: a short tone through PulseAudio, <count> times one period of 16-bit samples at 8 kHz; a failure
+# (no pacat, no PulseAudio, a timeout) goes to beep.log in the state directory, the recording does not depend on it
+tone() {
+    local n err
+    err="$( { for ((n = 0; n < $2; n++)); do printf '%b' "$1"; done \
+        | timeout 3 "$PACAT" --raw --format=s16le --rate=8000 --channels=1 >/dev/null; } 2>&1 )" && return 0
+    printf '%s Ton nicht abgespielt (%s): %s\n' "$(date '+%F %T')" "$PACAT" "${err:-Timeout}" >> "$STATE/beep.log" 2>/dev/null
+    return 0
+}
+HIGH='\x00\x00\xc7\x0d\x4a\x16\x4a\x16\xc7\x0d\x00\x00\x39\xf2\xb6\xe9\xb6\xe9\x39\xf2'   # 800 Hz
+LOW='\x00\x00\x3e\x07\xc7\x0d\xf6\x12\x4a\x16\x70\x17\x4a\x16\xf6\x12\xc7\x0d\x3e\x07\x00\x00\xc2\xf8\x39\xf2\x0a\xed\xb6\xe9\x90\xe8\xb6\xe9\x0a\xed\x39\xf2\xc2\xf8'   # 400 Hz
+
+# beep_when_listening <token> <recorder pid...>: waits up to 4 s for a recorder of Claude Code that is not one of these
+# (the ones that ran before the key), then, while <token> is still that of the newest start, beeps high (0.12 s): it runs and has opened the microphone through PulseAudio
+# by now, so one can speak. When that recorder ends (ptt stop, or Claude Code ended the recording), a lower, longer
+# tone (0.2 s): the recording is over.
+beep_when_listening() {
+    local token="$1" pid i j
+    shift
+    local old=" $* "
+    for ((i = 0; i < 40; i++)); do
+        find_recorders
+        for pid in "${REC_PIDS[@]}"; do
+            [[ "$old" == *" $pid "* ]] && continue
+            sleep 0.3
+            [ "$(cat "$BEEP_TOKEN" 2>/dev/null)" = "$token" ] || return 0
+            [ -e "$PROC/$pid/cmdline" ] || return 0   # it ended in the wait: nothing is recorded, no "speak now"
+            tone "$HIGH" 96
+            for ((j = 0; j < (PTT_MAX + 10) * 5; j++)); do
+                [ -e "$PROC/$pid/cmdline" ] || break
+                sleep 0.2
+            done
+            # only when it really ended (not at the deadline) and no newer start took over
+            [ ! -e "$PROC/$pid/cmdline" ] && [ "$(cat "$BEEP_TOKEN" 2>/dev/null)" = "$token" ] && tone "$LOW" 80
+            return 0
+        done
+        sleep 0.1
+    done
+}
+
+# watch_recording <recorder pid...>: with PTT_BEEP=on, makes this start the newest (beep.token) and lets
+# beep_when_listening wait for its recorder in the background
+watch_recording() {
+    [ "$PTT_BEEP" = on ] || return 0
+    local token="$$.$RANDOM.$SECONDS"
+    mkdir -p "$STATE"
+    printf '%s\n' "$token" > "$BEEP_TOKEN"
+    ( beep_when_listening "$token" "$@" ) </dev/null >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+}
+
 file_age() {   # seconds since the file was written, or fails
     local m now
     m="$(stat -c %Y "$1" 2>/dev/null)" || return 1
@@ -231,7 +286,10 @@ do_start() {
     mkdir -p "$STATE"
     active && return 0
     if [ "$MODE" = hold ]; then end_left_recorders; rm -f "$SESSION_RECS" "$SESSION_OLD"; fi   # tap: a recording started by hand may run, the press ends it
+    find_recorders
+    local before=("${REC_PIDS[@]}")
     press || return 0            # no such window: nothing to do
+    watch_recording "${before[@]}"
     if [ "$MODE" = hold ]; then
         local token="$$.$RANDOM.$SECONDS"
         printf '%s\n' "$token" > "$PIDFILE"
@@ -267,7 +325,11 @@ do_stop() {
 do_toggle() {
     rb_speak_stop                # also in tap mode, where toggle does not go through do_start
     if [ "$MODE" = tap ]; then
+        find_recorders
+        local before=("${REC_PIDS[@]}")
         press || return 0
+        # no recorder ran: this press starts one (else it sends, and the watcher of that recording beeps its end)
+        [ "${#before[@]}" -gt 0 ] || watch_recording
         if tap_active; then rm -f "$FLAG"; else mkdir -p "$STATE"; : > "$FLAG"; fi
     elif active; then
         do_stop

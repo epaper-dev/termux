@@ -27,6 +27,7 @@ PTT_MODE="auto"         # auto | hold | tap: the mode of Claude Code's /voice (a
 PTT_INTERVAL=50         # milliseconds between the repeats of hold mode
 PTT_WARMUP=1200         # milliseconds between the first key and the repeats of hold mode (Claude Code starts its recorder with the first key; under 2000)
 PTT_MAX=120             # seconds after which hold mode / tap mode stop waiting for `ptt stop`
+PTT_BEEP="on"           # on | off: a high beep when the recorder of Claude Code runs after `ptt start` (speak now), a low one when it ends
 THEME_FOLLOW="on"       # on | off: "Auto epaper" follows light/dark (rootbridge theme)
 THEME_RESTART="off"     # on | off: fallback, restart Claude Code (--continue) after a change
 GUEST_ISOLATE="on"      # on | off: guest sessions see nothing of Termux but the bridge directory (proot-distro --isolated)
@@ -75,7 +76,7 @@ rb_load_config() {
                 [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -le 1500 ] && PTT_WARMUP="$val" ;;
             PTT_MAX)
                 [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -ge 1 ] && PTT_MAX="$val" ;;
-            THEME_FOLLOW|THEME_RESTART|GUEST_ISOLATE|TOOL_CLAUDE|TOOL_CODEX|VOICE|SIDEKEY)
+            THEME_FOLLOW|THEME_RESTART|GUEST_ISOLATE|TOOL_CLAUDE|TOOL_CODEX|VOICE|SIDEKEY|PTT_BEEP)
                 case "$val" in on|off) printf -v "$key" '%s' "$val" ;; esac ;;
             CLAUDE_ARGS)
                 [[ "$val" =~ ^[A-Za-z0-9._\ =:/,-]*$ ]] && CLAUDE_ARGS="$val" ;;

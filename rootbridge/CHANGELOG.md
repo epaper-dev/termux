@@ -5,10 +5,14 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Beeps for push to talk.** After `ptt start` a short high beep (800 Hz) says that Claude Code's recorder runs and has opened the
+  microphone (speak now), a lower, longer one (400 Hz) that it ended (by `ptt stop` or by Claude Code). Only the watcher of the newest
+  start beeps. Played with `pacat` through PulseAudio; `PTT_BEEP=off` in the Termux config turns them off. Tests: `tests/test_ptt.sh`.
 * **`rootbridge voice speak first` reads the whole first paragraph.** No longer at most three sentences: the information of the
   summary came across cut off. Still the last question further down. Tests: `tests/test_speak.py`.
 * **Push to talk with the key of a wired headset.** `sidekey-ptt` also reads the buttons of the headset jack (the input device whose name
-  has "Button Jack", found in `/sys/class/input`; `KEY_MEDIA`) as root: hold to record, let go to stop, also with the phone locked. A
+  has "Button Jack", found in `/sys/class/input`; `KEY_MEDIA`) as root: a long press runs `ptt toggle` (the first starts, the next sends; the key shorts the microphone while it is
+  held, so holding it to talk records nothing), also with the phone locked. A
   short press stays with the music. A long press also starts Android's voice search; no app should answer it (on the A9 that was
   Whisper). Each device has a `su -c cat` of its own (Magisk ends a `su -c` at once whose shell starts readers in the background); the
   end of one ends the others and the reader starts over, also when the root lookup of the headset fails. Tests: `tests/test_sidekey.py`

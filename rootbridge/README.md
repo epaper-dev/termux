@@ -313,7 +313,8 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   key, because Claude Code starts its recorder then and a release timer that runs into that moment ends the recording again and again; all keys go through one `tmux -C` client, and when Claude Code's recorder `rec` ends the repeats stop), and nothing but your own
   `stop` ends the recording; without a stop the repeats end after `PTT_MAX` seconds (120). In `tap` mode `start`, `stop` and `toggle` press once and
   Claude Code decides: the first press starts (the input has to be empty), the next one stops and sends. `ptt` only presses a key in a tmux window (`PTT_TARGET`, default `ubuntu:claude`; `PTT_KEY`,
-  default `M-k`), so it fits any program that listens for one key.
+  default `M-k`), so it fits any program that listens for one key. A short high beep says that Claude Code's recorder runs (the
+  microphone is open, speak now), a lower one that it ended (`PTT_BEEP=off` in the Termux config turns them off).
 * **Android's microphone permission** for Termux (a runtime permission: it is gone with every new installation of the app; the Termux apps share
   one user id and only the **Termux:API app** declares `RECORD_AUDIO`, so it must be installed). It needs root:
   on a terminal the installer asks for it (your root manager prompts) and skips it when the microphone already works; in a script run it
@@ -359,7 +360,8 @@ side key use `--sidekey` below.
 `sidekey-ptt` into `$PREFIX/bin`; it keeps a root `cat` on `/dev/input/event2` (the key, scan code 766) and calls `ptt start` / `ptt stop`.
 Short and double presses stay with the E-Ink app; set its long press to "Nothing". `rootbridge start|attach` start the reader (one instance), and
 `--no-sidekey` removes it. It is a bridge until the E-Ink app and the Termux app do this themselves.
-The **key of a wired headset** works the same way (hold = record, let go = stop; a short press still plays and pauses the music): the reader
+The **key of a wired headset** toggles instead (a long press starts, let go and speak, the next long press sends: the key shorts the
+microphone while it is held; a short press still plays and pauses the music): the reader
 also keeps a root `cat` on the buttons of the headset jack (the input device named "… Button Jack", `KEY_MEDIA`), also with the phone locked.
 A long press on that key also starts Android's voice search: no app should answer it, or its window opens as well.
 

@@ -55,8 +55,10 @@ class TestKeys(ReaderTest):
         except FileNotFoundError:
             return []
 
-    def test_long_press_of_the_headset_key(self):
-        self.assertEqual(self.press("%d:1:0.5" % HEADSET, "%d:0:0" % HEADSET), ["start", "stop"])
+    def test_long_presses_of_the_headset_key_toggle(self):
+        # its key shorts the microphone while held: a long press toggles, the release does nothing
+        self.assertEqual(self.press("%d:1:0.5" % HEADSET, "%d:0:1" % HEADSET, "%d:1:0.5" % HEADSET, "%d:0:0" % HEADSET),
+                         ["toggle", "toggle"])
 
     def test_short_press_of_the_headset_key_stays_with_the_music(self):
         self.assertEqual(self.press("%d:1:0.05" % HEADSET, "%d:0:0" % HEADSET), [])
@@ -70,8 +72,12 @@ class TestKeys(ReaderTest):
     def test_only_the_release_of_the_held_key_stops(self):
         self.assertEqual(self.press("%d:1:0.3" % SIDE, "%d:0:0.3" % HEADSET, "%d:0:0" % SIDE), ["start", "stop"])
 
+    def test_a_headset_recording_is_left_to_its_next_key(self):
+        # in tap mode a stop is one more press: it would start a new recording after an Esc
+        self.assertEqual(self.press("%d:1:0.5" % HEADSET, "%d:0:0" % HEADSET), ["toggle"])
+
     def test_the_stream_ends_while_talking(self):
-        self.assertEqual(self.press("%d:1:0.5" % HEADSET), ["start", "stop"])
+        self.assertEqual(self.press("%d:1:0.5" % SIDE), ["start", "stop"])
 
 
 class TestSources(ReaderTest):
@@ -90,7 +96,7 @@ class TestSources(ReaderTest):
     def test_a_key_of_the_second_device(self):
         self.run_reader("sh -c 'echo $$; exec sleep 30'", self.event_cmd("%d:1:0.5" % HEADSET, "%d:0:0" % HEADSET))
         with open(self.log) as fh:
-            self.assertEqual(fh.read().split(), ["start", "stop"])
+            self.assertEqual(fh.read().split(), ["toggle"])
 
     def test_the_end_of_one_device_ends_the_others(self):
         self.assertLess(self.run_reader(self.event_cmd("%d:1:0.05" % SIDE), "sh -c 'echo $$; exec sleep 30'"), 5)

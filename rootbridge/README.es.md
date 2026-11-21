@@ -319,7 +319,9 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   tecla, porque entonces Claude Code inicia su grabador, y un temporizador de liberación que cae en ese momento termina la grabación una y otra vez; todas las teclas pasan por un cliente `tmux -C`, y si termina el grabador `rec` de Claude Code, las repeticiones paran), y solo tu propio
   `stop` termina la grabación; sin parada, las repeticiones terminan tras `PTT_MAX` segundos (120). En el modo `tap`, `start`, `stop` y `toggle` pulsan una vez
   y Claude Code decide: la primera pulsación inicia (la entrada debe estar vacía), la siguiente detiene y envía. `ptt` solo pulsa una tecla en una ventana de tmux (`PTT_TARGET`, por defecto
-  `ubuntu:claude`; `PTT_KEY`, por defecto `M-k`) y sirve para cualquier programa que escuche una tecla.
+  `ubuntu:claude`; `PTT_KEY`, por defecto `M-k`) y sirve para cualquier programa que escuche una tecla. Un pitido agudo corto indica
+  que la grabadora de Claude Code está en marcha (el micrófono está abierto, habla ya), uno más grave que terminó (`PTT_BEEP=off` en la
+  configuración de Termux los desactiva).
 * **Permiso de micrófono de Android** para Termux (un permiso en tiempo de ejecución: desaparece con cada nueva instalación de la app; las apps de Termux comparten
   un id de usuario y solo la **app Termux:API** declara `RECORD_AUDIO`, así que debe estar instalada). Necesita root:
   en un terminal el instalador lo pide (el gestor de root pregunta) y lo omite si el micrófono ya funciona; en una ejecución por script solo muestra
@@ -366,8 +368,8 @@ nada), ninguna app: para la tecla lateral usa `--sidekey` (abajo).
 `sidekey-ptt` en `$PREFIX/bin`; mantiene un `cat` de root sobre `/dev/input/event2` (la tecla, código 766) y llama a `ptt start` / `ptt stop`.
 La pulsación corta y la doble siguen con la app E-Ink; ajusta su pulsación larga a «Nothing». `rootbridge start|attach` arrancan el lector (una instancia),
 `--no-sidekey` lo elimina. Es un puente hasta que la app E-Ink y la app de Termux lo hagan por sí mismas.
-La **tecla de un auricular con cable** funciona igual (mantener = grabar, soltar = parar; una pulsación corta sigue reproduciendo y pausando la
-música): el lector mantiene además un `cat` de root sobre las teclas del conector del auricular (el dispositivo «… Button Jack», `KEY_MEDIA`),
+La **tecla de un auricular con cable** alterna (una pulsación larga empieza, suelta y habla, la siguiente pulsación larga envía: la tecla
+cortocircuita el micrófono mientras se mantiene; una pulsación corta sigue reproduciendo y pausando la música): el lector mantiene además un `cat` de root sobre las teclas del conector del auricular (el dispositivo «… Button Jack», `KEY_MEDIA`),
 también con el teléfono bloqueado. Una pulsación larga en esa tecla inicia además la búsqueda por voz de Android: ninguna app debería
 atenderla, o se abre también su ventana.
 

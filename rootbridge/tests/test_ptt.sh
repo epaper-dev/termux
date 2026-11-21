@@ -43,6 +43,8 @@ export PTT_STATE_DIR="$T/state"
 export PTT_CLAUDE_SETTINGS="$T/claude-settings.json"      # never the real settings of the guest
 export PTT_PROC="$T/proc"                                  # only the fake recorders below: ptt start ends recorders it finds
 mkdir -p "$PTT_PROC"
+printf '#!/bin/bash\nwc -c >> "%s/beeps"\n' "$T" > "$T/pacat"; chmod +x "$T/pacat"
+export PTT_PACAT="$T/pacat"                                # logs the length of each tone (bytes of PCM)
 
 reset() { rm -rf "$T/state" "$LOG"; : > "$LOG"; unset PTT_TEST_NOWINDOW; }
 presses() { grep -c '^send-keys' "$LOG"; }
@@ -268,6 +270,36 @@ unset BRIDGE_DIR
 
 # ------------------------------------------------------------------ install
 check "ptt ist ausfuehrbar"                               ja "$([ -x "$PTT" ] && echo ja || echo nein)"
+# the tones: high (96 periods of 20 bytes) when the new recorder runs, low (80 periods of 40 bytes) when it ends
+beeps() { paste -sd' ' "$T/beeps" 2>/dev/null; }
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\n' > "$CONF"; rm -f "$T/beeps"
+runptt start; sleep 0.2; fake_rec; sleep 1
+check "Ton: hoch, sobald der Recorder läuft"              1920 "$(beeps)"
+kill "$FAKE"; wait "$FAKE" 2>/dev/null; sleep 0.8
+check "Ton: tief, wenn er endet"                          "1920 3200" "$(beeps)"
+runptt stop; sleep 0.2
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\nPTT_BEEP=off\n' > "$CONF"; rm -f "$T/beeps"
+runptt start; sleep 0.2; fake_rec; sleep 1; kill "$FAKE"; wait "$FAKE" 2>/dev/null; sleep 0.8
+check "Ton: PTT_BEEP=off, kein Ton"                       "" "$(beeps)"
+runptt stop; sleep 0.2
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\n' > "$CONF"; rm -f "$T/beeps"
+fake_rec; old_rec="$FAKE"; sleep 0.2; PTT_TEST_PANE=999999 runptt start; sleep 1
+check "Ton: ein älterer Recorder zählt nicht"             "" "$(beeps)"
+runptt stop; sleep 0.2; kill "$old_rec"; wait "$old_rec" 2>/dev/null
+
+reset; printf 'PTT_INTERVAL=20\nPTT_WARMUP=0\n' > "$CONF"
+PTT_PACAT=/nonexistent/pacat runptt start; sleep 0.2; fake_rec; sleep 1
+check "Ton: Abspielfehler steht in beep.log"              1 "$(grep -c 'Ton nicht abgespielt' "$T/state/beep.log" 2>/dev/null)"
+runptt stop; sleep 0.2; kill "$FAKE"; wait "$FAKE" 2>/dev/null
+
+# tap mode, toggle (headset key, Home, launcher): the first toggle starts (beep when its recorder runs), the second sends
+# (the low beep when that recorder ends, no second high one)
+reset; printf 'PTT_MODE=tap\n' > "$CONF"; rm -f "$T/beeps"
+runptt toggle; sleep 0.2; fake_rec; sleep 1
+check "Ton tap: toggle startet, hoher Ton"                1920 "$(beeps)"
+runptt toggle; kill "$FAKE"; wait "$FAKE" 2>/dev/null; sleep 0.8
+check "Ton tap: toggle schickt ab, tiefer Ton"            "1920 3200" "$(beeps)"
+
 check "ptt hat den Termux-Shebang-Platz (env bash)"       "#!/usr/bin/env bash" "$(head -n 1 "$PTT")"
 check "install.sh installiert ptt"                        1 "$(grep -c 'inst "\$REPO/termux/bin/ptt"' "$ROOT/install.sh")"
 check "uninstall.sh entfernt ptt"                         1 "$(grep -c 'PREFIX/bin/ptt' "$ROOT/uninstall.sh")"

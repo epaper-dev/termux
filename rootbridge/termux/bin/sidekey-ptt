@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""sidekey-ptt - side key of the Hisense A9 and the key of a wired headset (long press) as push to talk: `ptt start` on
-press, `ptt stop` on release.
+"""sidekey-ptt - side key of the Hisense A9 and the key of a wired headset (long press) as push to talk. Side key: `ptt
+start` on the long press, `ptt stop` on release. Headset key: `ptt toggle` on each long press (the first starts, the
+next sends), nothing on release: the key of a wired headset shorts its microphone while it is held.
 
 BRIDGE until the E-Ink app (hisense-a9/patching) and the Termux app do this themselves. It keeps a root `cat` on
 /dev/input/event2 (gpio-keys, scan code 766 = 0x2fe) and one on the buttons of the headset jack (the input device whose
@@ -152,16 +153,26 @@ def run_once():
     readers = {}                     # fd: the pid of its root reader, from the first line
     down = None                      # monotonic time of the press that is still held
     held = None                      # its key
+    long_done = False                # its long press was taken
     while True:
         wait = None
-        if down is not None and not talking:
+        if down is not None and not long_done:
             wait = max(0.0, down + LONG - time.monotonic())
         ready, _, _ = select.select(list(bufs), [], [], wait)
         now = time.monotonic()
-        if down is not None and not talking and now >= down + LONG:
-            talking = True
-            log("Langdruck: ptt start")
-            ptt("start")
+        if down is not None and not long_done and now >= down + LONG:
+            long_done = True
+            if held == KEY_MEDIA:
+                # A recording started here is not ended when the reader ends: in tap mode (Claude Code's default
+                # here) a stop is one more key press, and after the recording was ended by hand (Esc) or by Claude
+                # Code that press would start a new one. ptt cannot tell (it only remembers its own start), and
+                # the reader ends rarely (reboot, a failed su); a recording left running is ended by its next key.
+                log("Headset-Taste lang: ptt toggle")
+                ptt("toggle")
+            else:
+                talking = True
+                log("Langdruck: ptt start")
+                ptt("start")
         ended = False
         for fd in ready:
             chunk = os.read(fd, 4096)
@@ -187,7 +198,7 @@ def run_once():
                     if talking:
                         log("losgelassen: ptt stop")
                         release()
-                    down = None
+                    down, long_done = None, False
             bufs[fd] = buf
         if ended:
             break
