@@ -5,6 +5,10 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **The start asks for the missing voice.** With Articulino installed but no `voice.wav` (after a new installation), `rootbridge-claude`
+  runs `rootbridge-speak --offer-record` before Claude Code: `j` records at once, Enter or `n` asks again at the next start, "nie" never again
+  (`voice-never` next to the voice). Silent without a terminal; without an answer (Termux:Boot, `rootbridge start --no-attach`)
+  Claude Code starts after 60 s (`RB_SPEAK_OFFER_SECONDS`). Tests: `tests/test_speak.py`.
 * **Beeps for push to talk.** After `ptt start` a short high beep (800 Hz) says that Claude Code's recorder runs and has opened the
   microphone (speak now), a lower, longer one (400 Hz) that it ended (by `ptt stop` or by Claude Code). Only the watcher of the newest
   start beeps. Played with `pacat` through PulseAudio; `PTT_BEEP=off` in the Termux config turns them off. Tests: `tests/test_ptt.sh`.

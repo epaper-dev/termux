@@ -4,7 +4,8 @@
 #   2. rootbridge-update: claude update and codex update (CLAUDE_UPDATE / CODEX_UPDATE, at most
 #      once every 6 h by default, never blocks the start). Starting Claude Code also updates Codex and the other way
 #      round (rootbridge-codex does the same): the two review each other.
-#   3. Claude Code with autonomous mode available
+#   3. with Articulino installed but no voice recorded: the offer to record it (rootbridge-speak --offer-record)
+#   4. Claude Code with autonomous mode available
 #
 # The start mode comes from settings.json (the installer sets bypassPermissions with --autonomous yes);
 # Shift+Tab switches between the modes, "bypass permissions" included, because
@@ -35,6 +36,9 @@ fi
 
 # apt-get update + upgrade, claude update, codex update (APT_UPGRADE / CLAUDE_UPDATE / CODEX_UPDATE, see rootbridge-update)
 run_maintenance
+
+# Vorlesen (--voice): after a new installation Articulino has no voice yet; ask for the recording on this terminal
+command -v rootbridge-speak >/dev/null 2>&1 && rootbridge-speak --offer-record
 
 # Emergency switch of the Codex pre-commit review hook: `rootbridge codex-off` (in Termux) puts
 # CODEX_PRECOMMIT=off into the config, and the hook (a child of Claude Code) reads it from the environment.

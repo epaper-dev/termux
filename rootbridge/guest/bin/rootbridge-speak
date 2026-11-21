@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# rootbridge-speak [TEXT...] | --stop | --record - read TEXT (or stdin) aloud (your voice with Articulino, else Piper),
-# end what is being read, or record your voice.
+# rootbridge-speak [TEXT...] | --stop | --record | --offer-record - read TEXT (or stdin) aloud (your voice with Articulino,
+# else Piper), end what is being read, record your voice, or ask for it when it is missing (rootbridge-claude at the start).
 # Part of --voice: Claude Code's answers are read by a Stop hook (speak.py), switched in Termux with
 # `rootbridge voice speak on|off|toggle|stop`.
 exec /usr/bin/python3 -I "${ROOTBRIDGE_SPEAK_PY:-/usr/local/lib/termux-rootbridge/speak.py}" "$@"

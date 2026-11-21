@@ -367,7 +367,8 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   **Mit deiner eigenen Stimme:** `setup-guest.sh` installiert zusätzlich Articulino (`/opt/articulino`, etwa 230 MB); deine Stimme
   nimmst du im Gast mit `rootbridge-speak --record` auf (etwa 10 s ruhig sprechen). Danach liest ein kleiner Dienst (`speak-server.py`,
   etwa 500 MB, solange er läuft; er beendet sich nach 30 Minuten ohne Text) mit deiner Stimme; der erste Text nach seinem Start braucht
-  etwa 5 s länger. Ohne Aufnahme oder ohne Articulino liest Piper.
+  etwa 5 s länger. Ohne Aufnahme oder ohne Articulino liest Piper. Fehlt die Aufnahme (etwa nach einer Neuinstallation), fragt der Start
+  von Claude Code danach: `j` nimmt gleich auf, Enter oder `n` fragt beim nächsten Start wieder, „nie“ nicht mehr (Datei `voice-never` neben `voice.wav`); ohne Antwort startet Claude Code nach 60 s.
   **Musik und Anrufe:** Während vorgelesen wird, holt der Daemon in Termux über die Termux:API dieses Repositorys den Audio-Fokus für
   Sprache; Android dreht Musik leiser (wie bei einer Navi-App) und danach wieder auf. Während eines Telefonats wird nichts vorgelesen, ein
   eingehender Anruf beendet das Vorlesen. Mit der Standard-Termux:API spielt die Musik einfach weiter.

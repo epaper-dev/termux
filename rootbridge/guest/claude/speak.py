@@ -10,6 +10,9 @@ the PreToolUse hook; a new text ends the one still being read.
   speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once
   speak.py --stop     end what is being read (UserPromptSubmit hook, rootbridge-speak --stop)
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
+  speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
+                      yet, so ask on the terminal (yes records, no asks again at the next start, "nie" never again;
+                      no answer in OFFER_SECONDS, as when nobody watches the start: Claude Code starts)
   speak.py [TEXT...]  read TEXT, or stdin, aloud (also when the switch is off)
 
 What is read: the text without code blocks, tables, URLs and Markdown marks. The English words of the list
@@ -28,7 +31,8 @@ also says when Piper or the voice is missing.
 Environment (tests, other voices): PIPER_VOICE (.onnx file), RB_SPEAK_PIPER (piper program), RB_SPEAK_PLAY (play of sox),
 RB_SPEAK_DIR (bridge directory), RB_SPEAK_LOG (log file), RB_SPEAK_ENGLISH (the list of English words),
 RB_SPEAK_ARTICULINO (its venv, the model in model/), RB_SPEAK_VOICE_SAMPLE (your voice), RB_SPEAK_SERVER (speak-server.py),
-RB_SPEAK_SOCKET (its socket), RB_SPEAK_SERVER_START (how long to wait for it), RB_SPEAK_REC (rec of sox).
+RB_SPEAK_SOCKET (its socket), RB_SPEAK_SERVER_START (how long to wait for it), RB_SPEAK_REC (rec of sox),
+RB_SPEAK_OFFER_SECONDS (how long --offer-record waits for an answer).
 Python >= 3.8, standard library only.
 """
 import fcntl
@@ -36,6 +40,7 @@ import json
 import os
 import stat
 import re
+import select
 import signal
 import socket
 import subprocess
@@ -64,6 +69,8 @@ PROC = os.environ.get("RB_SPEAK_PROC", "/proc")
 ENGLISH = os.environ.get("RB_SPEAK_ENGLISH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "speak-english.txt"))
 ARTICULINO = os.environ.get("RB_SPEAK_ARTICULINO", "/opt/articulino")   # venv of setup-guest.sh, the model in model/
 VOICE_SAMPLE = os.environ.get("RB_SPEAK_VOICE_SAMPLE", os.path.expanduser("~/.local/share/rootbridge/voice.wav"))
+NEVER_RECORD = os.path.join(os.path.dirname(VOICE_SAMPLE), "voice-never")   # "nie" to --offer-record
+OFFER_SECONDS = float(os.environ.get("RB_SPEAK_OFFER_SECONDS", 60))   # --offer-record: no answer, Claude Code starts
 SERVER = os.environ.get("RB_SPEAK_SERVER", os.path.join(os.path.dirname(os.path.abspath(__file__)), "speak-server.py"))
 SOCKET = os.environ.get("RB_SPEAK_SOCKET", os.path.expanduser("~/.cache/rootbridge-speak.sock"))
 REC = os.environ.get("RB_SPEAK_REC", "rec")
@@ -436,6 +443,38 @@ def record():
     return 0
 
 
+def offer_record():
+    """--offer-record: after a new installation Articulino is there but the voice is not; ask for it before Claude Code
+    starts. Silent without a terminal, with a voice, without Articulino, or after "nie"; never fails the start."""
+    if (os.path.exists(VOICE_SAMPLE) or os.path.exists(NEVER_RECORD)
+            or not os.path.isdir(os.path.join(ARTICULINO, "model")) or not sys.stdin.isatty()):
+        return 0
+    print("Articulino ist installiert, aber deine Stimme fehlt noch; bis dahin liest Piper vor.")
+    print("Jetzt aufnehmen (etwa 10 s ruhig sprechen)? j = ja / Enter = nein, beim nächsten Start / nie: ", end="", flush=True)
+    try:
+        # nobody may be watching (Termux:Boot, rootbridge start --no-attach): Claude Code starts after OFFER_SECONDS
+        if not select.select([sys.stdin], [], [], OFFER_SECONDS)[0]:
+            print("\nKeine Antwort, Claude Code startet ohne Aufnahme.")
+            return 0
+        answer = sys.stdin.readline()
+    except KeyboardInterrupt:
+        answer = ""
+    if not answer:   # Ctrl+D or Ctrl+C: no recording
+        print()
+        return 0
+    answer = answer.strip().lower()
+    if answer == "nie":
+        os.makedirs(os.path.dirname(NEVER_RECORD), exist_ok=True)
+        open(NEVER_RECORD, "w").close()
+        print("Ich frage nicht mehr. Später aufnehmen: rootbridge-speak --record")
+    elif answer in ("j", "ja", "y", "yes"):   # only an explicit yes opens the microphone
+        try:
+            record()
+        except KeyboardInterrupt:
+            print()
+    return 0
+
+
 def hook_input():
     """The hook JSON on stdin, or None when it is not an object or the switch is off."""
     try:
@@ -571,6 +610,8 @@ def main(argv):
         run()
     elif argv[:1] == ["--record"]:
         return record()
+    elif argv[:1] == ["--offer-record"]:
+        return offer_record()
     elif argv[:1] in (["-h"], ["--help"]):
         print(__doc__.strip())
     else:
