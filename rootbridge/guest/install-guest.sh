@@ -929,11 +929,15 @@ guidelines() {
     fi
 }
 # Claude Code: code quality (--guidelines) and, with voice, the summary first and the question last, so the short version
-# read aloud (speak-first) carries the answer. Codex: code quality.
+# read aloud (speak-first) carries the answer; in German when Claude Code answers in German (its setting "language"), so
+# English rules do not pull the answers into English. Codex: code quality.
 claude_texts=(); codex_texts=()
 if [ "$CLAUDE_ON" = yes ]; then
-    [ "$GUIDE_ON" = yes ] && claude_texts+=(code-quality.claude.md)
-    [ "$VOICE_ON" = yes ] && claude_texts+=(speech.claude.md)
+    lang="$(python3 -I -c 'import json, sys; print(str(json.load(open(sys.argv[1], encoding="utf-8")).get("language", "")).lower())' \
+        "$ROOT$HOME_DIR/.claude/settings.json" 2>/dev/null)" || lang=""
+    de=""; case "$lang" in german|deutsch|de|de[-_]*) de=.de ;; esac
+    [ "$GUIDE_ON" = yes ] && claude_texts+=("code-quality$de.claude.md")
+    [ "$VOICE_ON" = yes ] && claude_texts+=("speech$de.claude.md")
 fi
 [ "$GUIDE_ON" = yes ] && [ "$CODEX_ON" = yes ] && codex_texts+=(code-quality.codex.md)
 guidelines .claude/CLAUDE.md "${claude_texts[@]}"

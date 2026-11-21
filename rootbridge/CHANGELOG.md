@@ -5,6 +5,9 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **The guidelines in German.** When Claude Code answers in German (`"language": "german"` in `~/.claude/settings.json`), the
+  installer's block in `~/.claude/CLAUDE.md` uses the German texts (`guest/templates/*.de.claude.md`): English rules pulled the
+  answers, and with them the voice, into English now and then. Tests: `tests/test_voice.sh`.
 * **The installer asks for the keys.** On a terminal `install.sh` asks about each push-to-talk key nobody decided yet: the side
   key (`--sidekey`, default no), a long press on Home (`--home-key`, default yes) and the headset key (`--headset`, default yes); the
   answer is stored (`SIDEKEY`, `HOMEKEY`, `HEADSET`). The same run installs and starts the key reader for the chosen keys

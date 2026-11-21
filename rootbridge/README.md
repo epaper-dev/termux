@@ -329,7 +329,8 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   **Stopp** (quiet now), both in `~/.shortcuts/tasks/` (they run in the background), or `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` reads only a short version of each answer: its whole first paragraph and the last question further down (the file
   `~/.rootbridge/speak-first`; the first installation with voice switches it on, `SPEAK_SHORT=set` in the config remembers that), `all` the whole answer again.
   So that the short version carries the answer, the installer's block in `~/.claude/CLAUDE.md` (template `guest/templates/speech.claude.md`) asks for
-  a summary of at most five sentences first and every question to you at the very end. In the
+  a summary of at most five sentences first and every question to you at the very end. When Claude Code answers in German
+  (`"language": "german"` in `~/.claude/settings.json`), the German templates (`*.de.claude.md`) are used instead. In the
   guest `rootbridge-speak "text"` reads any text, `rootbridge-speak --stop` ends it, `rootbridge-speak --record` records your voice. Another Piper voice: `PIPER_VOICE` (path of the `.onnx`
   file, its `.onnx.json` next to it). On the A9 Piper takes about as long as the text lasts; it delivers sentence by sentence.
   English terms (Pull Request, Commit, Branch, Hook, …) are said in English: `guest/claude/speak-english.txt` lists them with their
