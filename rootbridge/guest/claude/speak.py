@@ -8,7 +8,7 @@ the PreToolUse hook; a new text ends the one still being read.
 
   speak.py --hook     Stop hook: reads last_assistant_message from the hook JSON on stdin, unless the switch is off
   speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once
-  speak.py --stop     end what is being read (UserPromptSubmit hook, rootbridge-speak --stop)
+  speak.py --stop     end what is being read and what waits (rootbridge-speak --stop)
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
                       yet, so ask on the terminal (yes records, no asks again at the next start, "nie" never again;

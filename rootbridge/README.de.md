@@ -353,8 +353,8 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
 * **Vorlesen**: Claudes Antworten liest **Piper** vor, eine lokale Sprachausgabe ohne Netz (im Gast in `/opt/piper`, Stimme
   `de_DE-kerstin-medium`), oder Articulino mit deiner eigenen Stimme, sobald du sie aufgenommen hast (siehe unten). Ein Stop-Hook in den Managed Settings gibt jede Antwort weiter, ohne Codeblöcke, Tabellen und URLs und ohne
   Markdown-Zeichen; der Ton geht über dasselbe PulseAudio wie das Mikrofon. Ein PreToolUse-Hook liest außerdem Claudes kurze Zwischenstände
-  zwischen zwei Werkzeugaufrufen („Ich baue jetzt …“) vor, jeden einmal, aus dem Sitzungsprotokoll. Die Texte kommen nacheinander dran. Still wird es sofort, wenn du
-  etwas abschickst (UserPromptSubmit-Hook). Wenn `ptt` startet (Home-Langdruck, Seitentaste) und solange Claude Code aufnimmt, pausiert das
+  zwischen zwei Werkzeugaufrufen („Ich baue jetzt …“) vor, jeden einmal, aus dem Sitzungsprotokoll. Die Texte kommen nacheinander dran. Abschicken eines neuen Prompts unterbricht es nicht,
+  die nächste Antwort kommt danach dran. Wenn `ptt` startet (Home-Langdruck, Seitentaste) und solange Claude Code aufnimmt, pausiert das
   Vorlesen, sonst nähme das Mikrofon die Stimme auf, und geht danach an derselben Stelle weiter.
   Nach der Installation ist das Vorlesen an. Schalten: Widget **Vorlesen** (an/aus, mit Toast; aus beendet auch das laufende Lesen) und
   Widget **Stopp** (nur jetzt still), beide in `~/.shortcuts/tasks/` (sie laufen im Hintergrund), oder `rootbridge voice speak on|off|toggle|stop`.

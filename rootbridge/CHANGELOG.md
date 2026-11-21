@@ -16,6 +16,10 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   4 KiB (`--buffer`) and PulseAudio 200 ms (`PULSE_LATENCY_MSEC`): that rest is heard while Claude Code starts its recorder
   after the key. `ptt start` no longer ends what is being read. Tests: `tests/test_speak.py`,
   `tests/test_ptt.sh`.
+* **Sending a prompt no longer cuts off the reading.** The UserPromptSubmit hook (`speak.py --stop`) is gone from the
+  managed settings: with push to talk the end of the recording sends the text, and the paused answer could never go on.
+  Now it is read to the end and the next answer comes after it; quiet at once still with the widget "Stopp" or
+  `rootbridge voice speak stop`. A new installation takes the hook out of existing managed settings. Tests: `tests/test_voice.sh`.
 * **Music quieter while you speak.** The daemon holds the audio focus for speech also while Claude Code records for `/voice`
   (its recorder `rec ... --buffer 1024 -t raw`, found by `rb_find_recorders`, which `ptt` now shares), not only while the guest
   reads aloud; with `VOICE=off` only for reading aloud. Tests: `tests/test_voice.sh`.
