@@ -59,8 +59,8 @@
 #   ~/.claude/settings.json (both only where you have not decided yet), and `ptt` (start / stop). Android's microphone
 #   permission for Termux needs root: on a terminal the installer asks for it (the root manager prompts), otherwise run
 #   `rootbridge voice grant` once. Reading aloud belongs to it: Piper with the voice de_DE-kerstin-medium in the guest
-#   (/opt/piper) and Articulino for your own voice (/opt/articulino; record it in the guest: rootbridge-speak --record), a Stop hook that reads Claude's answers (without code, tables and URLs) and ends with your next prompt or
-#   `ptt start`, `rootbridge voice speak on|off|toggle|stop` and the widgets "Vorlesen" (on/off) and "Stopp" in
+#   (/opt/piper) and Articulino for your own voice (/opt/articulino; record it in the guest: rootbridge-speak --record), a Stop hook that reads Claude's answers (without code, tables and URLs) one after another, ends with your next
+#   prompt and pauses while you speak (`ptt start`, /voice), `rootbridge voice speak on|off|toggle|stop` and the widgets "Vorlesen" (on/off) and "Stopp" in
 #   ~/.shortcuts/tasks. Reading aloud is on after the installation. The choice is stored in the Termux config (VOICE).
 # --sidekey / --no-sidekey: the side key of the Hisense A9 as push to talk (hold = record, release = stop): installs sidekey-ptt,
 #   which keeps a root `cat` on /dev/input/event2 running, and starts it with the session. Off by default, stored as SIDEKEY.
@@ -920,7 +920,7 @@ if [ "$USE_CODEX" = yes ] && [ "$USE_BYPASS" = yes ]; then
 fi
 if [ "$VOICE_ON" = yes ]; then
     say "Sprache: /voice in Claude Code (Alt+K; ptt folgt dem Modus hold oder tap); 'ptt start' / 'ptt stop' bedienen die Taste für dich (rootbridge voice status prüft das Mikrofon)."
-    say "Vorlesen: Claudes Antworten liest Piper vor, mit deiner eigenen Stimme nach 'rootbridge-speak --record' im Gast; aus/an mit dem Widget 'Vorlesen' oder 'rootbridge voice speak off|on', sofort still mit 'Stopp' oder einem Start von ptt."
+    say "Vorlesen: Claudes Antworten liest Piper vor, mit deiner eigenen Stimme nach 'rootbridge-speak --record' im Gast; aus/an mit dem Widget 'Vorlesen' oder 'rootbridge voice speak off|on', sofort still mit 'Stopp'; beim Sprechen (ptt, /voice) pausiert es."
     if [ "$USE_SIDEKEY" = yes ]; then
         say "Seitentaste: Langdruck = aufnehmen, loslassen = stoppen. In den E-Ink-Einstellungen den Langdruck auf 'Nothing' stellen."
     fi

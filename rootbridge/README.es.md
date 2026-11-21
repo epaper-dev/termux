@@ -330,8 +330,9 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
 * **Lectura en voz alta**: **Piper**, una salida de voz local sin red (en el invitado en `/opt/piper`, voz `de_DE-kerstin-medium`), lee las
   respuestas de Claude, o Articulino con tu propia voz una vez grabada (ver abajo). Un hook Stop en los managed settings le pasa cada respuesta, sin bloques de código, tablas, URL ni marcas de Markdown;
   el sonido va por el mismo PulseAudio que el micrófono. Un hook PreToolUse lee además las notas breves de Claude entre dos llamadas a
-  herramientas («Ich baue jetzt …»), cada una una vez, desde el registro de la sesión. Un texto nuevo termina el anterior. Se calla en seguida cuando envías algo (hook
-  UserPromptSubmit) y cuando arranca `ptt` (pulsación larga en Inicio, tecla lateral); si no, el micrófono grabaría la voz. Tras la
+  herramientas («Ich baue jetzt …»), cada una una vez, desde el registro de la sesión. Los textos se leen uno tras otro. Enviar un prompt nuevo no la corta; la siguiente
+  respuesta va después. Cuando arranca `ptt` (pulsación larga en Inicio, tecla lateral) y mientras Claude Code graba, la lectura se pausa (si no,
+  el micrófono grabaría la voz) y luego sigue donde se quedó. Tras la
   instalación la lectura está activada. Se cambia con el widget **Vorlesen** (sí/no, con un aviso; no también termina la lectura en curso) y
   el widget **Stopp** (silencio ahora), ambos en `~/.shortcuts/tasks/` (se ejecutan en segundo plano), o con
   `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` lee solo una versión corta de cada respuesta: su primer párrafo entero y la última pregunta más abajo (el archivo

@@ -5,6 +5,21 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Texts are read one after another.** A new answer or note no longer cuts off the one being read: each player takes a
+  ticket in `~/.rootbridge/speak-queue` and reads when the older ones are done (tickets of dead players go). A stop
+  (`rootbridge voice speak stop`, the widget "Stopp") ends the one that reads, and the waiting ones see it in
+  `speak-stopped` and end too. Tests: `tests/test_speak.py`.
+* **Reading pauses while you speak.** While Claude Code records for `/voice`, and for up to 3 s after `ptt start` (it puts
+  `speak-hold` in place with `rb_speak_hold` before its key), the player hands no more audio to `play` and goes on afterwards
+  where it stopped; answers that come meanwhile wait their turn instead of being dropped. The player holds itself: a stop
+  signal does not hold a process under proot. It feeds `play` in pieces of 4 KiB through a pipe of that size, SoX buffers
+  4 KiB (`--buffer`) and PulseAudio 200 ms (`PULSE_LATENCY_MSEC`): that rest is heard while Claude Code starts its recorder
+  after the key. `ptt start` no longer ends what is being read. Tests: `tests/test_speak.py`,
+  `tests/test_ptt.sh`.
+* **Sending a prompt no longer cuts off the reading.** The UserPromptSubmit hook (`speak.py --stop`) is gone from the
+  managed settings: with push to talk the end of the recording sends the text, and the paused answer could never go on.
+  Now it is read to the end and the next answer comes after it; quiet at once still with the widget "Stopp" or
+  `rootbridge voice speak stop`. A new installation takes the hook out of existing managed settings. Tests: `tests/test_voice.sh`.
 * **Music quieter while you speak.** The daemon holds the audio focus for speech also while Claude Code records for `/voice`
   (its recorder `rec ... --buffer 1024 -t raw`, found by `rb_find_recorders`, which `ptt` now shares), not only while the guest
   reads aloud; with `VOICE=off` only for reading aloud. Tests: `tests/test_voice.sh`.

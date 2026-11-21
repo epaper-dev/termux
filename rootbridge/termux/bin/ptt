@@ -2,7 +2,7 @@
 # ptt - push to talk for a program in a tmux window (Claude Code /voice, or anything that listens for one key).
 # Runs in Termux, needs no root.
 #
-#   ptt start     start talking (ends what rootbridge is reading aloud first)
+#   ptt start     start talking (what rootbridge reads aloud pauses first)
 #   ptt stop      stop talking (the text is taken over by the program)
 #   ptt toggle    start, or stop when it was started by ptt
 #   ptt status    "talking" or "idle"
@@ -274,7 +274,7 @@ active() {
 }
 
 do_start() {
-    rb_speak_stop                # the microphone would record what is being read aloud
+    rb_speak_hold                # reading aloud pauses: the microphone would record it
     mkdir -p "$STATE"
     active && return 0
     if [ "$MODE" = hold ]; then end_left_recorders; rm -f "$SESSION_RECS" "$SESSION_OLD"; fi   # tap: a recording started by hand may run, the press ends it
@@ -315,7 +315,7 @@ do_stop() {
 # toggle: in hold mode ptt knows whether it is talking (it is the one that repeats); in tap mode the program knows (it may
 # have ended the recording by itself), so one press is all it does, and the program starts or sends
 do_toggle() {
-    rb_speak_stop                # also in tap mode, where toggle does not go through do_start
+    rb_speak_hold                # also in tap mode, where toggle does not go through do_start
     if [ "$MODE" = tap ]; then
         rb_find_recorders "$PROC"
         local before=("${REC_PIDS[@]}")

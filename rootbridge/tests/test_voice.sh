@@ -552,7 +552,7 @@ check "install.sh: Abschlussmeldung nennt das Vorlesen"    1 "$(count "$T/instal
 check "install.sh: Widgets Vorlesen und Stopp in tasks/ (Hintergrund)" "ja ja" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
 check "install.sh: Widget Vorlesen schaltet um, Stopp stoppt" "1 1" "$(count "$H/.shortcuts/tasks/Vorlesen" '^msg="$(rootbridge voice speak toggle') $(count "$H/.shortcuts/tasks/Stopp" '^exec rootbridge voice speak stop$')"
 check "install.sh: Gast hat speak.py, die englischen Wörter, speak-server.py und rootbridge-speak" "ja ja ja ja" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-english.txt") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-server.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak")"
-check "install.sh: Gast-Hooks Stop (vorlesen), PreToolUse (Zwischenstand) und UserPromptSubmit (stoppen)" "1 1 1" "$(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --hook') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --progress') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --stop')"
+check "install.sh: Gast-Hooks Stop (vorlesen), PreToolUse (Zwischenstand), kein Stopp beim Absenden" "1 1 0" "$(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --hook') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --progress') $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py --stop')"
 irun --no-voice
 check "install.sh --no-voice: Widgets Vorlesen und Stopp entfernt" "nein nein" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
 check "install.sh --no-voice: Gast ohne Vorlesen"          "nein nein nein nein 0" "$(has "$T/iguest/usr/local/lib/termux-rootbridge/speak.py") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-english.txt") $(has "$T/iguest/usr/local/lib/termux-rootbridge/speak-server.py") $(has "$T/iguest/usr/local/bin/rootbridge-speak") $(count "$T/iguest/etc/claude-code/managed-settings.json" 'speak.py')"
@@ -752,7 +752,7 @@ check "Gast frisch: voice in settings.json"                '{"enabled": true, "m
 MS="$GA/etc/claude-code/managed-settings.json"
 hookcmd() { python3 -I -c "import json,sys; print(' '.join(h['command'] for e in json.load(open(sys.argv[1])).get('hooks',{}).get(sys.argv[2],[]) for h in e['hooks'] if 'speak.py' in h['command']))" "$1" "$2"; }
 check "Gast frisch: Stop-Hook liest vor (mit Marker für die Deinstallation)" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --hook" "$(hookcmd "$MS" Stop)"
-check "Gast frisch: UserPromptSubmit-Hook stoppt das Vorlesen" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --stop" "$(hookcmd "$MS" UserPromptSubmit)"
+check "Gast frisch: kein UserPromptSubmit-Hook, Absenden unterbricht das Vorlesen nicht" "" "$(hookcmd "$MS" UserPromptSubmit)"
 check "Gast frisch: speak.py und rootbridge-speak"         "ja ja" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak")"
 check "Gast frisch: rootbridge-speak mit dem Python des Gasts" 1 "$(count "$GA/usr/local/bin/rootbridge-speak" '^exec /usr/bin/python3 -I .*/usr/local/lib/termux-rootbridge/speak.py')"
 check "Gast frisch: CLAUDE.md, ein Block mit Code Quality und dem Text fürs Vorlesen" "1 1 1" \
