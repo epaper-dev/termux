@@ -5,6 +5,11 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Music quieter while you speak.** The daemon holds the audio focus for speech also while Claude Code records for `/voice`
+  (its recorder `rec ... --buffer 1024 -t raw`, found by `rb_find_recorders`, which `ptt` now shares), not only while the guest
+  reads aloud; with `VOICE=off` only for reading aloud. Tests: `tests/test_voice.sh`.
+* **The installer starts the daemon.** `install.sh` stops a running daemon for the new code and now starts it again at the end
+  (before: only with the next session or `rootbridge start`, and until then nothing was read aloud).
 * **The guidelines in German.** When Claude Code answers in German (`"language": "german"` in `~/.claude/settings.json`), the
   installer's block in `~/.claude/CLAUDE.md` uses the German texts (`guest/templates/*.de.claude.md`): English rules pulled the
   answers, and with them the voice, into English now and then. Tests: `tests/test_voice.sh`.

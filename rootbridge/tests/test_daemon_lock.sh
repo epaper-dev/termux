@@ -96,7 +96,8 @@ kill -TERM "$F"; wait "$F" 2>/dev/null
 # ------------------------------------------------ 2. install.sh stops a running daemon
 H="$T/ihome"; P="$T/prefix"; BR="$H/.rootbridge"
 mkdir -p "$H" "$P/bin" "$T/stubs"
-for s in pkill pgrep tmux; do   # install.sh's v1 migration would call these: logging stubs only
+ln -s "$(command -v bash)" "$P/bin/bash"   # the shebang that install.sh gives rootbridge: Termux's bash
+for s in pkill pgrep tmux setsid; do   # install.sh's v1 migration would call these, setsid starts the daemon: logging stubs only
     printf '#!/bin/bash\necho "%s $*" >> "$STUB_LOG"\nexit 1\n' "$s" > "$T/stubs/$s"
 done
 chmod +x "$T/stubs"/*
@@ -113,6 +114,7 @@ check "install.sh (Daemon läuft): Exit 0"              0 "$?"
 check "install.sh (Daemon läuft): der alte Daemon ist beendet" nein "$(alive "$L" && echo ja || echo nein)"
 check "install.sh (Daemon läuft): sein Lock ist weg"    nein "$([ -e "$BR/.lock" ] && echo ja || echo nein)"
 check "install.sh (Daemon läuft): Meldung"              1 "$(grep -c 'laufender Daemon beendet' "$T/install.log")"
+check "install.sh: startet am Ende den Daemon"         1 "$(grep -c "^setsid nohup $P/bin/rootbridge-daemon" "$STUB_LOG")"
 check "install.sh: alte Anfragen werden weiter geräumt" nein "$([ -e "$BR/req-old.txt" ] && echo ja || echo nein)"
 inst
 check "install.sh zweimal: kein Daemon, kein Lock"      "0 nein" "$(grep -c 'laufender Daemon beendet' "$T/install.log") $([ -e "$BR/.lock" ] && echo ja || echo nein)"

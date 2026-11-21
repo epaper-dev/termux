@@ -101,14 +101,6 @@ case "$MODE" in hold|tap) ;; *) MODE=hold ;; esac
 # that is already on its way when Claude Code ends the recording (Esc takes it some 150 ms) starts a new one, which
 # ends again at once without more keys.
 # The pause is `read -t` on a fifo that never gets data (not `<(:)`: under proot a read on that returns at once).
-find_recorders() {   # REC_PIDS: the running recorders of Claude Code, read from /proc without starting a process
-    local d args
-    REC_PIDS=()
-    for d in "$PROC"/[0-9]*; do
-        mapfile -d '' -t args 2>/dev/null < "$d/cmdline" || continue   # 2> first: a process can be gone by now
-        if [[ ${args[0]-} == *rec && " ${args[*]} " == *" --buffer 1024 -t raw "* ]]; then REC_PIDS+=("${d##*/}"); fi
-    done
-}
 
 # end_left_recorders: before ptt starts a recording in hold mode it is idle, so no recording of Claude Code should run in the
 # target window. A recorder that still runs there was left behind by Claude Code (a superseded start,
@@ -122,7 +114,7 @@ session_recorders() {   # the running recorders that were not there when the rep
     local p old
     [ -r "$SESSION_OLD" ] || return 0   # without the baseline of a session no recorder counts as its own
     old=" $(tr '\n' ' ' < "$SESSION_OLD")"
-    find_recorders
+    rb_find_recorders "$PROC"
     for p in "${REC_PIDS[@]}"; do [[ $old == *" $p "* ]] || printf '%s\n' "$p"; done
 }
 
@@ -130,7 +122,7 @@ session_recorders() {   # the running recorders that were not there when the rep
 end_left_recorders() {
     local p pane age
     if age="$(file_age "$KEYS_END")" && [ "$age" -lt 3 ]; then return 0; fi
-    find_recorders
+    rb_find_recorders "$PROC"
     [ "${#REC_PIDS[@]}" -gt 0 ] || return 0
     pane="$("$TMUX_BIN" display-message -p -t "$TARGET" '#{pane_pid}' 2>/dev/null)" || return 0
     [[ $pane =~ ^[0-9]+$ ]] || return 0
@@ -174,7 +166,7 @@ hold_loop() {   # hold_loop <token>
     local rec_deadline=$((SECONDS + PTT_WARMUP / 1000 + 3))   # SECONDS counts whole seconds: about warmup + 2 s
     trap '' PIPE                                                # a control client that is gone must not end the loop
     delay="$(printf '%d.%03d' $((PTT_INTERVAL / 1000)) $((PTT_INTERVAL % 1000)))"
-    find_recorders; old=" ${REC_PIDS[*]} "
+    rb_find_recorders "$PROC"; old=" ${REC_PIDS[*]} "
     printf '%s\n' "${REC_PIDS[@]}" > "$SESSION_OLD"
     mkfifo "$nap" || return 0
     exec 3<> "$nap"
@@ -185,7 +177,7 @@ hold_loop() {   # hold_loop <token>
         cur=""; read -r cur < "$PIDFILE" 2>/dev/null || true
         [ "$cur" = "$token" ] || break
         if [ -z "$rec" ]; then
-            find_recorders
+            rb_find_recorders "$PROC"
             for p in "${REC_PIDS[@]}"; do [[ $old == *" $p "* ]] || rec="$p"; done
             if [ -z "$rec" ] && [ "$SECONDS" -ge "$rec_deadline" ]; then break; fi   # Claude Code does not record
         else
@@ -227,7 +219,7 @@ beep_when_listening() {
     shift
     local old=" $* "
     for ((i = 0; i < 40; i++)); do
-        find_recorders
+        rb_find_recorders "$PROC"
         for pid in "${REC_PIDS[@]}"; do
             [[ "$old" == *" $pid "* ]] && continue
             sleep 0.3
@@ -286,7 +278,7 @@ do_start() {
     mkdir -p "$STATE"
     active && return 0
     if [ "$MODE" = hold ]; then end_left_recorders; rm -f "$SESSION_RECS" "$SESSION_OLD"; fi   # tap: a recording started by hand may run, the press ends it
-    find_recorders
+    rb_find_recorders "$PROC"
     local before=("${REC_PIDS[@]}")
     press || return 0            # no such window: nothing to do
     watch_recording "${before[@]}"
@@ -325,7 +317,7 @@ do_stop() {
 do_toggle() {
     rb_speak_stop                # also in tap mode, where toggle does not go through do_start
     if [ "$MODE" = tap ]; then
-        find_recorders
+        rb_find_recorders "$PROC"
         local before=("${REC_PIDS[@]}")
         press || return 0
         # no recorder ran: this press starts one (else it sends, and the watcher of that recording beeps its end)
