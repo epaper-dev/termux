@@ -43,6 +43,10 @@ check "Lib: SIDEKEY=on wird gelesen"                       on "$(libget SIDEKEY)
 printf 'VOICE=maybe\nSIDEKEY=1\n' > "$CONF"
 check "Lib: ungültiger Wert für VOICE wird ignoriert"      on "$(libget VOICE)"
 check "Lib: ungültiger Wert für SIDEKEY wird ignoriert"    off "$(libget SIDEKEY)"
+: > "$CONF"
+check "Lib: HEADSET ist offen, HOMEKEY standardmäßig off"  " off" "$(libget HEADSET) $(libget HOMEKEY)"
+printf 'HEADSET=on\nHOMEKEY=on\n' > "$CONF"
+check "Lib: HEADSET=on und HOMEKEY=on werden gelesen"      "on on" "$(libget HEADSET) $(libget HOMEKEY)"
 
 # =========================================================================== 2. rootbridge voice
 mkdir -p "$T/bin" "$T/lib/termux-rootbridge" "$T/stubs" "$T/vstubs" "$T/home/.config/termux-rootbridge" "$T/prefix/bin"
@@ -103,7 +107,7 @@ case "$*" in *voice_interaction_service*) printf '%s\n' "${STUB_ASSISTANT:-null}
 touch "$STUB_STATE/perm"
 exit 0
 EOF
-printf '#!/bin/bash\necho "sidekey-ptt $*" >> "$STUB_LOG"\nexit 0\n' > "$T/vstubs/sidekey-ptt"
+printf '#!/bin/bash\necho "sidekey-ptt $* keys=$SIDEKEY_KEYS" >> "$STUB_LOG"\nexit 0\n' > "$T/vstubs/sidekey-ptt"
 cat > "$T/vstubs/pgrep" <<'EOF'
 #!/bin/bash
 [ "${STUB_PGREP_FAIL:-0}" = 1 ] && exit 2
@@ -454,7 +458,19 @@ check "attach (SIDEKEY off): kein Seitentasten-Leser"     0 "$(calls '^sidekey-p
 reset_pa; printf 'SIDEKEY=on\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
 sleep 0.3
-check "attach (SIDEKEY on): Seitentasten-Leser gestartet" 1 "$(calls '^sidekey-ptt')"
+check "attach (SIDEKEY on, HEADSET offen): die Headset-Taste folgt" 1 "$(calls '^sidekey-ptt  *keys=side headset$')"
+reset_pa; printf 'SIDEKEY=on\nHEADSET=off\n' > "$RBC"
+rb bash "$T/bin/rootbridge" attach
+sleep 0.3
+check "attach (SIDEKEY on, HEADSET=off): nur die Seitentaste" 1 "$(calls '^sidekey-ptt  *keys=side$')"
+reset_pa; printf 'HEADSET=on\n' > "$RBC"
+rb bash "$T/bin/rootbridge" attach
+sleep 0.3
+check "attach (HEADSET on): Leser nur für die Headset-Taste" 1 "$(calls '^sidekey-ptt  *keys=headset$')"
+reset_pa; printf 'SIDEKEY=on\nHEADSET=on\n' > "$RBC"
+rb bash "$T/bin/rootbridge" attach
+sleep 0.3
+check "attach (beide): ein Leser für beide Tasten"        1 "$(calls '^sidekey-ptt  *keys=side headset$')"
 reset_pa; printf 'VOICE=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" start --no-attach
 check "start (VOICE off): PulseAudio bleibt aus"          0 "$(calls '^pulseaudio --start')"
@@ -481,7 +497,7 @@ echo "pkill $*" >> "$STUB_LOG"
 [ "${STUB_READER_STAYS:-0}" = 1 ] || rm -f "$STUB_LOG.reader"
 exit 1
 EOF
-printf '#!/bin/bash\necho "setsid $*" >> "$STUB_LOG"\n[ "${STUB_READER_DIES:-0}" = 1 ] || : > "$STUB_LOG.reader"\nexit 0\n' > "$T/istubs/setsid"
+printf '#!/bin/bash\necho "setsid $* keys=${SIDEKEY_KEYS:-}" >> "$STUB_LOG"\n[ "${STUB_READER_DIES:-0}" = 1 ] || : > "$STUB_LOG.reader"\nexit 0\n' > "$T/istubs/setsid"
 printf '#!/bin/bash\ncase "$*" in *sidekey-ptt*) [ -e "$STUB_LOG.reader" ] ;; *) exit 1 ;; esac\n' > "$T/istubs/pgrep"
 chmod +x "$T/istubs"/*
 export STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$T/iguest"
@@ -499,6 +515,10 @@ guestargs() { grep 'install-guest.sh' "$ILOG" | tail -n 1; }
 
 irun
 check "install.sh ohne Option: läuft"                      0 "$IRC"
+check "install.sh: Vorlesen beim ersten Mal nur die Kurzfassung, SPEAK_SHORT=set" "ja set" "$(has "$H/.rootbridge/speak-first") $(iget SPEAK_SHORT)"
+rm -f "$H/.rootbridge/speak-first"   # as rootbridge voice speak all
+irun
+check "install.sh: danach bleibt die eigene Wahl (die ganze Antwort)" nein "$(has "$H/.rootbridge/speak-first")"
 check "install.sh: default.pa angelegt"                    ja "$(has "$PA")"
 check "install.sh: default.pa bindet Termux' eigene Datei ein (PREFIX eingesetzt)" 1 "$(count "$PA" "^\.include $P/etc/pulse/default.pa$")"
 check "install.sh: default.pa: TCP nur auf 127.0.0.1 (listen)" 1 "$(count "$PA" '^load-module module-native-protocol-tcp listen=127.0.0.1$')"
@@ -572,7 +592,7 @@ check "--sidekey: läuft, SIDEKEY=on gespeichert"           "0 on" "$IRC $(iget 
 check "--sidekey: sidekey-ptt installiert, ausführbar"     "ja ja" "$(has "$P/bin/sidekey-ptt") $([ -x "$P/bin/sidekey-ptt" ] && echo ja || echo nein)"
 check "--sidekey: Shebang zeigt auf das Python von Termux" "#!$P/bin/python3" "$(head -n 1 "$P/bin/sidekey-ptt")"
 check "--sidekey: Meldung zum Langdruck 'Nothing'"         1 "$(count "$T/install.log" "Langdruck auf 'Nothing'")"
-check "--sidekey: Leser neu gestartet (alter beendet, neuer im Hintergrund)" "1 1 1" "$(count "$ILOG" "^pkill -f .*python.* $P/bin/sidekey-ptt") $(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt$") $(count "$T/install.log" 'Seitentasten-Leser gestartet')"
+check "--sidekey (HEADSET offen: die Headset-Taste folgt wie bisher): Leser neu gestartet, beide Tasten" "1 1 1" "$(count "$ILOG" "^pkill -f .*python.* $P/bin/sidekey-ptt") $(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt keys=side headset$") $(count "$T/install.log" 'Tasten-Leser gestartet: side')"
 STUB_READER_STAYS=1 irun --sidekey
 check "--sidekey: alter Leser endet nicht, kein zweiter, Meldung" "0 1" "$(count "$ILOG" '^setsid') $(count "$T/install.log" 'der alte läuft noch')"
 rm -f "$ILOG.reader"
@@ -592,6 +612,38 @@ irun --no-voice
 irun --sidekey
 check "--sidekey bei gespeichertem VOICE=off: kein Leser, Meldung" "nein 1" "$(has "$P/bin/sidekey-ptt") $(count "$T/install.log" 'ohne die Sprachsteuerung nicht eingerichtet')"
 irun --voice --no-sidekey
+
+# --headset / --home-key: the headset key alone, both keys in one reader; the Home key needs a terminal for its root step
+irun --headset
+check "--headset: HEADSET=on, Leser nur für die Headset-Taste" "0 on 1" "$IRC $(iget HEADSET) $(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt keys=headset$")"
+check "--headset: Abschlussmeldung zur Headset-Taste"      1 "$(count "$T/install.log" '^Headset-Taste: Langdruck')"
+irun --sidekey
+check "--sidekey nach --headset: ein Leser für beide Tasten" 1 "$(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt keys=side headset$")"
+irun --no-sidekey --no-headset
+check "--no-sidekey --no-headset: Leser entfernt"          "nein off off" "$(has "$P/bin/sidekey-ptt") $(iget SIDEKEY) $(iget HEADSET)"
+irun --home-key
+check "--home-key: HOMEKEY=on, ohne Terminal nur der Hinweis" "0 on 1 0" "$IRC $(iget HOMEKEY) $(count "$T/install.log" 'rootbridge voice assistant on') $(count "$ILOG" '^rootbridge voice assistant')"
+irun --no-home-key
+check "--no-home-key nach --home-key: Hinweis zum Zurücknehmen" "off 1" "$(iget HOMEKEY) $(count "$T/install.log" 'rootbridge voice assistant off')"
+irun
+check "ohne Option nach --no-home-key: kein Hinweis mehr"  0 "$(count "$T/install.log" 'voice assistant')"
+irun --home-key
+irun --no-voice
+check "--no-voice bei HOMEKEY=on: Rolle zurück (Hinweis), HOMEKEY bleibt on" "1 on" "$(count "$T/install.log" 'rootbridge voice assistant off') $(iget HOMEKEY)"
+irun --no-voice
+check "--no-voice wiederholt: kein Hinweis mehr"          0 "$(count "$T/install.log" 'voice assistant')"
+irun --voice
+check "--voice wieder an: die Rolle wird wieder gesetzt (Hinweis)" 1 "$(count "$T/install.log" 'rootbridge voice assistant on')"
+irun --no-home-key
+check "--no-home-key wiederholt: nimmt die Rolle trotzdem zurück (Hinweis)" 1 "$(count "$T/install.log" 'rootbridge voice assistant off')"
+irun --no-voice --no-home-key
+check "--no-home-key ohne Sprache: auch dann der Hinweis"   1 "$(count "$T/install.log" 'rootbridge voice assistant off')"
+irun --voice
+# a config from before HEADSET: SIDEKEY=on read the headset key as well, and an update keeps that
+sed -i '/^HEADSET=/d; /^SIDEKEY=/d' "$ICFG"; echo SIDEKEY=on >> "$ICFG"
+irun
+check "alte Konfig mit SIDEKEY=on ohne HEADSET: der Leser liest weiter beide Tasten" 1 "$(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt keys=side headset$")"
+irun --no-sidekey --no-headset
 
 # a file of the user called sidekey-ptt is not ours: --no-sidekey leaves it
 printf '#!/bin/sh\necho mine\n' > "$P/bin/sidekey-ptt"
@@ -644,6 +696,28 @@ check "Setup mit Berechtigung: Meldung 'Mikrofon: ok'"     1 "$(count "$T/instal
 # --no-setup never asks for root
 sinst bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot --no-setup --voice
 check "--no-setup: kein Root-Befehl"                       0 "$(count "$ILOG" '^su ')"
+check "ohne Antwort am Terminal: keine Taste gefragt-gespeichert" "" "$(sed -n 's/^\(SIDEKEY\|HOMEKEY\|HEADSET\)=//p' "$SH/.config/termux-rootbridge/config")"
+# the questions for the keys, answered on the terminal: n (side key), Enter (Home: yes), j (headset)
+ainst() {   # ainst <answers> [args]: like sinst, with the answers on stdin
+    local answers="$1"; shift
+    reset_pa; : > "$ILOG"; rm -f "$SP/bin/pulseaudio"
+    printf '%s' "$answers" | env HOME="$SH" PREFIX="$SP" PATH="$T/sbindir:$T/sstubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 \
+        BRIDGE_DIR="$SH/.rootbridge" STUB_LOG="$ILOG" STUB_STATE="$T/state" RB_SU="$T/sstubs/su" \
+        ROOTBRIDGE_FORCE_INTERACTIVE=1 bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot "$@" \
+        > "$T/install.log" 2>&1
+    IRC=$?
+}
+SCFG="$SH/.config/termux-rootbridge/config"
+sget() { sed -n "s/^$1=//p" "$SCFG" | tail -n 1; }
+ainst $'n\n\nj\n' --no-headset
+check "Fragen: Seitentaste n, Home Enter (ja); Headset per Option, nicht gefragt" "0 off on off" "$IRC $(sget SIDEKEY) $(sget HOMEKEY) $(sget HEADSET)"
+check "Fragen: zwei Fragen, keine zur Headset-Taste"      "1 1 0" "$(count "$T/install.log" 'Seitentaste als Push to Talk') $(count "$T/install.log" 'Langer Druck auf Home') $(count "$T/install.log" 'Kabel-Headsets')"
+check "Home-Taste am Terminal: Assistenten-Rolle per su"   1 "$(count "$ILOG" '^su -c cmd role add-role-holder --user 0 android.app.role.ASSISTANT com.termux$')"
+ainst ''
+check "Fragen beantwortet: zweiter Lauf fragt nicht mehr, die Rolle wird erneut gesetzt" "0 0 1" \
+      "$(count "$T/install.log" 'Seitentaste als Push to Talk') $(count "$T/install.log" 'Langer Druck auf Home') $(count "$ILOG" '^su -c cmd role add-role-holder')"
+ainst '' --no-home-key
+check "--no-home-key am Terminal: Rolle per su zurückgenommen" "off 1" "$(sget HOMEKEY) $(count "$ILOG" '^su -c cmd role remove-role-holder --user 0 android.app.role.ASSISTANT com.termux$')"
 
 # =========================================================================== 5. install-guest.sh
 GA="$T/ga"; rm -rf "$GA"; mkdir -p "$GA"
@@ -666,6 +740,8 @@ check "Gast frisch: Stop-Hook liest vor (mit Marker für die Deinstallation)" "/
 check "Gast frisch: UserPromptSubmit-Hook stoppt das Vorlesen" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --stop" "$(hookcmd "$MS" UserPromptSubmit)"
 check "Gast frisch: speak.py und rootbridge-speak"         "ja ja" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak")"
 check "Gast frisch: rootbridge-speak mit dem Python des Gasts" 1 "$(count "$GA/usr/local/bin/rootbridge-speak" '^exec /usr/bin/python3 -I .*/usr/local/lib/termux-rootbridge/speak.py')"
+check "Gast frisch: CLAUDE.md, ein Block mit Code Quality und dem Text fürs Vorlesen" "1 1 1" \
+      "$(count "$GA/root/.claude/CLAUDE.md" '^<!-- >>> termux-rootbridge >>> -->$') $(count "$GA/root/.claude/CLAUDE.md" '^## Code quality requirements') $(count "$GA/root/.claude/CLAUDE.md" '^## Answers read aloud')"
 KBSUM="$(cksum < "$GA/root/.claude/keybindings.json")"; SSUM="$(cksum < "$GA/root/.claude/settings.json")"
 gi "$GA" --claude yes --codex no
 check "Gast zweimal: keybindings.json unverändert"         "$KBSUM" "$(cksum < "$GA/root/.claude/keybindings.json")"
@@ -706,6 +782,12 @@ check "Gast --voice no: keine Tastenbelegung, kein voice" "nein null" "$(has "$G
 check "Gast --voice no: kein Vorlesen (Programm, Hooks)"   "nein nein 0" "$(has "$GF/usr/local/lib/termux-rootbridge/speak.py") $(has "$GF/usr/local/bin/rootbridge-speak") $(count "$GF/etc/claude-code/managed-settings.json" 'speak.py')"
 gi "$GA" --claude yes --codex no --voice no
 check "Gast erst mit, dann --voice no: Vorlesen wieder weg" "nein nein 0" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak") $(count "$MS" 'speak.py')"
+check "Gast --voice no: Text fürs Vorlesen weg, Code Quality bleibt" "0 1" "$(count "$GA/root/.claude/CLAUDE.md" '^## Answers read aloud') $(count "$GA/root/.claude/CLAUDE.md" '^## Code quality requirements')"
+gi "$GA" --claude yes --codex no --voice no --guidelines no
+check "Gast ohne Sprache und Richtlinien: CLAUDE.md (nur unser Block) weg" nein "$(has "$GA/root/.claude/CLAUDE.md")"
+gi "$GA" --claude yes --codex no --voice yes --guidelines no
+check "Gast nur mit Sprache: der Block hat nur den Text fürs Vorlesen" "1 0" "$(count "$GA/root/.claude/CLAUDE.md" '^## Answers read aloud') $(count "$GA/root/.claude/CLAUDE.md" '^## Code quality requirements')"
+gi "$GA" --claude yes --codex no --voice no --guidelines yes
 check "Gast --voice no: die Hooks von rootbridge bleiben"  2 "$(count "$MS" 'rootbridge-hook.py')"
 gi "$GA" --claude yes --codex no
 gi "$GA" --uninstall
@@ -850,6 +932,15 @@ printf '#!/bin/sh\necho mine\n' > "$P2/bin/sidekey-ptt"
 run_un
 check "uninstall: eigene default.pa bleibt"                ja "$(has "$H2/.config/pulse/default.pa")"
 check "uninstall: fremdes sidekey-ptt bleibt"              ja "$(has "$P2/bin/sidekey-ptt")"
+mkdir -p "$H2/.config/termux-rootbridge"; echo HOMEKEY=on > "$H2/.config/termux-rootbridge/config"
+run_un
+check "uninstall mit HOMEKEY=on: ohne Terminal der su-Befehl, der danach noch geht" 1 "$(count "$T/uninstall.log" "su -c 'cmd role remove-role-holder --user 0 android.app.role.ASSISTANT com.termux'")"
+echo HOMEKEY=off > "$H2/.config/termux-rootbridge/config"
+run_un
+check "uninstall mit HOMEKEY=off: der Hinweis auch (ein früheres Zurücknehmen kann gescheitert sein)" 1 "$(count "$T/uninstall.log" "remove-role-holder")"
+rm -rf "$H2/.config/termux-rootbridge"
+run_un
+check "uninstall ohne HOMEKEY: kein Hinweis"               0 "$(count "$T/uninstall.log" "remove-role-holder")"
 
 # =========================================================================== 8. rootbridge-claude and the PulseAudio cookie
 CL="$ROOT/guest/bin/rootbridge-claude"

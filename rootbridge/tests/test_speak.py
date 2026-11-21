@@ -6,6 +6,7 @@ import fcntl
 import importlib.util
 import json
 import os
+import pty
 import subprocess
 import sys
 import tempfile
@@ -483,6 +484,61 @@ class TestPlayer(unittest.TestCase):
         with open(env["RB_SPEAK_VOICE_SAMPLE"]) as fh:
             self.assertEqual(fh.read(), "alt")
         self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"] + ".new.wav"))
+
+    def offer(self, answer, voice=False, articulino=True):
+        """--offer-record on a terminal (a pty) that types answer; returns (exit code, what it printed, env)."""
+        env = self.articulino(voice=voice) if articulino else {}
+        env.setdefault("RB_SPEAK_VOICE_SAMPLE", os.path.join(self.tmp.name, "voice.wav"))
+        rec = self.stub("rec", STUB_REC.split("\n", 1)[1])
+        master, slave = pty.openpty()
+        if answer is not None:
+            os.write(master, answer.encode() + b"\n")
+        try:
+            p = subprocess.run([sys.executable, "-I", SPEAK, "--offer-record"], stdin=slave, capture_output=True,
+                               env=self.env(RB_SPEAK_REC=rec, STUB_SECONDS="6", RB_SPEAK_OFFER_SECONDS="0.5", **env),
+                               timeout=20)
+        finally:
+            os.close(slave)
+            os.close(master)
+        return p.returncode, p.stdout.decode(), env
+
+    def test_offer_records_the_missing_voice(self):
+        rc, out, env = self.offer("j")
+        self.assertEqual(rc, 0)
+        self.assertIn("Gespeichert", out)
+        self.assertTrue(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"]))
+
+    def test_offer_no_asks_again_nie_never(self):
+        for answer in ("n", ""):   # a bare Enter is no
+            rc, out, env = self.offer(answer)
+            self.assertEqual(rc, 0)
+            self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"]))
+        self.offer("nie")
+        rc, out, env = self.offer("j")
+        self.assertEqual(out, "")
+        self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"]))
+
+    def test_offer_without_an_answer_lets_claude_start(self):
+        rc, out, env = self.offer(None)
+        self.assertEqual(rc, 0)
+        self.assertIn("Keine Antwort", out)
+        self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"]))
+
+    def test_offer_ctrl_d_records_nothing(self):
+        rc, out, env = self.offer("\x04")   # Ctrl+D at the start of the line: end of input
+        self.assertEqual(rc, 0)
+        self.assertNotIn("Gespeichert", out)
+        self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"]))
+
+    def test_offer_is_silent_with_a_voice_or_without_articulino(self):
+        self.assertEqual(self.offer("j", voice=True)[1], "")
+        self.assertEqual(self.offer("j", articulino=False)[1], "")
+
+    def test_offer_is_silent_without_a_terminal(self):
+        env = self.articulino(voice=False)
+        r = self.run_speak(["--offer-record"], "j\n", **env)
+        self.assertEqual((r.returncode, r.stdout), (0, b""))
+        self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"]))
 
     def daemon_answers(self, answer):
         """The Termux daemon: a fresh heartbeat, and its answer in speak-focus once the player is in speak.pid."""

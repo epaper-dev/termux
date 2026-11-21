@@ -357,8 +357,9 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   etwas abschickst (UserPromptSubmit-Hook) und wenn `ptt` startet (Home-Langdruck, Seitentaste), sonst nähme das Mikrofon die Stimme auf.
   Nach der Installation ist das Vorlesen an. Schalten: Widget **Vorlesen** (an/aus, mit Toast; aus beendet auch das laufende Lesen) und
   Widget **Stopp** (nur jetzt still), beide in `~/.shortcuts/tasks/` (sie laufen im Hintergrund), oder `rootbridge voice speak on|off|toggle|stop`.
-  `rootbridge voice speak first` liest nur eine Kurzfassung jeder Antwort: den ganzen ersten Absatz und die letzte Frage weiter unten (Datei `~/.rootbridge/speak-first`; den Hinweis an Claude, das
-  Wichtigste dorthin zu schreiben, gehört in deine `CLAUDE.md`), `all` wieder die ganze Antwort.
+  `rootbridge voice speak first` liest nur eine Kurzfassung jeder Antwort: den ganzen ersten Absatz und die letzte Frage weiter unten (Datei `~/.rootbridge/speak-first`; die erste Installation mit Sprache schaltet sie ein, `SPEAK_SHORT=set` in der Konfig merkt sich das), `all` wieder die ganze Antwort.
+  Damit die Kurzfassung trägt, steht im Block des Installers in `~/.claude/CLAUDE.md` (Vorlage `guest/templates/speech.claude.md`): zuerst eine
+  Zusammenfassung von höchstens fünf Sätzen, Fragen an dich ganz am Ende.
   Im Gast liest `rootbridge-speak "Text"` beliebigen Text vor, `rootbridge-speak --stop` beendet ihn, `rootbridge-speak --record` nimmt deine Stimme auf. Eine andere Piper-Stimme: `PIPER_VOICE`
   (Pfad zur `.onnx`-Datei, die `.onnx.json` daneben). Auf dem A9 braucht Piper etwa so lange, wie der Text dauert; es liefert satzweise.
   Englische Fachbegriffe (Pull Request, Commit, Branch, Hook, …) spricht die Stimme englisch aus: `guest/claude/speak-english.txt`
@@ -367,7 +368,8 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   **Mit deiner eigenen Stimme:** `setup-guest.sh` installiert zusätzlich Articulino (`/opt/articulino`, etwa 230 MB); deine Stimme
   nimmst du im Gast mit `rootbridge-speak --record` auf (etwa 10 s ruhig sprechen). Danach liest ein kleiner Dienst (`speak-server.py`,
   etwa 500 MB, solange er läuft; er beendet sich nach 30 Minuten ohne Text) mit deiner Stimme; der erste Text nach seinem Start braucht
-  etwa 5 s länger. Ohne Aufnahme oder ohne Articulino liest Piper.
+  etwa 5 s länger. Ohne Aufnahme oder ohne Articulino liest Piper. Fehlt die Aufnahme (etwa nach einer Neuinstallation), fragt der Start
+  von Claude Code danach: `j` nimmt gleich auf, Enter oder `n` fragt beim nächsten Start wieder, „nie“ nicht mehr (Datei `voice-never` neben `voice.wav`); ohne Antwort startet Claude Code nach 60 s.
   **Musik und Anrufe:** Während vorgelesen wird, holt der Daemon in Termux über die Termux:API dieses Repositorys den Audio-Fokus für
   Sprache; Android dreht Musik leiser (wie bei einer Navi-App) und danach wieder auf. Während eines Telefonats wird nichts vorgelesen, ein
   eingehender Anruf beendet das Vorlesen. Mit der Standard-Termux:API spielt die Musik einfach weiter.
@@ -386,6 +388,12 @@ schaut 3,5 s später noch einmal nach, damit das Mikrofon nach dem Stoppen nicht
 
 Die Bedienungshilfen des A9 bieten für die Seitentaste nur feste Aktionen (Bildschirm leeren, Musik, Home, Menü, Hintergrundlicht, nichts), keine
 App: Für die Seitentaste nimm `--sidekey` (unten).
+
+**Die Tasten bei der Installation:** Auf einem Terminal fragt `install.sh` nach jeder Taste, über die noch nicht entschieden ist:
+Seitentaste (`--sidekey`, Standard nein), langer Druck auf Home (`--home-key`, Standard ja) und Headset-Taste (`--headset`, Standard ja).
+Die Antwort steht danach in der Konfig (`SIDEKEY`, `HOMEKEY`, `HEADSET`), spätere Läufe fragen nicht mehr; die `--no-…`-Formen schalten ab.
+Der Installer richtet im selben Lauf alles ein: den Tasten-Leser für Seiten- und Headset-Taste und die Assistenten-Rolle für Home (Root;
+bei jedem Lauf neu, falls „Beenden erzwingen“ sie genommen hat). Ohne Terminal fragt er nicht und nennt den Befehl für Home.
 
 **Seitentaste des Hisense A9** (`--sidekey`, standardmäßig aus, gespeichert als `SIDEKEY`): Seitentaste halten = aufnehmen, loslassen = stoppen. Der Installer legt
 `sidekey-ptt` nach `$PREFIX/bin`; es hält ein root-`cat` auf `/dev/input/event2` (die Taste, Scancode 766) und ruft `ptt start` / `ptt stop`.

@@ -327,7 +327,9 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   (UserPromptSubmit hook) and when `ptt` starts (long press on Home, side key), or the microphone would record the voice. Reading aloud is on
   after the installation. Switch it with the widget **Vorlesen** (on/off, with a toast; off also ends what is being read) and the widget
   **Stopp** (quiet now), both in `~/.shortcuts/tasks/` (they run in the background), or `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` reads only a short version of each answer: its whole first paragraph and the last question further down (the file
-  `~/.rootbridge/speak-first`; a hint for Claude to put the essentials there belongs in your `CLAUDE.md`), `all` the whole answer again. In the
+  `~/.rootbridge/speak-first`; the first installation with voice switches it on, `SPEAK_SHORT=set` in the config remembers that), `all` the whole answer again.
+  So that the short version carries the answer, the installer's block in `~/.claude/CLAUDE.md` (template `guest/templates/speech.claude.md`) asks for
+  a summary of at most five sentences first and every question to you at the very end. In the
   guest `rootbridge-speak "text"` reads any text, `rootbridge-speak --stop` ends it, `rootbridge-speak --record` records your voice. Another Piper voice: `PIPER_VOICE` (path of the `.onnx`
   file, its `.onnx.json` next to it). On the A9 Piper takes about as long as the text lasts; it delivers sentence by sentence.
   English terms (Pull Request, Commit, Branch, Hook, …) are said in English: `guest/claude/speak-english.txt` lists them with their
@@ -336,7 +338,8 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
   **In your own voice:** `setup-guest.sh` also installs Articulino (`/opt/articulino`, about 230 MB); record your voice in the guest
   with `rootbridge-speak --record` (speak calmly for about 10 s). From then on a small server (`speak-server.py`, about 500 MB while it
   runs, it ends after 30 minutes without a text) reads with your voice; the first text after its start takes about 5 s longer. Without
-  a recording, or when Articulino is missing, Piper reads.
+  a recording, or when Articulino is missing, Piper reads. When the recording is missing (after a new installation, say), the start of
+  Claude Code asks for it: `j` records at once, Enter or `n` asks again at the next start, "nie" never again (the file `voice-never` next to `voice.wav`); without an answer Claude Code starts after 60 s.
   **Music and calls:** while it reads, the daemon in Termux asks the Termux:API of this repository for the audio focus for speech, so
   Android turns music down (like for a navigation app) and up again afterwards; during a phone call nothing is read, and a call that comes
   in ends the reading. With the stock Termux:API music just plays on.
@@ -355,6 +358,12 @@ the microphone does not stay on after a stop.
 
 The accessibility settings of the A9 offer only fixed actions for its side key (clear screen, music, home, menu, backlight, nothing), no app: for the
 side key use `--sidekey` below.
+
+**The keys at installation:** on a terminal `install.sh` asks about each key nobody decided yet: the side key (`--sidekey`, default
+no), a long press on Home (`--home-key`, default yes) and the headset key (`--headset`, default yes). The answer is stored in the config
+(`SIDEKEY`, `HOMEKEY`, `HEADSET`) and later runs do not ask again; the `--no-…` forms switch a key off. The same run sets everything up:
+the key reader for the side and headset keys and the assistant role for Home (root; on every run, in case "Force stop" took it away).
+Without a terminal it asks nothing and names the command for Home.
 
 **Side key of the Hisense A9** (`--sidekey`, off by default, stored as `SIDEKEY`): hold the side key to record, let go to stop. The installer puts
 `sidekey-ptt` into `$PREFIX/bin`; it keeps a root `cat` on `/dev/input/event2` (the key, scan code 766) and calls `ptt start` / `ptt stop`.

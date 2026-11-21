@@ -46,6 +46,18 @@ if grep -qs 'termux-rootbridge voice' "$HOME/.config/pulse/default.pa"; then
     rm -f "$HOME/.config/pulse/default.pa"
     say "PulseAudio-Konfiguration entfernt: ~/.config/pulse/default.pa"
 fi
+# the long press on Home: Termux gives the assistant role back before ptt goes, or Home calls a missing command. Asked
+# whenever the installer ever handled the key (HOMEKEY in the config, on or off: an earlier removal may have failed); on a
+# terminal the real role decides (root). Without one the hint is the plain su command: rootbridge is gone afterwards.
+if grep -qs '^HOMEKEY=' "$HOME/.config/termux-rootbridge/config"; then
+    if [ -t 0 ] && [ -x "$PREFIX/bin/rootbridge" ] && role="$("$PREFIX/bin/rootbridge" voice assistant status 2>/dev/null)" \
+            && [[ "$role" != *'Termux push to talk'* ]]; then
+        :   # the role could be read, and Termux does not hold it
+    elif ! { [ -t 0 ] && [ -x "$PREFIX/bin/rootbridge" ] && "$PREFIX/bin/rootbridge" voice assistant off; }; then
+        say "Hinweis: Termux ist noch der digitale Assistent (langer Druck auf Home). Zurücknehmen (Root):"
+        say "  su -c 'cmd role remove-role-holder --user 0 android.app.role.ASSISTANT com.termux'"
+    fi
+fi
 rm -f "$PREFIX/bin/rootbridge" "$PREFIX/bin/rootbridge-daemon" "$PREFIX/bin/ptt"
 rm -rf "$PREFIX/lib/termux-rootbridge"
 rm -f "$HOME/.termux/boot/10-rootbridge.sh"

@@ -335,7 +335,9 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   instalación la lectura está activada. Se cambia con el widget **Vorlesen** (sí/no, con un aviso; no también termina la lectura en curso) y
   el widget **Stopp** (silencio ahora), ambos en `~/.shortcuts/tasks/` (se ejecutan en segundo plano), o con
   `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` lee solo una versión corta de cada respuesta: su primer párrafo entero y la última pregunta más abajo (el archivo
-  `~/.rootbridge/speak-first`; la indicación a Claude de poner ahí lo esencial va en tu `CLAUDE.md`), `all` vuelve a leerla entera. En el invitado `rootbridge-speak "texto"` lee cualquier texto y `rootbridge-speak --stop` lo
+  `~/.rootbridge/speak-first`; la primera instalación con voz lo activa, `SPEAK_SHORT=set` en la configuración lo recuerda), `all` vuelve a leerla entera.
+  Para que la versión corta lleve la respuesta, el bloque del instalador en `~/.claude/CLAUDE.md` (plantilla `guest/templates/speech.claude.md`) pide
+  primero un resumen de cinco frases como mucho y todas las preguntas al final. En el invitado `rootbridge-speak "texto"` lee cualquier texto y `rootbridge-speak --stop` lo
   termina, `rootbridge-speak --record` graba tu voz. Otra voz de Piper: `PIPER_VOICE` (ruta del archivo `.onnx`, con su `.onnx.json` al lado). En el A9 Piper tarda más o menos lo que
   dura el texto; entrega frase a frase.
   Los términos ingleses (Pull Request, Commit, Branch, Hook, …) se pronuncian en inglés: `guest/claude/speak-english.txt` los
@@ -344,7 +346,8 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   **Con tu propia voz:** `setup-guest.sh` instala también Articulino (`/opt/articulino`, unos 230 MB); graba tu voz en el invitado con
   `rootbridge-speak --record` (habla con calma unos 10 s). A partir de ahí un pequeño servicio (`speak-server.py`, unos 500 MB mientras
   funciona; termina tras 30 minutos sin texto) lee con tu voz; el primer texto tras su arranque tarda unos 5 s más. Sin grabación o sin
-  Articulino lee Piper.
+  Articulino lee Piper. Si falta la grabación (por ejemplo tras una reinstalación), el arranque de Claude Code la pide: `j` graba en el
+  acto, Enter o `n` vuelve a preguntar en el próximo arranque, «nie» ya nunca (el archivo `voice-never` junto a `voice.wav`); sin respuesta Claude Code arranca a los 60 s.
   **Música y llamadas:** mientras lee, el daemon de Termux pide el foco de audio para voz a la Termux:API de este repositorio, así
   Android baja la música (como con una app de navegación) y la vuelve a subir después; durante una llamada no se lee nada, y una llamada
   entrante termina la lectura. Con la Termux:API estándar la música sigue sonando.
@@ -363,6 +366,12 @@ y cada grabación nueva recibe silencio. `ptt start` en modo hold termina ese gr
 
 Los ajustes de accesibilidad del A9 solo ofrecen acciones fijas para su tecla lateral (borrar pantalla, música, inicio, menú, luz de fondo,
 nada), ninguna app: para la tecla lateral usa `--sidekey` (abajo).
+
+**Las teclas en la instalación:** en una terminal `install.sh` pregunta por cada tecla aún sin decidir: la tecla lateral (`--sidekey`,
+por defecto no), la pulsación larga en Inicio (`--home-key`, por defecto sí) y la tecla del auricular (`--headset`, por defecto sí). La
+respuesta se guarda en la configuración (`SIDEKEY`, `HOMEKEY`, `HEADSET`) y las ejecuciones siguientes ya no preguntan; las formas `--no-…`
+desactivan una tecla. La misma ejecución lo deja todo listo: el lector de las teclas lateral y del auricular y el rol de asistente para
+Inicio (root; en cada ejecución, por si «Forzar detención» lo quitó). Sin terminal no pregunta y nombra la orden para Inicio.
 
 **Tecla lateral del Hisense A9** (`--sidekey`, desactivada por defecto, se guarda como `SIDEKEY`): mantener la tecla lateral = grabar, soltar = parar. El instalador coloca
 `sidekey-ptt` en `$PREFIX/bin`; mantiene un `cat` de root sobre `/dev/input/event2` (la tecla, código 766) y llama a `ptt start` / `ptt stop`.

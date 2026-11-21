@@ -389,12 +389,24 @@ cmd_voice() {
     esac
 }
 
-# sidekey_start: the side key reader of the Hisense A9 (SIDEKEY=on), one instance (it takes a lock itself)
+# sidekey_keys: the keys the reader reads (SIDEKEY_KEYS of sidekey-ptt), empty when none is chosen
+sidekey_keys() {
+    local keys=""
+    [ "$SIDEKEY" = on ] && keys="side"
+    # HEADSET not decided yet: it follows SIDEKEY, like install.sh
+    if [ "$HEADSET" = on ] || { [ -z "$HEADSET" ] && [ "$SIDEKEY" = on ]; }; then keys="${keys:+$keys }headset"; fi
+    printf '%s' "$keys"
+}
+
+# sidekey_start: the key reader (side key of the Hisense A9: SIDEKEY=on, headset key: HEADSET=on), one instance (it takes a
+# lock itself)
 sidekey_start() {
-    [ "$SIDEKEY" = on ] || return 0
+    local keys
+    keys="$(sidekey_keys)"
+    [ -n "$keys" ] || return 0
     command -v sidekey-ptt >/dev/null 2>&1 || return 0
     pgrep -f 'sidekey-ptt' >/dev/null 2>&1 && return 0
-    setsid nohup sidekey-ptt >/dev/null 2>&1 < /dev/null &
+    SIDEKEY_KEYS="$keys" setsid nohup sidekey-ptt >/dev/null 2>&1 < /dev/null &
     return 0
 }
 
@@ -445,8 +457,8 @@ cmd_status() {
     else
         echo "Sprache:      nicht Teil der Installation (--no-voice)"
     fi
-    if [ "$SIDEKEY" = on ]; then
-        if pgrep -f 'sidekey-ptt' >/dev/null 2>&1; then echo "Seitentaste:  Leser läuft"; else echo "Seitentaste:  Leser gestoppt (rootbridge start)"; fi
+    if [ -n "$(sidekey_keys)" ]; then
+        if pgrep -f 'sidekey-ptt' >/dev/null 2>&1; then echo "Tasten:       Leser läuft ($(sidekey_keys))"; else echo "Tasten:       Leser gestoppt (rootbridge start)"; fi
     fi
     if [ -f "$BRIDGE_DIR/audit.log" ]; then
         echo "Letzte Audit-Einträge:"

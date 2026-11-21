@@ -43,11 +43,11 @@ class ReaderTest(unittest.TestCase):
 
 
 class TestKeys(ReaderTest):
-    def press(self, *events):
+    def press(self, *events, keys="side headset"):
         """The ptt calls of the reader for these events."""
         cmd = " ".join([sys.executable, "-I", self.events] + list(events))
         env = dict(os.environ, SIDEKEY_CMD=cmd, SIDEKEY_PTT=self.ptt, SIDEKEY_ONCE="1", SIDEKEY_LONG="0.2",
-                   SIDEKEY_CACHE=self.tmp.name)
+                   SIDEKEY_CACHE=self.tmp.name, SIDEKEY_KEYS=keys)
         subprocess.run([sys.executable, "-I", READER], env=env, timeout=30, check=True)
         try:
             with open(self.log) as fh:
@@ -78,6 +78,12 @@ class TestKeys(ReaderTest):
 
     def test_the_stream_ends_while_talking(self):
         self.assertEqual(self.press("%d:1:0.5" % SIDE), ["start", "stop"])
+
+    def test_only_the_chosen_keys(self):
+        both = ("%d:1:0.5" % SIDE, "%d:0:0.1" % SIDE, "%d:1:0.5" % HEADSET, "%d:0:0" % HEADSET)
+        self.assertEqual(self.press(*both, keys="side"), ["start", "stop"])
+        os.remove(self.log)
+        self.assertEqual(self.press(*both, keys="headset"), ["toggle"])
 
 
 class TestSources(ReaderTest):
@@ -139,6 +145,27 @@ class TestSources(ReaderTest):
         subprocess.run([sys.executable, "-I", READER], env=env, timeout=30, check=True)
         with open(os.path.join(self.tmp.name, "sidekey-ptt.log")) as fh:
             self.assertIn("Headset-Suche fehlgeschlagen: su Exit 1", fh.read())
+
+    def test_without_the_headset_no_root_lookup(self):
+        # su would fail the lookup (as above): with the side key alone there is none, the reader reads event2
+        out = subprocess.run([sys.executable, "-I", "-c",
+                              "import runpy; m = runpy.run_path(%r, run_name='x'); print(m['sources']())" % READER],
+                             capture_output=True, text=True, check=True,
+                             env=dict(os.environ, SIDEKEY_KEYS="side", PATH="/nonexistent")).stdout
+        self.assertEqual(out.strip(), "[['su', '-c', 'echo $$; exec cat /dev/input/event2']]")
+
+    def test_headset_alone_keeps_a_jack_on_event2(self):
+        # another phone may have its headset buttons at event2: without the side key that node is the headset's
+        bindir = os.path.join(self.tmp.name, "bin")
+        os.mkdir(bindir)
+        with open(os.path.join(bindir, "su"), "w") as fh:
+            fh.write("#!/bin/sh\necho /dev/input/event2\n")
+        os.chmod(os.path.join(bindir, "su"), 0o755)
+        out = subprocess.run([sys.executable, "-I", "-c",
+                              "import runpy; m = runpy.run_path(%r, run_name='x'); print(m['sources']())" % READER],
+                             capture_output=True, text=True, check=True,
+                             env=dict(os.environ, SIDEKEY_KEYS="headset", PATH=bindir + os.pathsep + os.environ["PATH"])).stdout
+        self.assertEqual(out.strip(), "[['su', '-c', 'echo $$; exec cat /dev/input/event2']]")
 
     def test_the_headset_is_looked_up_as_root(self):
         out = subprocess.run([sys.executable, "-I", "-c",
