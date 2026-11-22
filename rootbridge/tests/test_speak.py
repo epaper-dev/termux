@@ -332,7 +332,8 @@ class TestPlayer(unittest.TestCase):
         env = dict(os.environ, RB_SPEAK_DIR=self.bridge, RB_SPEAK_PIPER_PYTHON=self.piper, RB_SPEAK_PLAY=self.play,
                    PIPER_VOICE=self.voice, OUT=self.out, RB_SPEAK_LOG=self.log,
                    RB_SPEAK_ENGLISH=os.path.join(self.tmp.name, "keine-liste.txt"),   # the text as it is, unless a test sets one
-                   RB_SPEAK_ARTICULINO=os.path.join(self.tmp.name, "kein-articulino"))   # Piper, unless a test sets one
+                   RB_SPEAK_ARTICULINO=os.path.join(self.tmp.name, "kein-articulino"),   # Piper, unless a test sets one
+                   RB_SPEAK_BEEP="off")   # the beeps of --command, unless a test wants them
         env.update(extra)
         return env
 
@@ -704,6 +705,44 @@ class TestPlayer(unittest.TestCase):
         r = self.command("Starte das Vorlesen.")
         self.assertEqual(json.loads(r.stdout), {"decision": "block", "reason": "Vorlesen eingeschaltet."})
         self.assertFalse(os.path.exists(off))
+
+    def test_a_beep_that_cannot_play_is_logged(self):
+        play = self.stub("play-fails", 'cat > /dev/null; echo "kein PulseAudio" >&2; exit 2\n')
+        self.command("Stoppe das Vorlesen", RB_SPEAK_BEEP="on", RB_SPEAK_PLAY=play)
+        self.assertTrue(self.wait_for(lambda: self.logged("Ton nicht abgespielt: play Exit 2")))
+        self.assertIn("kein PulseAudio", self.read_log())
+
+    def test_sentences_switch_between_whole_answers_and_the_short_version(self):
+        first = os.path.join(self.bridge, "speak-first")
+        open(first, "w").close()
+        r = self.command("Lies alles vor.")
+        self.assertEqual(json.loads(r.stdout)["reason"], "Ab jetzt lese ich ganze Antworten vor (ohne Code).")
+        self.assertFalse(os.path.exists(first))
+        self.command("Lies nur die Kurzfassung vor")
+        self.assertTrue(os.path.exists(first))
+        self.assertFalse(os.path.exists(os.path.join(self.bridge, "speak-stopped")), "umschalten stoppt nichts")
+
+    def beeps(self, prompt):
+        """The audio of the beeps for prompt (they go to play in the background)."""
+        self.command(prompt, RB_SPEAK_BEEP="on")
+        play_in = os.path.join(self.out, "play.in")
+        self.assertTrue(self.wait_for(lambda: os.path.exists(play_in) and os.path.getsize(play_in) > 0))
+        time.sleep(0.2)
+        self.assertIn("-r 8000", self.out_file("play.args"))
+        with open(os.path.join(self.out, "play.in"), "rb") as fh:
+            audio = fh.read()
+        os.remove(os.path.join(self.out, "play.in"))
+        return audio
+
+    def test_a_sentence_beeps_twice_high_when_done_and_low_when_stopped(self):
+        def crossings(audio):   # how often the tone goes up through zero: its pitch
+            samples = [int.from_bytes(audio[i:i + 2], "little", signed=True) for i in range(0, len(audio), 2)]
+            return sum(1 for a, b in zip(samples, samples[1:]) if a < 0 <= b)
+        on, stop = self.beeps("Schalte das Vorlesen ein"), self.beeps("Stoppe das Vorlesen")
+        self.assertEqual(len(on), 2 * 8000 * 22 // 100)   # 80 ms, 60 ms quiet, 80 ms at 8 kHz
+        self.assertAlmostEqual(crossings(on), 2 * crossings(stop), delta=2)   # 800 Hz and 400 Hz
+        self.assertAlmostEqual(crossings(self.beeps("Lies den Text weiter")), crossings(stop), delta=1,
+                               msg="nichts zum Weiterlesen: tief")
 
     def test_a_sentence_shows_all_sentences(self):
         r = self.command("Welche Sprachbefehle gibt es?")

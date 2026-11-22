@@ -18,8 +18,11 @@ the PreToolUse hook; a new text ends the one still being read.
                       "Fahre mit dem Vorlesen fort" (RESUME_PHRASES) go on with the last text where it was stopped,
                       "Wiederhole den letzten Satz" (REPEAT_SENTENCE_PHRASES) reads that sentence again (and goes on
                       from there next time), "Wiederhole den Text nochmal" (REPEAT_TEXT_PHRASES) the whole text; in
-                      place of what is read now, the texts that wait come afterwards. "Welche Sprachbefehle gibt es"
-                      (HELP_PHRASES) shows all of them in Claude Code. The sentence goes to
+                      place of what is read now, the texts that wait come afterwards. "Lies alles vor" / "Lies nur
+                      die Kurzfassung vor" (ALL_PHRASES, SHORT_PHRASES) switch speak-first. "Welche Sprachbefehle gibt
+                      es" (HELP_PHRASES) shows all of them in Claude Code. Two short beeps say how it went: high when
+                      it was done, low when it stopped or switched off, or there was nothing to do (RB_SPEAK_BEEP=off:
+                      none). The sentence goes to
                       prompt-clear: Termux empties the input line, where Claude Code puts a blocked prompt back
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
@@ -56,6 +59,7 @@ Python >= 3.8, standard library only.
 import contextlib
 import fcntl
 import json
+import math
 import os
 import stat
 import struct
@@ -114,13 +118,22 @@ REPEAT_SENTENCE_SENTENCES = ("Wiederhole den letzten Satz", "Lies den letzten Sa
                              "Lies den letzten Satz noch mal", "Repeat the last sentence")
 REPEAT_TEXT_SENTENCES = ("Wiederhole den Text nochmal", "Wiederhole den Text noch mal", "Lies das nochmal vor",
                          "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text")
+# read whole answers (without code) or only their short version from now on (speak-first, as `rootbridge voice speak all|first`)
+ALL_SENTENCES = ("Lies alles vor", "Lese alles vor", "Lies mir alles vor", "Lese mir alles vor",
+                 "Lies immer alles vor", "Lies die ganze Antwort vor", "Lies mir den gesamten Text vor",
+                 "Lese mir den gesamten Text vor", "Lies den gesamten Text vor", "Read everything aloud",
+                 "Read the whole answer")
+SHORT_SENTENCES = ("Lies nur die Kurzfassung vor", "Lies die Kurzfassung vor", "Lies mir die Kurzfassung vor",
+                   "Lese mir die Kurzfassung vor", "Lies nur die Zusammenfassung vor", "Lies nur das Wichtigste vor",
+                   "Read only the summary", "Read only the short version")
 # shows all these sentences in Claude Code
 HELP_SENTENCES = ("Welche Sprachbefehle gibt es", "Zeige die Sprachbefehle", "Zeig mir die Sprachbefehle",
                   "Zeige mir die Sprachbefehle", "Show the speech commands")
-STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES, REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, HELP_PHRASES = (
+(STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES, REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, ALL_PHRASES,
+ SHORT_PHRASES, HELP_PHRASES) = (
     {said(sentence) for sentence in sentences}
     for sentences in (STOP_SENTENCES, OFF_SENTENCES, ON_SENTENCES, RESUME_SENTENCES, REPEAT_SENTENCE_SENTENCES,
-                      REPEAT_TEXT_SENTENCES, HELP_SENTENCES))
+                      REPEAT_TEXT_SENTENCES, ALL_SENTENCES, SHORT_SENTENCES, HELP_SENTENCES))
 MAX_WAIT = float(os.environ.get("RB_SPEAK_MAX_WAIT", 120))   # seconds a text may wait for its turn; older is dropped unread
 CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
 PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key
@@ -898,43 +911,84 @@ def command():
     if not isinstance(prompt, str):
         return
     sentence = said(prompt)
-    halt = True                                   # this sentence also ends what is being read
+    halt = False                                  # this sentence also ends what is being read
     replay = None                                 # what of the last text is read again: (parts, first, end, player)
+    high = True                                   # the beep: high = on, done; low = stopped, off, nothing to do
     try:
         if sentence in STOP_PHRASES:
-            reason = "Vorlesen gestoppt."
+            halt, high, reason = True, False, "Vorlesen gestoppt."
         elif sentence in OFF_PHRASES:
-            os.close(os.open(OFF, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600))   # the switch, as `rootbridge voice speak off`
-            reason = "Vorlesen ausgeschaltet (wieder an: „Schalte die Sprachausgabe ein“)."
+            switch(OFF, True)   # as `rootbridge voice speak off`
+            halt, high, reason = True, False, "Vorlesen ausgeschaltet (wieder an: „Schalte die Sprachausgabe ein“)."
         elif sentence in ON_PHRASES:
-            halt = False
-            if os.path.lexists(OFF):
-                os.remove(OFF)
+            switch(OFF, False)
             reason = "Vorlesen eingeschaltet."
+        elif sentence in ALL_PHRASES:
+            switch(FIRST, False)   # as `rootbridge voice speak all`
+            reason = "Ab jetzt lese ich ganze Antworten vor (ohne Code)."
+        elif sentence in SHORT_PHRASES:
+            switch(FIRST, True)    # as `rootbridge voice speak first`
+            reason = "Ab jetzt lese ich nur die Kurzfassung vor."
         elif sentence in HELP_PHRASES:
-            halt, reason = False, help_text()
+            reason = help_text()
         elif sentence in RESUME_PHRASES | REPEAT_SENTENCE_PHRASES | REPEAT_TEXT_PHRASES:
             replay, reason = again(sentence)   # in place of what is read now: the texts that wait come afterwards
-            halt = False
+            high = replay is not None
         else:
             return
     except OSError as e:
-        log("Schalter %s: %s" % (OFF, e))
-        halt, reason = False, "Vorlesen ließ sich nicht umschalten: %s" % e
+        log("Schalter: %s" % e)
+        halt, high, reason = False, False, "Vorlesen ließ sich nicht umschalten: %s" % e
     clear_prompt(prompt)
     if halt:
         mark_stopped()
         stop()
     if replay:
-        reason = launch(*replay) or reason
+        error = launch(*replay)
+        if error:
+            high, reason = False, error
+    beep(high)
     print(json.dumps({"decision": "block", "reason": reason}))
+
+
+def switch(path, on):
+    """A switch file in the bridge directory (speak-off, speak-first): there or not, not through a link."""
+    if on:
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600))
+    elif os.path.lexists(path):
+        os.remove(path)
+
+
+def beep(high):
+    """Two short beeps for a sentence of --command, through play in the background (the hook does not wait): high when it
+    was done, low when it stopped or switched off, or there was nothing to do. The tones of ptt (800 and 400 Hz), twice,
+    so they are not taken for its start and end. RB_SPEAK_BEEP=off: none."""
+    if os.environ.get("RB_SPEAK_BEEP", "on") == "off":
+        return
+    rate, hz = 8000, 800 if high else 400
+    tone = b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * hz * n / rate))) for n in range(rate * 8 // 100))
+    audio = tone + bytes(rate * 2 * 6 // 100) + tone      # 80 ms, 60 ms quiet, 80 ms
+    # a shell in the background waits for play: what play says and its exit code go to the log
+    script = '"$@" 2>> "$0" || echo "$(date "+%Y-%m-%d %H:%M:%S") Ton nicht abgespielt: play Exit $?" >> "$0"'
+    try:
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        play = subprocess.Popen(["sh", "-c", script, LOG, PLAY, "-q", "-t", "raw", "-r", str(rate), "-e", "signed", "-b",
+                                 "16", "-c", "1", "-", "-t", "pulseaudio"], stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=pulse_env(),
+                                start_new_session=True)
+        play.stdin.write(audio)   # 3.5 KiB: fits the pipe, the hook goes on at once
+        play.stdin.close()
+    except OSError as e:
+        log("Ton nicht abgespielt: %s" % e)
 
 
 def help_text():
     """All sentences, by what they do (what Claude Code shows for "Welche Sprachbefehle gibt es")."""
     groups = (("Stoppen", STOP_SENTENCES), ("Weiterlesen", RESUME_SENTENCES),
               ("Letzten Satz wiederholen", REPEAT_SENTENCE_SENTENCES), ("Ganzen Text wiederholen", REPEAT_TEXT_SENTENCES),
-              ("Dauerhaft aus", OFF_SENTENCES), ("Wieder ein", ON_SENTENCES), ("Diese Liste", HELP_SENTENCES))
+              ("Dauerhaft aus", OFF_SENTENCES), ("Wieder ein", ON_SENTENCES),
+              ("Ganze Antworten vorlesen (ohne Code)", ALL_SENTENCES), ("Nur die Kurzfassung vorlesen", SHORT_SENTENCES),
+              ("Diese Liste", HELP_SENTENCES))
     return "Sprachbefehle fürs Vorlesen:\n" + "\n".join(
         "%s: %s" % (title, ", ".join("„%s“" % sentence for sentence in sentences)) for title, sentences in groups)
 
