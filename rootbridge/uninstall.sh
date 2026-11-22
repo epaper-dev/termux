@@ -60,6 +60,18 @@ if grep -qs '^HOMEKEY=' "$HOME/.config/termux-rootbridge/config"; then
         say "  su -c 'cmd role remove-role-holder --user 0 android.app.role.ASSISTANT com.termux'"
     fi
 fi
+# Android's phantom process killer: switched off by rootbridge phantom-killer off (from the installer or by hand), which
+# leaves the marker phantom-killer-off before it changes anything and removes it once Android's defaults are back. A choice
+# that was only stored (no terminal, --no-setup) changed nothing, so the marker alone counts. Android's defaults come back before rootbridge goes, also the sync of device_config, which is off for
+# the whole phone. Without a terminal, or when root is refused, the commands to do it by hand.
+# (next to the config, as rootbridge-lib.sh finds it: ROOTBRIDGE_CONFIG or the default)
+if [ -e "$(dirname "${ROOTBRIDGE_CONFIG:-$HOME/.config/termux-rootbridge/config}")/phantom-killer-off" ]; then
+    if ! { [ -t 0 ] && [ -x "$PREFIX/bin/rootbridge" ] && "$PREFIX/bin/rootbridge" phantom-killer on; }; then
+        say "Hinweis: Der Phantom Process Killer ist noch aus, und Android lädt keine Systemeinstellungen nach. Zurück (Root):"
+        say "  su -c 'settings delete global settings_enable_monitor_phantom_procs; device_config delete activity_manager max_phantom_processes; device_config set_sync_disabled_for_tests none'"
+        say "  Prüfen: su -c 'device_config get_sync_disabled_for_tests'   (none = Android lädt Einstellungen wieder nach)"
+    fi
+fi
 rm -f "$PREFIX/bin/rootbridge" "$PREFIX/bin/rootbridge-daemon" "$PREFIX/bin/ptt"
 rm -rf "$PREFIX/lib/termux-rootbridge"
 rm -f "$HOME/.termux/boot/10-rootbridge.sh"

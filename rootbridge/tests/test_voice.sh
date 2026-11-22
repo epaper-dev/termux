@@ -101,9 +101,11 @@ cat > "$T/vstubs/su" <<'EOF'
 #!/bin/bash
 echo "su $*" >> "$STUB_LOG"
 [ "${STUB_SU_FAIL:-0}" = 1 ] && exit 1
+[ -n "${STUB_SU_EXIT:-}" ] && exit "$STUB_SU_EXIT"
 # no Termux:API: pm grant refuses its package
 [ "${STUB_SU_NOAPI:-0}" = 1 ] && case "$*" in *com.termux.api*) exit 1 ;; esac
 case "$*" in *voice_interaction_service*) printf '%s\n' "${STUB_ASSISTANT:-null}"; exit 0 ;; esac
+case "$*" in *"settings get global settings_enable_monitor_phantom_procs"*) printf '%s\n' "${STUB_PHANTOM:-}"; exit 0 ;; esac
 touch "$STUB_STATE/perm"
 exit 0
 EOF
@@ -262,6 +264,43 @@ rb env STUB_SU_FAIL=1 bash "$T/bin/rootbridge" voice assistant on
 check "voice assistant on: su verweigert, Fehler"         "1 1" "$RC $(count "$T/out.txt" 'ließ sich nicht setzen')"
 rb env RB_SU="$T/gibt-es-nicht" bash "$T/bin/rootbridge" voice assistant on
 check "voice assistant ohne su: Fehler"                   1 "$RC"
+# Android's phantom process killer (root)
+: > "$STUB_LOG"
+rb bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off: Einstellung, device_config, Meldung" "0 1 1 1 1" "$RC $(calls 'settings put global settings_enable_monitor_phantom_procs false') $(calls '&& set_sync persistent') $(calls 'device_config put activity_manager max_phantom_processes 2147483647') $(count "$T/out.txt" 'Phantom Process Killer: aus')"
+check "phantom-killer off: Marke neben der Konfig"         ja "$(has "$(dirname "$RBC")/phantom-killer-off")"
+rb bash "$T/bin/rootbridge" phantom-killer on
+check "phantom-killer on: Marke weg"                       nein "$(has "$(dirname "$RBC")/phantom-killer-off")"
+check "phantom-killer on: Android-Standard zurück"        "0 1 1 1" "$RC $(calls 'settings delete global settings_enable_monitor_phantom_procs') $(calls 'device_config delete activity_manager max_phantom_processes') $(calls 'set_sync none || r=1')"
+printf '#!/bin/sh\necho "${STUB_SDK:-34}"\n' > "$T/vstubs/getprop"; chmod +x "$T/vstubs/getprop"
+rb env STUB_SDK=31 bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off unter Android 12: Hinweis auf hohe Rechenlast" "0 1" "$RC $(count "$T/out.txt" 'Android 12 beendet sie bei hoher Rechenlast')"
+rb bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off ab Android 13: kein solcher Hinweis" "0 0" "$RC $(count "$T/out.txt" 'Android 12 beendet')"
+rb bash "$T/bin/rootbridge" phantom-killer on
+rb env STUB_PHANTOM=false bash "$T/bin/rootbridge" phantom-killer
+check "phantom-killer status: aus"                        "0 1" "$RC $(count "$T/out.txt" 'Phantom Process Killer: aus')"
+rb env STUB_PHANTOM=null bash "$T/bin/rootbridge" phantom-killer status
+check "phantom-killer status: an, mit Hinweis"            1 "$(count "$T/out.txt" 'an - rootbridge phantom-killer off')"
+check "phantom-killer status: ohne globale Einstellung die der Entwickleroption" 1 "$(calls 'getprop persist.sys.fflag.override.settings_enable_monitor_phantom_procs')"
+cp "$RBC" "$T/rbc.saved"; printf 'VOICE=on\nPHANTOM_KILLER=off\n' > "$RBC"
+rb bash "$T/bin/rootbridge" phantom-killer on
+check "phantom-killer on von Hand: die Konfig sagt on, der Rest bleibt" "PHANTOM_KILLER=on VOICE=on" "$(grep -E '^(PHANTOM_KILLER|VOICE)=' "$RBC" | sort | tr '\n' ' ' | sed 's/ $//')"
+rb bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off von Hand: die Konfig sagt off"  PHANTOM_KILLER=off "$(grep '^PHANTOM_KILLER=' "$RBC")"
+cp "$T/rbc.saved" "$RBC"
+rb env STUB_SU_EXIT=3 bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off: Werte nicht gesetzt, zurückgerollt, Marke weg" "1 1 nein" "$RC $(count "$T/out.txt" 'Android-Standard ist wiederhergestellt') $(has "$(dirname "$RBC")/phantom-killer-off")"
+check "phantom-killer off: liest die Werte nach und rollt sonst zurück" "1 1 1" "$(calls 'max_phantom_processes)" = 2147483647') $(calls 'sync_mode)" = persistent') $(calls 'exit 3')"
+rb bash "$T/bin/rootbridge" phantom-killer on
+check "phantom-killer on: liest den Android-Standard nach" 1 "$(calls 'sync_mode)" = none')"
+rb env STUB_SU_FAIL=1 bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off: su verweigert, Fehler; die Marke bleibt für den Rückweg" "1 1 ja" "$RC $(count "$T/out.txt" 'ließ sich nicht abschalten') $(has "$(dirname "$RBC")/phantom-killer-off")"
+rm -f "$(dirname "$RBC")/phantom-killer-off"; : > "$T/kein-ordner"
+rb env ROOTBRIDGE_CONFIG="$T/kein-ordner/config" bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off: ohne Marke nichts geändert"    "1 0" "$RC $(calls 'phantom')"
+rb env RB_SU="$T/gibt-es-nicht" bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer ohne su: Hinweis auf die Entwickleroption" "1 1" "$RC $(count "$T/out.txt" 'untergeordnete Prozesse')"
 rb bash "$T/bin/rootbridge" voice assistant nope
 check "voice assistant: unbekannter Befehl"               "1 1" "$RC $(count "$T/out.txt" 'voice assistant: on')"
 rb bash "$T/bin/rootbridge" voice nope
@@ -770,13 +809,14 @@ sinst bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-b
 check "--no-setup: kein Root-Befehl"                       0 "$(count "$ILOG" '^su ')"
 check "ohne Antwort am Terminal: keine Taste gefragt-gespeichert" "" "$(sed -n 's/^\(SIDEKEY\|HOMEKEY\|HEADSET\)=//p' "$SH/.config/termux-rootbridge/config")"
 # the questions for the keys, answered on the terminal: n (side key), Enter (Home: yes), j (headset)
-ainst() {   # ainst <answers> [args]: like sinst, with the answers on stdin
-    local answers="$1"; shift
+ainst() {   # ainst <answers> [args]: like sinst, with the answers on stdin; only the key questions are asked here
+    local answers="$1" phantom=--phantom-killer-on; shift
+    [[ " $* " == *" --phantom-killer-"* ]] || grep -qs '^PHANTOM_KILLER=' "$SCFG" && phantom=""
     reset_pa; : > "$ILOG"; rm -f "$SP/bin/pulseaudio"
     printf '%s' "$answers" | env HOME="$SH" PREFIX="$SP" PATH="$T/sbindir:$T/sstubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 \
         BRIDGE_DIR="$SH/.rootbridge" STUB_LOG="$ILOG" STUB_STATE="$T/state" RB_SU="$T/sstubs/su" \
-        ROOTBRIDGE_FORCE_INTERACTIVE=1 bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot "$@" \
-        > "$T/install.log" 2>&1
+        ROOTBRIDGE_FORCE_INTERACTIVE=1 bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot \
+        --claude --codex ${phantom:+"$phantom"} "$@" > "$T/install.log" 2>&1
     IRC=$?
 }
 SCFG="$SH/.config/termux-rootbridge/config"
@@ -790,6 +830,21 @@ check "Fragen beantwortet: zweiter Lauf fragt nicht mehr, die Rolle wird erneut 
       "$(count "$T/install.log" 'Seitentaste als Push to Talk') $(count "$T/install.log" 'Langer Druck auf Home') $(count "$ILOG" '^su -c cmd role add-role-holder')"
 ainst '' --no-home-key
 check "--no-home-key am Terminal: Rolle per su zurückgenommen" "off 1" "$(sget HOMEKEY) $(count "$ILOG" '^su -c cmd role remove-role-holder --user 0 android.app.role.ASSISTANT com.termux$')"
+# Android's phantom process killer: off on every run; on again stays pending (restore) until it worked
+ainst '' --phantom-killer-off
+check "Phantom Killer aus: per su, gespeichert"           "off 1" "$(sget PHANTOM_KILLER) $(count "$ILOG" 'settings_enable_monitor_phantom_procs false')"
+ainst ''
+check "Phantom Killer: jeder Lauf schaltet ihn erneut aus" "off 1" "$(sget PHANTOM_KILLER) $(count "$ILOG" 'settings_enable_monitor_phantom_procs false')"
+STUB_SU_FAIL=1 ainst '' --phantom-killer-on
+check "Phantom Killer an, Root verweigert: bleibt vorgemerkt" "restore 1" "$(sget PHANTOM_KILLER) $(count "$T/install.log" 'rootbridge phantom-killer on')"
+ainst ''
+check "Phantom Killer: der nächste Lauf holt es nach"     "on 1" "$(sget PHANTOM_KILLER) $(count "$ILOG" 'settings delete global settings_enable_monitor_phantom_procs')"
+ainst ''
+check "Phantom Killer an: danach kein Root-Befehl mehr"   "on 0" "$(sget PHANTOM_KILLER) $(count "$ILOG" 'phantom')"
+: > "$(dirname "$SCFG")/phantom-killer-off"   # rootbridge phantom-killer off by hand
+ainst '' --phantom-killer-on
+check "Phantom Killer von Hand aus, dann --phantom-killer-on: zurück zum Standard" "on 1" \
+      "$(sget PHANTOM_KILLER) $(count "$ILOG" 'settings delete global settings_enable_monitor_phantom_procs')"
 
 # =========================================================================== 5. install-guest.sh
 GA="$T/ga"; rm -rf "$GA"; mkdir -p "$GA"
@@ -1020,6 +1075,17 @@ check "uninstall mit HOMEKEY=off: der Hinweis auch (ein früheres Zurücknehmen 
 rm -rf "$H2/.config/termux-rootbridge"
 run_un
 check "uninstall ohne HOMEKEY: kein Hinweis"               0 "$(count "$T/uninstall.log" "remove-role-holder")"
+mkdir -p "$H2/.config/termux-rootbridge"
+echo "PHANTOM_KILLER=off" > "$H2/.config/termux-rootbridge/config"
+run_un
+check "uninstall: nur gespeichert, nie umgeschaltet (keine Marke): kein Hinweis" 0 "$(count "$T/uninstall.log" "set_sync_disabled_for_tests")"
+mkdir -p "$T/anderswo"; : > "$T/anderswo/phantom-killer-off"
+: > "$ILOG"; STUB_LOG="$ILOG" HOME="$H2" PREFIX="$P2" PATH="$T/istubs:$PATH" ROOTBRIDGE_CONFIG="$T/anderswo/config" \
+    bash "$UNINSTALL" --no-guest > "$T/uninstall.log" 2>&1
+check "uninstall: die Marke neben ROOTBRIDGE_CONFIG zählt"  1 "$(count "$T/uninstall.log" "device_config set_sync_disabled_for_tests none")"
+: > "$H2/.config/termux-rootbridge/phantom-killer-off"   # switched off by hand
+run_un
+check "uninstall nach phantom-killer off von Hand: der su-Befehl" 1 "$(count "$T/uninstall.log" "settings delete global settings_enable_monitor_phantom_procs")"
 
 # =========================================================================== 8. rootbridge-claude and the PulseAudio cookie
 CL="$ROOT/guest/bin/rootbridge-claude"

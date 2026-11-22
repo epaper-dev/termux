@@ -10,10 +10,12 @@
 #                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update] [--codex-bypass | --no-codex-bypass]
 #                   [--guidelines | --no-guidelines]
 #                   [--voice | --no-voice] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
-#                   [--headset | --no-headset]
+#                   [--headset | --no-headset] [--phantom-killer-off | --phantom-killer-on]
 #
-# Setup: an interactive Termux shell asks once for the device name used in Claude Remote Control
-# (Enter accepts the suggested name; --remote-name NAME skips the question and changes a stored name).
+# Questions: all of them come first, before anything is installed; then the installation runs through. On a terminal each
+# one is asked once (Claude Code, Codex, the device name for Claude Remote Control, the keys for push to talk, Android's
+# phantom process killer); the answer is stored in the Termux config, and its option changes it later (--remote-name NAME,
+# --claude/--no-claude, ...). Enter takes the suggestion. Without a terminal nothing is asked.
 # Missing components are installed automatically: the Termux packages
 #   (pkg install), the Ubuntu guest (proot-distro install, a download of a few hundred MB),
 #   python3/curl/certificates in the guest and Claude Code (official installer). A device that has it
@@ -37,9 +39,8 @@
 #   one starts with the update of the other (rootbridge-update), because the two review each other: the Codex plugin
 #   of Claude Code and a pre-commit review hook (Codex checks every `git commit` Claude Code makes; the strict loop,
 #   fail-closed, emergency switch `rootbridge codex-off`). Without Claude Code there is no plugin and no hook.
-#   The Claude choice is stored and reused by later installs; --claude turns it on again. Codex is included on
-#   every run unless --no-codex is given on that run, including after an earlier --no-codex. TOOL_CODEX records
-#   the current selection for the launchers. --codex-update sets how often `codex update` runs at the start of a
+#   Both choices are asked once on a terminal and stored (TOOL_CLAUDE, TOOL_CODEX); --claude / --codex turn one on
+#   again. --codex-update sets how often `codex update` runs at the start of a
 #   session (6h default, like --claude-update; stored as CODEX_UPDATE). Still manual: the Codex login,
 #   `rootbridge codex-login`.
 #
@@ -71,6 +72,10 @@
 # --headset / --no-headset: a long press on the key of a wired headset starts and stops push to talk: installs headset-ptt,
 #   which reads the key as root. Stored as HEADSET.
 # Keys nobody decided yet (no option, nothing in the config) are asked on a terminal, one question each; the answer is stored.
+# --phantom-killer-off / --phantom-killer-on: Android ends child processes of an app beyond 32 ("Trimming phantom processes"),
+#   tmux with the sessions among them. Off switches that off as root (`rootbridge phantom-killer off`, on every run on a
+#   terminal: an Android update may set it back); on gives Android's defaults back. Asked once (default off), stored as
+#   PHANTOM_KILLER. Without root: Developer options, "Disable child process restrictions".
 #
 # Claude Code starts in /root/work in the guest (WORKDIR; the installer creates the folder).
 #
@@ -126,6 +131,7 @@ USE_HOMEKEY=no; USE_HOMEKEY_SET=0; USE_HEADSET=no; USE_HEADSET_SET=0   # long pr
 HOMEKEY_OFF_OPT=0   # --no-home-key given: the assistant role is taken back in any case
 USE_BYPASS=yes; USE_BYPASS_SET=0   # Codex without its own sandbox
 USE_GUIDE=yes; USE_GUIDE_SET=0     # code quality guidelines in CLAUDE.md / AGENTS.md
+USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=0   # switch Android's phantom process killer off (root)
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 APT_RE='^(always|off|daily|[1-9][0-9]{0,2}h)$'
 while [ $# -gt 0 ]; do
@@ -170,6 +176,8 @@ while [ $# -gt 0 ]; do
         --home-key) USE_HOMEKEY=yes; USE_HOMEKEY_SET=1 ;;
         --no-home-key) USE_HOMEKEY=no; USE_HOMEKEY_SET=1; HOMEKEY_OFF_OPT=1 ;;
         --headset) USE_HEADSET=yes; USE_HEADSET_SET=1 ;;
+        --phantom-killer-off) USE_PHANTOM_OFF=yes; USE_PHANTOM_OFF_SET=1 ;;
+        --phantom-killer-on) USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=1 ;;
         --no-headset) USE_HEADSET=no; USE_HEADSET_SET=1 ;;
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
@@ -218,52 +226,6 @@ die() { echo "install.sh: $*" >&2; exit 1; }
 if [ -z "${ROOTBRIDGE_ALLOW_GUEST:-}" ] && [ "$(id -u)" -eq 0 ] \
         && [ -f /etc/os-release ] && grep -qi ubuntu /etc/os-release 2>/dev/null; then
     die "Du bist im Ubuntu-Gast. Bitte in einer normalen Termux-Shell ausführen (nicht in proot-distro)."
-fi
-
-# Setup, part 1: the Termux packages that are missing. pkg_for maps a command to its Termux package.
-# Without recommended packages: python recommends python-pip, which recommends clang, make and pkg-config (about 500 MB with
-# LLVM on the A9); rootbridge needs none of them.
-PKG_OPTS=(-y -o Dpkg::Options::=--force-confold -o APT::Install-Recommends=false)
-pkg_for() {
-    case "$1" in
-        python3) echo python ;;
-        termux-open-url|termux-dialog) echo termux-api ;;
-        sha256sum|stat|timeout) echo coreutils ;;
-        setsid) echo util-linux ;;
-        *) echo "$1" ;;
-    esac
-}
-if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; then
-    need_pkgs=""
-    for c in tmux proot-distro python3 sha256sum stat timeout setsid termux-open-url termux-dialog; do
-        command -v "$c" >/dev/null 2>&1 && continue
-        p="$(pkg_for "$c")"
-        case " $need_pkgs " in *" $p "*) ;; *) need_pkgs="$need_pkgs $p" ;; esac
-    done
-    if [ -n "$need_pkgs" ]; then
-        say "== 0/5 Einrichtung: Termux-Pakete"
-        say "  pkg install -y$need_pkgs"
-        # shellcheck disable=SC2086   # $need_pkgs is a list of package names on purpose
-        DEBIAN_FRONTEND=noninteractive pkg install "${PKG_OPTS[@]}" $need_pkgs \
-            || die "pkg install$need_pkgs ist fehlgeschlagen (Netz? pkg update?). Erneut starten: bash install.sh"
-        hash -r
-        SETUP_DID=1
-    fi
-fi
-
-if [ "$DEPS" = 1 ]; then
-    missing=""
-    for c in tmux proot-distro sha256sum stat timeout setsid; do
-        command -v "$c" >/dev/null 2>&1 || missing="$missing $c"
-    done
-    if [ -n "$missing" ]; then
-        say "Fehlende Pakete:$missing"
-        say "Installieren mit: pkg install tmux proot-distro coreutils util-linux"
-        exit 1
-    fi
-    command -v su >/dev/null 2>&1 || say "Hinweis: kein 'su' gefunden - Root-Befehle werden mit Code 127 beantwortet."
-    command -v termux-dialog >/dev/null 2>&1 \
-        || say "Hinweis: pkg install termux-api und die App Termux:API (für die Rückfrage bei Root-Anfragen, Browser-Öffnen und Zwischenablage). Ohne den Dialog lehnt der Daemon jede Root-Anfrage ab."
 fi
 
 backup() {
@@ -322,24 +284,9 @@ own_extra_keys() {
     python3 -I "$REPO/guest/lib/rbfile.py" other "$1" "$BEGIN" "$END" '\s*extra-keys\s*[=:]'
 }
 
-command -v python3 >/dev/null 2>&1 || die "python3 fehlt (pkg install python)"
-
-say "== 1/5 Programme"
-inst "$REPO/termux/bin/rootbridge"        "$PREFIX/bin/rootbridge"
-inst "$REPO/termux/bin/rootbridge-daemon" "$PREFIX/bin/rootbridge-daemon"
-inst "$REPO/termux/bin/ptt"               "$PREFIX/bin/ptt"
-inst "$REPO/termux/lib/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
-inst "$REPO/termux/lib/keyreader.py"      "$PREFIX/lib/termux-rootbridge/keyreader.py"
-chmod 644 "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/keyreader.py"
-# A running daemon keeps its old code in memory (an old one wants tickets that nothing issues any more): stop it. The new
-# one starts at the end of the installation.
-old_pid="$(cat "$BRIDGE_DIR/.lock/pid" 2>/dev/null || true)"
-if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
-    "$PREFIX/bin/rootbridge" daemon-stop >/dev/null 2>&1 || kill "$old_pid" 2>/dev/null || true
-    say "  laufender Daemon beendet (der neue startet am Ende der Installation)"
-fi
-
-say "== 2/5 Konfiguration"
+# All questions come here, before anything is installed; the installation then runs through without asking. Each one is
+# asked once on a terminal: the answer is stored in the Termux config, an option changes it later.
+say "== Fragen und Einstellungen"
 CFG="$HOME/.config/termux-rootbridge/config"
 mkdir -p "$(dirname "$CFG")" "$BRIDGE_DIR"
 chmod 700 "$BRIDGE_DIR"
@@ -365,12 +312,30 @@ AUTOSTART_DELAY=3
 # SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
 # HOMEKEY=off           # on | off: long press on Home as push to talk (Termux is the assistant); install.sh --home-key / --no-home-key
 # HEADSET=off           # on | off: long press on the key of a wired headset as push to talk; install.sh --headset / --no-headset
+# PHANTOM_KILLER=off    # off: Android's phantom process killer switched off (root, on every install); install.sh --phantom-killer-off / -on
 # PTT_TARGET=ubuntu:claude   # `ptt`: tmux window it presses its key in (default <SESSION>:claude)
 # PTT_KEY=M-k           # `ptt`: tmux key name (Claude Code: voice:pushToTalk is bound to meta+k)
 # PTT_MODE=auto         # `ptt`: auto (the mode of Claude Code's /voice, read from its settings) | hold (repeat the key until stop) | tap (one press each); PTT_INTERVAL=50 (ms), PTT_WARMUP=1200 (ms before the first repeat), PTT_MAX=120 (s), PTT_BEEP=on (high beep: recording, low: ended)
 EOF
     say "  neu: $CFG"
 fi
+# ask_key <yes|no var> <set var> <config key> <default yes|no> <question>: on a terminal, a choice that neither an option
+# nor the config decided; the answer counts as an option (it is stored). No answer (end of input): undecided, asked next
+# time.
+ask_key() {
+    local answer hint="[j/N]"
+    [ "${!2}" != 1 ] && [ -z "$(cfg_get "$3")" ] || return 0
+    [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ] || return 0
+    [ "$4" = yes ] && hint="[J/n]"
+    printf '%s %s ' "$5" "$hint"
+    IFS= read -r answer || { echo; return 0; }
+    case "$answer" in
+        j|J|ja|Ja|JA|y|Y|yes) answer=yes ;;
+        n|N|nein|Nein|NEIN|no) answer=no ;;
+        *) answer="$4" ;;
+    esac
+    printf -v "$1" '%s' "$answer"; printf -v "$2" '%s' 1
+}
 # onoff <yes|no>: the config spelling of a choice
 onoff() { if [ "$1" = yes ]; then echo on; else echo off; fi; }
 # cfg_get KEY: the value stored in the Termux config (quotes stripped; empty if there is none)
@@ -414,18 +379,35 @@ else
     v="$(cfg_get CLAUDE_UPDATE)"
     if [[ "$v" =~ $APT_RE ]]; then CLAUDE_UPD_MODE="$v"; say "  claude-update-Modus aus der Konfig: $CLAUDE_UPD_MODE"; fi
 fi
-# Claude keeps the stored choice without an option. Codex defaults to yes on every installer run:
-# an earlier --no-codex must not silently suppress its CLI, widget and review hook on the next installation.
-# Both choices are settled and checked BEFORE either is stored: a refused combination leaves the config as it was.
+# Claude Code and Codex: an option wins, else the stored choice, else asked once (default yes). Both choices are settled
+# and checked BEFORE either is stored: a refused combination leaves the config as it was.
 if [ "$USE_CLAUDE_SET" != 1 ] && [ "$(cfg_get TOOL_CLAUDE)" = off ]; then
     USE_CLAUDE=no; say "  Claude Code: abgewählt (aus der Konfig; wieder an mit --claude)"
 fi
-if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then die "$BOTH_OFF_MSG (die Konfig hat eines abgewählt: --claude oder --codex)"; fi
-if [ "$USE_CLAUDE_SET" = 1 ]; then
-    cfg_set TOOL_CLAUDE "$(onoff "$USE_CLAUDE")" "Claude Code: $USE_CLAUDE"
+if [ "$USE_CODEX_SET" != 1 ] && [ "$(cfg_get TOOL_CODEX)" = off ]; then
+    USE_CODEX=no; say "  Codex: abgewählt (aus der Konfig; wieder an mit --codex)"
 fi
-if [ "$USE_CODEX_SET" = 1 ] || [ "$(cfg_get TOOL_CODEX)" = off ]; then
-    cfg_set TOOL_CODEX "$(onoff "$USE_CODEX")" "Codex: $USE_CODEX"
+ask_key USE_CLAUDE USE_CLAUDE_SET TOOL_CLAUDE yes "Claude Code installieren?"
+ask_key USE_CODEX USE_CODEX_SET TOOL_CODEX yes \
+    "Codex installieren (sind Claude Code und Codex installiert, prüft Codex jeden Commit von Claude Code)?"
+if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then die "$BOTH_OFF_MSG (eines wieder an: --claude oder --codex)"; fi
+# stored at the end, once the chosen tools are installed: the launchers (rootbridge attach) go by it, and a run that fails
+# half way must not switch them to a tool that is not there yet (the question then comes again)
+# Android's phantom process killer (switched later, as root): a stored choice counts, else asked once. restore: it was off
+# and is to go on again, which has not worked yet (no terminal, root refused): tried again on the next run.
+OLD_PHANTOM="$(cfg_get PHANTOM_KILLER)"   # off or restore before this run: switching it on gives Android's defaults back
+# switched off by hand (rootbridge phantom-killer off leaves this marker): it counts as off as well
+PHANTOM_MARKER="$(dirname "${ROOTBRIDGE_CONFIG:-$CFG}")/phantom-killer-off"   # where rootbridge-lib.sh puts it
+if [ -e "$PHANTOM_MARKER" ] && [ "$OLD_PHANTOM" != restore ]; then OLD_PHANTOM=off; fi
+if [ "$USE_PHANTOM_OFF_SET" != 1 ]; then
+    case "$OLD_PHANTOM" in off) USE_PHANTOM_OFF=yes ;; restore) USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=1 ;; esac
+fi
+ask_key USE_PHANTOM_OFF USE_PHANTOM_OFF_SET PHANTOM_KILLER yes \
+    "Den Phantom Process Killer von Android abschalten? Er beendet sonst tmux, Claude Code und Codex, wenn viele Prozesse laufen. Solange er aus ist, lädt Android auch keine Systemeinstellungen mehr aus der Ferne nach (device_config; zurück mit rootbridge phantom-killer on). Braucht Root"
+if [ "$USE_PHANTOM_OFF_SET" = 1 ]; then
+    if [ "$USE_PHANTOM_OFF" = yes ]; then v=off; elif [ "$OLD_PHANTOM" = off ] || [ "$OLD_PHANTOM" = restore ]; then v=restore
+    else v=on; fi
+    cfg_set PHANTOM_KILLER "$v" "Phantom Process Killer: $v"
 fi
 # code quality guidelines: same idea (default on)
 if [ "$USE_GUIDE_SET" != 1 ] && [ "$(cfg_get GUIDELINES)" = off ]; then
@@ -488,23 +470,6 @@ if [ "$USE_HEADSET_SET" != 1 ]; then
     esac
 fi
 OLD_HOMEKEY="$(cfg_get HOMEKEY)"   # on before this run: --no-home-key takes the assistant role back
-# the keys for push to talk, after the device name (its question comes first on the terminal)
-# ask_key <yes|no var> <set var> <config key> <default yes|no> <question>: on a terminal, a key that neither an option nor
-# the config decided; the answer counts as an option (it is stored). No answer (end of input): undecided, asked next time.
-ask_key() {
-    local answer hint="[j/N]"
-    [ "${!2}" != 1 ] && [ -z "$(cfg_get "$3")" ] || return 0
-    [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ] || return 0
-    [ "$4" = yes ] && hint="[J/n]"
-    printf '%s %s ' "$5" "$hint"
-    IFS= read -r answer || { echo; return 0; }
-    case "$answer" in
-        j|J|ja|Ja|JA|y|Y|yes) answer=yes ;;
-        n|N|nein|Nein|NEIN|no) answer=no ;;
-        *) answer="$4" ;;
-    esac
-    printf -v "$1" '%s' "$answer"; printf -v "$2" '%s' 1
-}
 # the keys for push to talk work only with voice dictation
 if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then
     ask_key USE_SIDEKEY USE_SIDEKEY_SET SIDEKEY no \
@@ -529,6 +494,70 @@ else
     v="$(cfg_get CODEX_UPDATE)"
     if [[ "$v" =~ $APT_RE ]]; then CODEX_UPD_MODE="$v"; say "  codex-update-Modus aus der Konfig: $CODEX_UPD_MODE"; fi
 fi
+# Setup, part 1: the Termux packages that are missing. pkg_for maps a command to its Termux package.
+# Without recommended packages: python recommends python-pip, which recommends clang, make and pkg-config (about 500 MB with
+# LLVM on the A9); rootbridge needs none of them.
+PKG_OPTS=(-y -o Dpkg::Options::=--force-confold -o APT::Install-Recommends=false)
+pkg_for() {
+    case "$1" in
+        python3) echo python ;;
+        termux-open-url|termux-dialog) echo termux-api ;;
+        sha256sum|stat|timeout) echo coreutils ;;
+        setsid) echo util-linux ;;
+        *) echo "$1" ;;
+    esac
+}
+if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; then
+    need_pkgs=""
+    for c in tmux proot-distro python3 sha256sum stat timeout setsid termux-open-url termux-dialog; do
+        command -v "$c" >/dev/null 2>&1 && continue
+        p="$(pkg_for "$c")"
+        case " $need_pkgs " in *" $p "*) ;; *) need_pkgs="$need_pkgs $p" ;; esac
+    done
+    if [ -n "$need_pkgs" ]; then
+        say "== 0/5 Einrichtung: Termux-Pakete"
+        say "  pkg install -y$need_pkgs"
+        # shellcheck disable=SC2086   # $need_pkgs is a list of package names on purpose
+        DEBIAN_FRONTEND=noninteractive pkg install "${PKG_OPTS[@]}" $need_pkgs \
+            || die "pkg install$need_pkgs ist fehlgeschlagen (Netz? pkg update?). Erneut starten: bash install.sh"
+        hash -r
+        SETUP_DID=1
+    fi
+fi
+
+if [ "$DEPS" = 1 ]; then
+    missing=""
+    for c in tmux proot-distro sha256sum stat timeout setsid; do
+        command -v "$c" >/dev/null 2>&1 || missing="$missing $c"
+    done
+    if [ -n "$missing" ]; then
+        say "Fehlende Pakete:$missing"
+        say "Installieren mit: pkg install tmux proot-distro coreutils util-linux"
+        exit 1
+    fi
+    command -v su >/dev/null 2>&1 || say "Hinweis: kein 'su' gefunden - Root-Befehle werden mit Code 127 beantwortet."
+    command -v termux-dialog >/dev/null 2>&1 \
+        || say "Hinweis: pkg install termux-api und die App Termux:API (für die Rückfrage bei Root-Anfragen, Browser-Öffnen und Zwischenablage). Ohne den Dialog lehnt der Daemon jede Root-Anfrage ab."
+fi
+
+command -v python3 >/dev/null 2>&1 || die "python3 fehlt (pkg install python)"
+
+say "== 1/5 Programme"
+inst "$REPO/termux/bin/rootbridge"        "$PREFIX/bin/rootbridge"
+inst "$REPO/termux/bin/rootbridge-daemon" "$PREFIX/bin/rootbridge-daemon"
+inst "$REPO/termux/bin/ptt"               "$PREFIX/bin/ptt"
+inst "$REPO/termux/lib/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
+inst "$REPO/termux/lib/keyreader.py"      "$PREFIX/lib/termux-rootbridge/keyreader.py"
+chmod 644 "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/keyreader.py"
+# A running daemon keeps its old code in memory (an old one wants tickets that nothing issues any more): stop it. The new
+# one starts at the end of the installation.
+old_pid="$(cat "$BRIDGE_DIR/.lock/pid" 2>/dev/null || true)"
+if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
+    "$PREFIX/bin/rootbridge" daemon-stop >/dev/null 2>&1 || kill "$old_pid" 2>/dev/null || true
+    say "  laufender Daemon beendet (der neue startet am Ende der Installation)"
+fi
+
+say "== 2/5 Konfiguration"
 TMP_SNIP="$(mktemp)"; cp "$REPO/termux/tmux.conf.snippet" "$TMP_SNIP"
 set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
 
@@ -768,6 +797,24 @@ key_reader() {
 key_reader sidekey-ptt "$USE_SIDEKEY" Seitentaste
 key_reader headset-ptt "$USE_HEADSET" Headset-Taste
 
+# Android's phantom process killer: off on every run on a terminal (an Android update may set it back); on again only when
+# it was off before this run. Root: only on a terminal, where the root manager can ask you.
+# Switching it on is done once it worked: until then PHANTOM_KILLER=restore keeps it pending.
+phantom=""
+if [ "$USE_PHANTOM_OFF" = yes ]; then phantom=off; elif [ "$(cfg_get PHANTOM_KILLER)" = restore ]; then phantom=on; fi
+if [ -n "$phantom" ]; then
+    if [ "$DO_SETUP" = 1 ] && { [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; }; then
+        say "  Phantom Process Killer $phantom (Root; der Root-Manager fragt):"
+        if "$PREFIX/bin/rootbridge" phantom-killer "$phantom"; then
+            [ "$phantom" = off ] || cfg_set PHANTOM_KILLER on "Phantom Process Killer: on (Android-Standard)"
+        else
+            say "  Hinweis: nicht geändert. Später:  rootbridge phantom-killer $phantom"
+        fi
+    else
+        say "  Phantom Process Killer: einmal von Hand   rootbridge phantom-killer $phantom   (braucht Root)"
+    fi
+fi
+
 say "== 4/5 Migration der alten Popup-Bridge (v1)"
 if [ "$DO_MIGRATE" = 1 ]; then
     OLD_FILES=""
@@ -875,6 +922,14 @@ if [ "$DO_GUEST" = 1 ]; then
     rm -rf "$STAGE"
 else
     say "  übersprungen (--no-guest)"
+fi
+
+# the choice of the tools, now that they are installed (see the questions)
+if [ "$USE_CLAUDE_SET" = 1 ]; then
+    cfg_set TOOL_CLAUDE "$(onoff "$USE_CLAUDE")" "Claude Code: $USE_CLAUDE"
+fi
+if [ "$USE_CODEX_SET" = 1 ]; then
+    cfg_set TOOL_CODEX "$(onoff "$USE_CODEX")" "Codex: $USE_CODEX"
 fi
 
 # start the daemon with the new code: without it nothing reads aloud and no root request gets through until the next session

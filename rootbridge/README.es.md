@@ -118,6 +118,19 @@ Termux:Boot la sesión se crea en segundo plano tras un reinicio (`rootbridge st
 **arrancando en modo plan** (según tu `settings.json`); pulsa **Shift+Tab** para cambiar a *bypass permissions* (en un
 teléfono, con la tecla **S-TAB** que el instalador añade a la fila de teclas extra de Termux, ver abajo).
 
+**Preguntas al principio.** El instalador hace todas sus preguntas al empezar, antes de instalar nada; después sigue
+sin preguntar. En una shell interactiva de Termux cada pregunta aparece una sola vez: la respuesta queda en la
+configuración de Termux y su opción la cambia después: Claude Code (`--claude`/`--no-claude`), Codex
+(`--codex`/`--no-codex`; con los dos instalados, Codex revisa cada commit de Claude Code), el nombre del dispositivo
+(`--remote-name NAME`), las teclas de push to talk y el **phantom process killer** de Android
+(`--phantom-killer-off`/`--phantom-killer-on`, necesita root). Este termina los procesos hijos de una app por encima de
+32 («Trimming phantom processes»), entre ellos tmux con las sesiones. Desactivado, el instalador ejecuta
+`rootbridge phantom-killer off` como root en cada ejecución (una actualización de Android puede revertirlo). Para que
+Android no lo revierta solo, deja además de cargar ajustes del sistema a distancia (`device_config`), en todo el
+teléfono; `on` lo deshace;
+`rootbridge phantom-killer on|status` también funcionan a mano. Sin root: Opciones de desarrollador, «Inhabilitar
+restricciones de procesos secundarios». Cada pregunta dice si necesita root.
+
 Opciones: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`,
 `--remote-name NAME`, `--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`,
 `--no-claude-update`, `--codex-update 6h|<N>h|daily|always|off`, `--no-codex-update`, `--no-claude`, `--no-codex` (`--claude` / `--codex` vuelven a activar una herramienta, ver [Codex junto a Claude Code](#codex-junto-a-claude-code)). El instalador es idempotente, hace copia de seguridad de lo que modifica y migra el antiguo puente

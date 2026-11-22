@@ -5,6 +5,12 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **`rootbridge phantom-killer off|on|status`.** Android's phantom process killer ends tmux with the sessions when an app
+  has more than 32 child processes. `off` switches it off as root (as the developer option "Disable child process
+  restrictions", and keeps `device_config` from setting it back: Android then loads no system settings from remote, for
+  the whole phone; the question says so), `on` gives Android's defaults back. The installer asks
+  once (`PHANTOM_KILLER`, `--phantom-killer-off` / `--phantom-killer-on`) and sets `off` on every run on a terminal.
+  Tests: `tests/test_voice.sh`.
 * **Beeps for the voice commands, and whole answers by voice.** After a sentence of `speak.py --command` two short beeps
   say how it went: high when it was done (on, go on, repeat, switched), low when it stopped, switched off or had nothing
   to do (the tones of `ptt`, twice). "Lies mir alles vor" / "Lies mir den gesamten Text vor" / "Read the whole answer"
@@ -145,6 +151,10 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **The installer asks all its questions first.** Before anything is installed, on a terminal and each only once (the
+  answer is stored, its option changes it): Claude Code and Codex (`TOOL_CLAUDE`, `TOOL_CODEX`; a stored `off` now counts
+  for Codex too), the device name, the keys for push to talk, and Android's phantom process killer. Then it runs through.
+  Tests: `tests/test_remote_name.sh`.
 * **The installer asks for the device name only once.** A valid name in the Termux config (`REMOTE_NAME`) counts, like
   the keys for push to talk; `--remote-name NAME` changes it. Tests: `tests/test_remote_name.sh`.
 * **The volume keys change the volume while Termux is in front.** The block of the installer in `~/.termux/termux.properties` (with
