@@ -357,7 +357,7 @@ Standardmäßig an; `--no-voice` lässt es weg (gespeichert als `VOICE`, eine Ne
   die nächste Antwort kommt danach dran. Wenn `ptt` startet (Home-Langdruck, Seitentaste) und solange Claude Code aufnimmt, pausiert das
   Vorlesen, sonst nähme das Mikrofon die Stimme auf, und geht danach an derselben Stelle weiter.
   Nach der Installation ist das Vorlesen an. Schalten: Widget **Vorlesen** (an/aus, mit Toast; aus beendet auch das laufende Lesen) und
-  Widget **Stopp** (nur jetzt still), beide in `~/.shortcuts/tasks/` (sie laufen im Hintergrund), oder `rootbridge voice speak on|off|toggle|stop`.
+  Widget **Stopp** (nur jetzt still), beide in `~/.shortcuts/tasks/` (sie laufen im Hintergrund), oder `rootbridge voice speak on|off|toggle|stop`. Ein Prompt, der nur aus einem Stoppwort besteht („Stopp“, „Halt“, „Ruhe“, „Still“, „Stop“; gesprochen oder getippt), beendet das Vorlesen samt Warteschlange sofort und geht nicht an Claude.
   `rootbridge voice speak first` liest nur eine Kurzfassung jeder Antwort: den ganzen ersten Absatz und die letzte Frage weiter unten (Datei `~/.rootbridge/speak-first`; die erste Installation mit Sprache schaltet sie ein, `SPEAK_SHORT=set` in der Konfig merkt sich das), `all` wieder die ganze Antwort.
   Damit die Kurzfassung trägt, steht im Block des Installers in `~/.claude/CLAUDE.md` (Vorlage `guest/templates/speech.claude.md`): zuerst eine
   Zusammenfassung von höchstens fünf Sätzen, Fragen an dich ganz am Ende. Antwortet Claude Code auf Deutsch (`"language": "german"` in

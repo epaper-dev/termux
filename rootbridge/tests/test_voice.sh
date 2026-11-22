@@ -755,7 +755,7 @@ check "Gast frisch: voice in settings.json"                '{"enabled": true, "m
 MS="$GA/etc/claude-code/managed-settings.json"
 hookcmd() { python3 -I -c "import json,sys; print(' '.join(h['command'] for e in json.load(open(sys.argv[1])).get('hooks',{}).get(sys.argv[2],[]) for h in e['hooks'] if 'speak.py' in h['command']))" "$1" "$2"; }
 check "Gast frisch: Stop-Hook liest vor (mit Marker für die Deinstallation)" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --hook" "$(hookcmd "$MS" Stop)"
-check "Gast frisch: kein UserPromptSubmit-Hook, Absenden unterbricht das Vorlesen nicht" "" "$(hookcmd "$MS" UserPromptSubmit)"
+check "Gast frisch: UserPromptSubmit nur für Stoppwörter (Absenden unterbricht sonst nicht)" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --command" "$(hookcmd "$MS" UserPromptSubmit)"
 check "Gast frisch: speak.py und rootbridge-speak"         "ja ja" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak")"
 check "Gast frisch: rootbridge-speak mit dem Python des Gasts" 1 "$(count "$GA/usr/local/bin/rootbridge-speak" '^exec /usr/bin/python3 -I .*/usr/local/lib/termux-rootbridge/speak.py')"
 check "Gast frisch: CLAUDE.md, ein Block mit Code Quality und dem Text fürs Vorlesen" "1 1 1" \

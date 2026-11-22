@@ -634,6 +634,34 @@ class TestPlayer(unittest.TestCase):
         out = subprocess.run(["pgrep", "-g", str(pid)], capture_output=True)
         self.assertEqual(out.stdout, b"", "ein Kind des Abspielers läuft noch")
 
+    def command(self, prompt, **extra):
+        return self.run_speak(["--command"], json.dumps({"prompt": prompt}), **extra)
+
+    def test_a_spoken_stop_ends_the_reading_and_stays_with_us(self):
+        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "lang"}), SLOW="1")
+        pid = self.player_pid()
+        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "danach"}))
+        r = self.command(" Stopp. ")
+        self.assertEqual(json.loads(r.stdout), {"decision": "block", "reason": "Vorlesen gestoppt."})
+        self.assertTrue(self.wait_for(lambda: not os.path.exists("/proc/%d" % pid)), "Abspieler läuft noch")
+        self.assertTrue(self.wait_for(lambda: os.listdir(os.path.join(self.bridge, "speak-queue")) == []),
+                        "ein wartender Text blieb")
+        self.assertNotEqual(self.out_file("piper.in"), "danach")
+
+    def test_each_stop_word_counts(self):
+        for word in ("Stop!", "halt", "Ruhe.", "STILL"):
+            self.assertEqual(json.loads(self.command(word).stdout)["decision"], "block", word)
+
+    def test_a_prompt_with_more_words_goes_to_claude(self):
+        for prompt in ("Stopp mal den Server", "Halt, warte", "Weiter"):
+            r = self.command(prompt)
+            self.assertEqual((r.returncode, r.stdout), (0, b""), prompt)
+
+    def test_a_spoken_stop_works_also_when_reading_is_off(self):
+        open(os.path.join(self.bridge, "speak-off"), "w").close()
+        self.assertEqual(json.loads(self.command("Stopp").stdout)["decision"], "block")
+        self.assertTrue(os.path.exists(os.path.join(self.bridge, "speak-stopped")))
+
     def test_a_stop_right_after_the_hook_ends_the_player(self):
         # a stop that comes while the player is still starting (the long press on Home right after an answer)
         self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Hallo"}), SLOW="1")

@@ -9,6 +9,8 @@ the PreToolUse hook; a new text ends the one still being read.
   speak.py --hook     Stop hook: reads last_assistant_message from the hook JSON on stdin, unless the switch is off
   speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once
   speak.py --stop     end what is being read and what waits (rootbridge-speak --stop)
+  speak.py --command  UserPromptSubmit hook: a prompt that is only a stop word ("Stopp", "Halt", ...; STOP_WORDS) ends
+                      what is being read and what waits, at once and also when the switch is off, and does not go to Claude
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
                       yet, so ask on the terminal (yes records, no asks again at the next start, "nie" never again;
@@ -65,6 +67,8 @@ FOCUS_WAIT_SECONDS = 1.5   # a round of the daemon is 0.5 s, its question to And
 STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop (--stop here, rb_speak_stop in Termux)
 HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about to record (rb_speak_hold in Termux)
 HOLD_SECONDS = 3          # how long that pauses reading when no recorder comes (ptt waits PTT_WARMUP + 2 s for one)
+# a prompt that is only one of these words (case, marks and spaces aside) stops the reading and stays with us (--command)
+STOP_WORDS = {"stopp", "stop", "halt", "ruhe", "still"}
 CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
 PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key
 TAIL_BYTES = 512 * 1024   # the newest note stands near the end of the transcript; the hook runs before every tool call
@@ -629,6 +633,19 @@ def speak_answer(message):
     start(text)   # the hooks stay silent towards Claude Code: a failure is in the log
 
 
+def command():
+    """A prompt that is just a stop word is for us: stop at once (never through the queue) and keep it from Claude."""
+    try:
+        data = json.load(sys.stdin)
+    except ValueError:
+        return
+    prompt = isinstance(data, dict) and data.get("prompt")
+    if isinstance(prompt, str) and re.sub(r"[\W_]+", "", prompt.lower()) in STOP_WORDS:
+        mark_stopped()
+        stop()
+        print(json.dumps({"decision": "block", "reason": "Vorlesen gestoppt."}))
+
+
 def hook():
     data = hook_input()
     message = data and data.get("last_assistant_message")
@@ -723,6 +740,8 @@ def main(argv):
     elif argv[:1] == ["--stop"]:
         mark_stopped()
         stop()
+    elif argv[:1] == ["--command"]:
+        command()
     elif argv[:1] == [RUN_ARG] and len(argv) == 4 and argv[1].isdigit() and argv[3] == PAUSES_ARG:
         run(argv[1], argv[2])
     elif argv[:1] == ["--record"]:

@@ -5,6 +5,10 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Say "Stopp" to end the reading.** A prompt that is only a stop word ("Stopp", "Halt", "Ruhe", "Still", "Stop";
+  case and marks aside) ends what is being read and what waits at once (a new `UserPromptSubmit` hook, `speak.py --command`)
+  and is kept from Claude; any other prompt goes on as before and does not cut off the reading. Tests: `tests/test_speak.py`,
+  `tests/test_voice.sh`.
 * **A long press on the headset key no longer pauses the music.** Android saw the key as well and sent each repeat
   of the held key to the music app, which paused and played by turns (and started its voice search). The root reader
   of `headset-ptt` (`headset-ptt --grab DEV`) now takes the device for itself (`EVIOCGRAB`) and passes the rest on

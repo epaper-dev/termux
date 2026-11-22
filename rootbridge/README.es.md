@@ -335,7 +335,7 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
   el micrófono grabaría la voz) y luego sigue donde se quedó. Tras la
   instalación la lectura está activada. Se cambia con el widget **Vorlesen** (sí/no, con un aviso; no también termina la lectura en curso) y
   el widget **Stopp** (silencio ahora), ambos en `~/.shortcuts/tasks/` (se ejecutan en segundo plano), o con
-  `rootbridge voice speak on|off|toggle|stop`. `rootbridge voice speak first` lee solo una versión corta de cada respuesta: su primer párrafo entero y la última pregunta más abajo (el archivo
+  `rootbridge voice speak on|off|toggle|stop`. Un prompt que solo es una palabra de parada («Stopp», «Halt», «Ruhe», «Still», «Stop»; dicha o escrita) termina la lectura y lo que espera al instante y no llega a Claude. `rootbridge voice speak first` lee solo una versión corta de cada respuesta: su primer párrafo entero y la última pregunta más abajo (el archivo
   `~/.rootbridge/speak-first`; la primera instalación con voz lo activa, `SPEAK_SHORT=set` en la configuración lo recuerda), `all` vuelve a leerla entera.
   Para que la versión corta lleve la respuesta, el bloque del instalador en `~/.claude/CLAUDE.md` (plantilla `guest/templates/speech.claude.md`) pide
   primero un resumen de cinco frases como mucho y todas las preguntas al final. Si Claude Code responde en alemán
