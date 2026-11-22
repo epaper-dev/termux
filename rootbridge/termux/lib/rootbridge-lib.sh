@@ -258,7 +258,8 @@ rb_speak_hold() {
 }
 
 # the sentences that speak.py --command keeps from Claude (STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES,
-# REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, ALL_PHRASES, SHORT_PHRASES, HELP_PHRASES there; written the same way:
+# REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, WHOLE_PHRASES,
+# ALL_PHRASES, SHORT_PHRASES, HELP_PHRASES there; written the same way:
 # lower case, marks out): only these leave the input line (rb_prompt_clear). tests/test_voice.sh checks that both lists match.
 RB_SPEAK_SENTENCES=(
     "beende die sprachausgabe" "stoppe die sprachausgabe" "stopp die sprachausgabe" "beende die sprachansage"
@@ -273,12 +274,14 @@ RB_SPEAK_SENTENCES=(
     "wiederhole den letzten satz" "lies den letzten satz nochmal" "lies den letzten satz noch mal" "repeat the last sentence"
     "wiederhole den text nochmal" "wiederhole den text noch mal" "lies das nochmal vor" "lies das noch mal vor"
     "wiederhole die letzte ausgabe" "repeat the last text"
-    "lies alles vor" "lese alles vor" "lies mir alles vor" "lese mir alles vor" "lies immer alles vor"
-    "lies die ganze antwort vor" "lies mir den gesamten text vor" "lese mir den gesamten text vor"
-    "lies den gesamten text vor" "read everything aloud" "read the whole answer" "lies nur die kurzfassung vor"
-    "lies die kurzfassung vor" "lies mir die kurzfassung vor" "lese mir die kurzfassung vor"
-    "lies nur die zusammenfassung vor" "lies nur das wichtigste vor" "read only the summary"
-    "read only the short version"
+    "lies alles vor" "lese alles vor" "lies mir alles vor" "lese mir alles vor" "lies die ganze antwort vor"
+    "lies mir die ganze antwort vor" "lies den gesamten text vor" "lies mir den gesamten text vor"
+    "lese mir den gesamten text vor" "read everything aloud" "read the whole answer" "lies immer alles vor"
+    "lies mir immer alles vor" "lese immer alles vor" "lies ab jetzt alles vor" "lies ab jetzt immer alles vor"
+    "always read everything" "always read the whole answer" "lies nur die kurzfassung vor"
+    "lies immer nur die kurzfassung vor" "lies ab jetzt nur die kurzfassung vor" "lies die kurzfassung vor"
+    "lies mir die kurzfassung vor" "lese mir die kurzfassung vor" "lies nur die zusammenfassung vor"
+    "lies nur das wichtigste vor" "read only the summary" "read only the short version" "always read only the summary"
     "welche sprachbefehle gibt es" "zeige die sprachbefehle" "zeig mir die sprachbefehle" "zeige mir die sprachbefehle"
     "show the speech commands"
 )

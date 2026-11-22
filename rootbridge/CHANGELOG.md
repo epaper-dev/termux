@@ -7,9 +7,11 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
 ### Added
 * **Beeps for the voice commands, and whole answers by voice.** After a sentence of `speak.py --command` two short beeps
   say how it went: high when it was done (on, go on, repeat, switched), low when it stopped, switched off or had nothing
-  to do (the tones of `ptt`, twice). "Lies alles vor" / "Lies mir den gesamten Text vor" / "Read everything aloud" read
-  whole answers (without code) from now on, "Lies nur die Kurzfassung vor" / "Read only the summary" only the short
-  version again (`speak-first`, as `rootbridge voice speak all|first`). Tests: `tests/test_speak.py`.
+  to do (the tones of `ptt`, twice). "Lies mir alles vor" / "Lies mir den gesamten Text vor" / "Read the whole answer"
+  read the newest answer whole once, also after its short version (`speak-answer.<session>` in the bridge directory); "Lies immer
+  alles vor" / "Always read everything" read whole answers (without code) from now on, "Lies nur die Kurzfassung vor" /
+  "Read only the summary" only the short version again (`speak-first`, as `rootbridge voice speak all|first`). Tests:
+  `tests/test_speak.py`.
 * **"Welche Sprachbefehle gibt es" shows all voice commands.** Claude Code shows the sentences to stop, go on, repeat and
   switch reading, by what they do (`speak.py --command`, `HELP_PHRASES`); the READMEs list them as well (a test keeps
   them complete), and the block for `~/.claude/CLAUDE.md` tells Claude about them, so it can name the right sentence

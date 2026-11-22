@@ -674,7 +674,7 @@ class TestPlayer(unittest.TestCase):
         self.assertEqual(out.stdout, b"", "ein Kind des Abspielers läuft noch")
 
     def command(self, prompt, **extra):
-        return self.run_speak(["--command"], json.dumps({"prompt": prompt}), **extra)
+        return self.run_speak(["--command"], json.dumps({"prompt": prompt, "session_id": "s1"}), **extra)
 
     def test_a_spoken_stop_sentence_ends_the_reading_and_stays_with_us(self):
         self.run_speak(["--hook"], json.dumps({"last_assistant_message": "lang"}), SLOW="1")
@@ -715,12 +715,51 @@ class TestPlayer(unittest.TestCase):
     def test_sentences_switch_between_whole_answers_and_the_short_version(self):
         first = os.path.join(self.bridge, "speak-first")
         open(first, "w").close()
-        r = self.command("Lies alles vor.")
-        self.assertEqual(json.loads(r.stdout)["reason"], "Ab jetzt lese ich ganze Antworten vor (ohne Code).")
+        r = self.command("Lies mir immer alles vor.")
+        self.assertEqual(json.loads(r.stdout)["reason"], "Ab jetzt lese ich immer ganze Antworten vor (ohne Code).")
         self.assertFalse(os.path.exists(first))
         self.command("Lies nur die Kurzfassung vor")
         self.assertTrue(os.path.exists(first))
         self.assertFalse(os.path.exists(os.path.join(self.bridge, "speak-stopped")), "umschalten stoppt nichts")
+
+    def test_read_everything_reads_the_newest_answer_whole_once(self):
+        first = os.path.join(self.bridge, "speak-first")
+        open(first, "w").close()
+        r = self.command("Lies mir alles vor")
+        self.assertEqual(json.loads(r.stdout)["reason"], "Es gibt keine Antwort, die ich vorlesen könnte.")
+        piper = self.piper_stub("piper-all", 'printf "%s\\n" "$line" >> "$OUT/piper.all"')
+        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Kurz gesagt.\n\nDetails hier.\n\n```\ncode\n```",
+                                               "session_id": "s1"}), RB_SPEAK_PIPER_PYTHON=piper)
+        self.assertTrue(self.wait_for(lambda: (self.last() or {}).get("index") == 1))
+        r = self.command("Lies mir den gesamten Text vor", RB_SPEAK_PIPER_PYTHON=piper)
+        self.assertEqual(json.loads(r.stdout)["reason"], "Ich lese die letzte Antwort ganz vor.")
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.all") == "Kurz gesagt.\nKurz gesagt.\nDetails hier.\n"),
+                        self.out_file("piper.all"))
+        self.assertTrue(os.path.exists(first), "einmal ganz: die nächsten Antworten bleiben kurz")
+
+    def test_the_newest_answer_of_its_own_window_is_kept_also_when_reading_is_off(self):
+        open(os.path.join(self.bridge, "speak-off"), "w").close()
+        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Neu.", "session_id": "s1"}))
+        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Anderes Fenster.", "session_id": "s2"}))
+        time.sleep(0.3)
+        self.assertIsNone(self.out_file("piper.in"))
+        r = self.command("Lies mir alles vor")
+        self.assertEqual(json.loads(r.stdout)["reason"], "Ich lese die letzte Antwort ganz vor.")
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Neu."))
+
+    def test_an_unreadable_kept_answer_is_logged(self):
+        os.mkfifo(os.path.join(self.bridge, "speak-answer.s1"))
+        r = self.command("Lies mir alles vor")
+        self.assertEqual(json.loads(r.stdout)["reason"], "Es gibt keine Antwort, die ich vorlesen könnte.")
+        self.assertTrue(self.logged("speak-answer.s1: keine reguläre Datei"))
+
+    def test_kept_answers_of_old_sessions_go(self):
+        old = os.path.join(self.bridge, "speak-answer.alt")
+        open(old, "w").close()
+        os.utime(old, (time.time() - 8 * 86400,) * 2)
+        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Neu.", "session_id": "s1"}))
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.exists(os.path.join(self.bridge, "speak-answer.s1")))
 
     def beeps(self, prompt):
         """The audio of the beeps for prompt (they go to play in the background)."""
