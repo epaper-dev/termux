@@ -12,9 +12,9 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   recording that did not end) is out of date: its player leaves unread and says so in the log. What is being read goes on to
   the end. Tests: `tests/test_speak.py`.
 * **Say a stop sentence to end the reading.** A prompt that is a stop sentence ("Beende die Sprachausgabe", "Stoppe die
-  Sprachausgabe", "Hör auf zu reden", "Stop reading aloud", "Stop the speech", "Stop talking now"; case and marks aside)
+  Sprachausgabe", "Hör auf zu reden", "Beende das Vorlesen", "Stop reading aloud", "Stop the speech", "Stop talking now"; case and marks aside)
   ends what is being read and what waits at once (a new `UserPromptSubmit` hook, `speak.py --command`) and is kept from
-  Claude. "Schalte die Sprachausgabe aus|ein" / "Turn speech off|on" switch reading off for good or on again the same
+  Claude. "Schalte die Sprachausgabe aus|ein", "Starte das Vorlesen" / "Turn speech off|on" switch reading off for good or on again the same
   way. Sentences, not single words: Claude Code sends a dictated prompt of several words by itself; any other prompt goes on as before and does not cut off the reading. Claude Code keeps a blocked prompt in its input line; the daemon in Termux empties
   it (Ctrl+U through tmux, `rb_prompt_clear`, only for the known sentences) while it still holds just that sentence. Tests: `tests/test_speak.py`,
   `tests/test_voice.sh`.

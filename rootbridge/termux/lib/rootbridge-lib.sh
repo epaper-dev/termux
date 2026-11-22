@@ -261,12 +261,12 @@ rb_speak_hold() {
 # lower case, marks out): only these leave the input line (rb_prompt_clear). tests/test_voice.sh checks that both lists match.
 RB_SPEAK_SENTENCES=(
     "beende die sprachausgabe" "stoppe die sprachausgabe" "stopp die sprachausgabe" "beende die sprachansage"
-    "stoppe die sprachansage" "stoppe jetzt die sprachansage" "hör auf zu reden" "höre auf zu reden" "stop reading aloud"
-    "stop the speech" "stop talking now"
+    "stoppe die sprachansage" "stoppe jetzt die sprachansage" "hör auf zu reden" "höre auf zu reden" "beende das vorlesen"
+    "stoppe das vorlesen" "stopp das vorlesen" "stop reading aloud" "stop the speech" "stop talking now"
     "schalte die sprachausgabe aus" "schalte das vorlesen aus" "sprachausgabe dauerhaft aus" "turn speech off"
     "turn reading off" "switch speech off"
     "schalte die sprachausgabe ein" "schalte die sprachausgabe an" "schalte das vorlesen ein" "schalte das vorlesen an"
-    "turn speech on" "turn reading on" "switch speech on"
+    "starte die sprachausgabe" "starte das vorlesen" "turn speech on" "turn reading on" "switch speech on"
 )
 
 # rb_prompt_clear: called by the daemon every round. Claude Code puts a prompt that a hook blocked back into its input line,

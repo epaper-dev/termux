@@ -79,11 +79,13 @@ HOLD_SECONDS = 3          # how long that pauses reading when no recorder comes 
 # Claude Code sends a dictated prompt of several words by itself, one word waits for Enter.
 STOP_PHRASES = {"beende die sprachausgabe", "stoppe die sprachausgabe", "stopp die sprachausgabe",
                 "beende die sprachansage", "stoppe die sprachansage", "stoppe jetzt die sprachansage",
-                "hör auf zu reden", "höre auf zu reden", "stop reading aloud", "stop the speech", "stop talking now"}
+                "hör auf zu reden", "höre auf zu reden", "beende das vorlesen", "stoppe das vorlesen", "stopp das vorlesen",
+                "stop reading aloud", "stop the speech", "stop talking now"}
 OFF_PHRASES = {"schalte die sprachausgabe aus", "schalte das vorlesen aus", "sprachausgabe dauerhaft aus",
                "turn speech off", "turn reading off", "switch speech off"}
 ON_PHRASES = {"schalte die sprachausgabe ein", "schalte die sprachausgabe an", "schalte das vorlesen ein",
-              "schalte das vorlesen an", "turn speech on", "turn reading on", "switch speech on"}
+              "schalte das vorlesen an", "starte die sprachausgabe", "starte das vorlesen", "turn speech on",
+              "turn reading on", "switch speech on"}
 MAX_WAIT = float(os.environ.get("RB_SPEAK_MAX_WAIT", 120))   # seconds a text may wait for its turn; older is dropped unread
 CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
 PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key

@@ -651,7 +651,7 @@ class TestPlayer(unittest.TestCase):
             self.assertEqual(fh.read(), "Beende die Sprachausgabe.")   # for Termux to empty the input line
 
     def test_each_stop_sentence_counts(self):
-        for word in ("Stoppe die Sprachausgabe!", "hör auf zu reden", "Höre auf, zu reden.", "STOP READING ALOUD",
+        for word in ("Stoppe die Sprachausgabe!", "hör auf zu reden", "Beende das Vorlesen.", "Stopp das Vorlesen!", "Höre auf, zu reden.", "STOP READING ALOUD",
                      "Stop the speech.", "Stop talking now"):
             self.assertEqual(json.loads(self.command(word).stdout)["decision"], "block", word)
 
@@ -663,7 +663,7 @@ class TestPlayer(unittest.TestCase):
         self.assertEqual(json.loads(r.stdout)["decision"], "block")
         self.assertTrue(os.path.exists(off))
         self.assertTrue(self.wait_for(lambda: not os.path.exists("/proc/%d" % pid)), "Abspieler läuft noch")
-        r = self.command("turn speech on")
+        r = self.command("Starte das Vorlesen.")
         self.assertEqual(json.loads(r.stdout), {"decision": "block", "reason": "Vorlesen eingeschaltet."})
         self.assertFalse(os.path.exists(off))
 
