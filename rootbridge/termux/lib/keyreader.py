@@ -20,7 +20,8 @@ import time
 
 EVENT = struct.Struct("<qqHHi")                      # struct input_event on 64 bit: time (2 x 8), type, code, value
 EV_KEY = 1
-ROOT_READER = '"cat /dev/input/event"*'                 # a root reader that is still running (a case pattern)
+# a root reader that is still running (a case pattern): a `cat` of an input device, or a reader's own (`<script> --grab DEV`)
+ROOT_READER = '"cat /dev/input/event"*|*" --grab /dev/input/event"*'
 
 
 class Reader:
@@ -44,7 +45,7 @@ class Reader:
         return []
 
     def command(self, dev):
-        """The root reader of one device."""
+        """The root reader of one device: it prints its pid on the first line, then the events of the device."""
         return ["su", "-c", "echo $$; exec cat " + dev]
 
     def on_long(self, proc):
@@ -126,9 +127,10 @@ class Reader:
             if devices is None:
                 return 0.0
             cmds = [self.command(d) for d in devices]
-        for cmd in cmds:
-            self.procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                               stdin=subprocess.DEVNULL))
+        # stdin: what a root reader of its own is to pass on (`cat` ignores it); stderr: its messages go to the log
+        with open(self.log_file, "a") as log_fh:
+            for cmd in cmds:
+                self.procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=log_fh, stdin=subprocess.PIPE))
         self.log("liest: %s" % ", ".join(cmd[-1] for cmd in cmds))
         procs = {p.stdout.fileno(): p for p in self.procs}
         bufs = {fd: b"" for fd in procs}

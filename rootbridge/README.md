@@ -373,8 +373,10 @@ Short and double presses stay with the E-Ink app; set its long press to "Nothing
 `--no-sidekey` removes it. It is a bridge until the E-Ink app and the Termux app do this themselves.
 The **key of a wired headset** toggles instead (a long press starts, let go and speak, the next long press sends: the key shorts the
 microphone while it is held; a short press still plays and pauses the music): a reader of its own, `headset-ptt`
-(`--headset`), keeps a root `cat` on the buttons of the headset jack (the input device named "… Button Jack", `KEY_MEDIA`), also with the phone locked.
-A long press on that key also starts Android's voice search: no app should answer it, or its window opens as well.
+(`--headset`), reads the buttons of the headset jack (the input device named "… Button Jack", `KEY_MEDIA`) as root, also with the phone locked.
+It takes the device for itself, so Android no longer sees a long press (before, the music paused and played by turns while the key
+was held, and Android's voice search started); short and double presses and louder/quieter reach Android through a virtual
+device ("rootbridge headset"). When the reader ends, the device is Android's again.
 
 ## Logins and MCP links
 

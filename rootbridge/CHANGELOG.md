@@ -5,6 +5,12 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **A long press on the headset key no longer pauses the music.** Android saw the key as well and sent each repeat
+  of the held key to the music app, which paused and played by turns (and started its voice search). The root reader
+  of `headset-ptt` (`headset-ptt --grab DEV`) now takes the device for itself (`EVIOCGRAB`) and passes the rest on
+  through a virtual device (`/dev/uinput`, "rootbridge headset"): a short press as one click on its release, louder and
+  quieter as they come. Without uinput or the grab it reads as before (the reason is in the log). Tests:
+  `tests/test_sidekey.py`.
 * **The headset key has a reader of its own.** `headset-ptt` reads the key of a wired headset, `sidekey-ptt` only the
   side key of the Hisense A9; what both need (root readers, long press, log, lock) is in `keyreader.py` next to
   `rootbridge-lib.sh`. `rootbridge start|attach` start each reader that is chosen (`SIDEKEY`, `HEADSET`), `install.sh`

@@ -403,8 +403,10 @@ Kurz- und Doppeldruck bleiben bei der E-Ink-App; ihren Langdruck auf „Nothing�
 `--no-sidekey` entfernt ihn. Es ist eine Brücke, bis die E-Ink-App und die Termux-App das selbst können.
 Die **Taste eines Kabel-Headsets** schaltet um (Langdruck startet, loslassen und sprechen, der nächste Langdruck schickt ab: Die Taste
 schließt beim Halten das Mikrofon kurz; ein kurzer Druck startet und stoppt weiter die Musik):
-Ein eigener Leser, `headset-ptt` (`--headset`), hält ein root-`cat` auf den Tasten der Headset-Buchse (das Eingabegerät „… Button Jack“, `KEY_MEDIA`), auch bei gesperrtem
-Handy. Ein Langdruck auf diese Taste startet außerdem Androids Sprachsuche: Keine App sollte sie übernehmen, sonst geht deren Fenster mit auf.
+Ein eigener Leser, `headset-ptt` (`--headset`), liest die Tasten der Headset-Buchse (das Eingabegerät „… Button Jack“, `KEY_MEDIA`) als root, auch bei gesperrtem Handy.
+Er nimmt das Gerät für sich, damit Android keinen Langdruck mehr sieht (vorher wechselte die Musik beim Halten zwischen Pause und
+Abspielen, und Androids Sprachsuche startete); Kurz- und Doppeldruck sowie lauter/leiser kommen über ein virtuelles Gerät
+(„rootbridge headset“) bei Android an. Endet der Leser, gehört das Gerät wieder Android.
 
 ## Logins und MCP-Links
 

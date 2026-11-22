@@ -78,7 +78,10 @@ sandbox against a hostile agent or a compromised guest. Read the limits before r
   the guest can record while PulseAudio runs. The microphone
   permission for Termux is granted with a root command (`pm grant ... RECORD_AUDIO`, to Termux:API and for the shared user id to every Termux app) that `install.sh` runs **only on a terminal**, where the root manager asks you,
   and `rootbridge voice grant` runs on request; neither goes through the Claude Code hook. `--sidekey` keeps a root `cat` on `/dev/input/event2` alive
-  (reads the side key and the volume key, writes nothing); `--no-sidekey` or `uninstall.sh` removes it.
+  (reads the side key and the volume key, writes nothing); `--no-sidekey` or `uninstall.sh` removes it. `--headset` runs a root
+  reader of its own (`headset-ptt --grab`) on the buttons of the headset jack: it takes that device for itself (`EVIOCGRAB`) and
+  creates a virtual input device (`/dev/uinput`) that can send only the keys of the headset (volume, media, voice command), the
+  ones headset-ptt hands it; both end with the reader. `--no-headset` or `uninstall.sh` removes it.
 * **Bypass mode is bypass mode.** Everything not covered above runs unattended by design. Use it with projects
   and MCP servers you trust.
 

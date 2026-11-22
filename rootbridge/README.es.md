@@ -380,9 +380,10 @@ Inicio (root; en cada ejecución, por si «Forzar detención» lo quitó). Sin t
 La pulsación corta y la doble siguen con la app E-Ink; ajusta su pulsación larga a «Nothing». `rootbridge start|attach` arrancan el lector (una instancia),
 `--no-sidekey` lo elimina. Es un puente hasta que la app E-Ink y la app de Termux lo hagan por sí mismas.
 La **tecla de un auricular con cable** alterna (una pulsación larga empieza, suelta y habla, la siguiente pulsación larga envía: la tecla
-cortocircuita el micrófono mientras se mantiene; una pulsación corta sigue reproduciendo y pausando la música): un lector propio, `headset-ptt` (`--headset`), mantiene un `cat` de root sobre las teclas del conector del auricular (el dispositivo «… Button Jack», `KEY_MEDIA`),
-también con el teléfono bloqueado. Una pulsación larga en esa tecla inicia además la búsqueda por voz de Android: ninguna app debería
-atenderla, o se abre también su ventana.
+cortocircuita el micrófono mientras se mantiene; una pulsación corta sigue reproduciendo y pausando la música): un lector propio, `headset-ptt` (`--headset`), lee como root las teclas del conector del auricular (el dispositivo «… Button Jack», `KEY_MEDIA`),
+también con el teléfono bloqueado. Toma el dispositivo para sí, de modo que Android ya no ve una pulsación larga (antes la música se
+pausaba y reanudaba mientras se mantenía la tecla, y se iniciaba la búsqueda por voz); las pulsaciones cortas y dobles y subir/bajar
+el volumen llegan a Android a través de un dispositivo virtual («rootbridge headset»). Cuando el lector termina, el dispositivo vuelve a Android.
 
 ## Inicios de sesión y enlaces MCP
 

@@ -15,9 +15,14 @@ SIDEKEY = os.path.join(HERE, "..", "termux", "bin", "sidekey-ptt")
 HEADSET_READER = os.path.join(HERE, "..", "termux", "bin", "headset-ptt")
 READERS = {"side": (SIDEKEY, "SIDEKEY"), "headset": (HEADSET_READER, "HEADSET")}
 
-# writes the events of argv ("code:value:pause", ...) as struct input_event, each followed by a SYN, then waits a bit
+# writes the events of argv ("code:value:pause", ...) as struct input_event, each followed by a SYN, then waits a bit;
+# what the reader passes on (its stdin) goes to the file PASSED_LOG
 EVENTS = r"""
-import os, struct, sys, time
+import os, shutil, struct, sys, threading, time
+def keep():
+    with open(os.environ["PASSED_LOG"], "ab", buffering=0) as fh:
+        shutil.copyfileobj(sys.stdin.buffer.raw, fh, 1)
+threading.Thread(target=keep, daemon=True).start()
 out = sys.stdout.buffer
 out.write(b"%d\n" % os.getpid())   # like a root reader: its pid first
 for item in sys.argv[1:]:
@@ -25,7 +30,7 @@ for item in sys.argv[1:]:
     out.write(struct.pack("<qqHHi", 0, 0, 1, int(code), int(value)) + struct.pack("<qqHHi", 0, 0, 0, 0, 0))
     out.flush()
     time.sleep(float(pause))
-time.sleep(0.1)
+time.sleep(0.2)
 """
 
 SIDE, HEADSET, VOLUME = 766, 226, 115
@@ -39,6 +44,7 @@ class ReaderTest(unittest.TestCase):
         self.events = os.path.join(self.tmp.name, "events.py")
         with open(self.events, "w") as fh:
             fh.write(EVENTS)
+        self.passed = os.path.join(self.tmp.name, "passed")   # what a reader handed on to Android
         self.ptt = os.path.join(self.tmp.name, "ptt")
         with open(self.ptt, "w") as fh:
             fh.write("#!/bin/sh\necho \"$1\" >> %s\n" % self.log)
@@ -51,7 +57,7 @@ class TestKeys(ReaderTest):
         path, p = READERS[reader]
         cmd = " ".join([sys.executable, "-I", self.events] + list(events))
         env = dict(os.environ, **{p + "_CMD": cmd, p + "_PTT": self.ptt, p + "_ONCE": "1", p + "_LONG": "0.2",
-                                  p + "_CACHE": self.tmp.name})
+                                  p + "_CACHE": self.tmp.name}, PASSED_LOG=self.passed)
         subprocess.run([sys.executable, "-I", path], env=env, timeout=30, check=True)
         try:
             with open(self.log) as fh:
@@ -66,6 +72,32 @@ class TestKeys(ReaderTest):
 
     def test_short_press_of_the_headset_key_stays_with_the_music(self):
         self.assertEqual(self.press("%d:1:0.05" % HEADSET, "%d:0:0" % HEADSET, reader="headset"), [])
+
+    def passed_on(self):
+        try:
+            with open(self.passed) as fh:
+                return fh.read().splitlines()
+        except FileNotFoundError:
+            return []
+
+    def test_a_short_press_of_the_headset_key_goes_to_android_as_one_click(self):
+        self.press("%d:1:0.05" % HEADSET, "%d:0:0.1" % HEADSET, "%d:1:0.05" % HEADSET, "%d:0:0" % HEADSET,
+                   reader="headset")
+        self.assertEqual(self.passed_on(), ["226 1", "226 0", "226 1", "226 0"])
+
+    def test_a_long_press_of_the_headset_key_stays_with_the_reader(self):
+        # Android would send each repeat of the held key to the music app (pause, play, pause...)
+        self.press("%d:1:0.5" % HEADSET, "%d:0:0" % HEADSET, reader="headset")
+        self.assertEqual(self.passed_on(), [])
+
+    def test_the_other_headset_keys_go_to_android_as_they_come(self):
+        self.press("%d:1:0.5" % VOLUME, "%d:0:0" % VOLUME, reader="headset")
+        self.assertEqual(self.passed_on(), ["115 1", "115 0"])
+
+    def test_the_side_key_reader_passes_nothing_on(self):
+        # its `cat` does not take the device: Android reads the keys itself
+        self.press("%d:1:0.05" % SIDE, "%d:0:0" % SIDE, "%d:1:0.05" % VOLUME, "%d:0:0" % VOLUME)
+        self.assertEqual(self.passed_on(), [])
 
     def test_long_press_of_the_side_key(self):
         self.assertEqual(self.press("%d:1:0.5" % SIDE, "%d:0:0" % SIDE), ["start", "stop"])
@@ -171,7 +203,8 @@ class TestSources(ReaderTest):
         # another phone may have its headset buttons at event2
         self.stub_su("/dev/input/event2")
         self.assertEqual(self.sources(HEADSET_READER, "HeadsetKey"),
-                         "[['su', '-c', 'echo $$; exec cat /dev/input/event2']]")
+                         "[['su', '-c', 'echo $$; exec %s -I %s --grab /dev/input/event2']]"
+                         % (sys.executable, os.path.realpath(HEADSET_READER)))
 
     def test_the_headset_is_looked_up_as_root(self):
         out = subprocess.run([sys.executable, "-I", "-c",

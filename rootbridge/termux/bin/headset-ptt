@@ -2,23 +2,41 @@
 """headset-ptt - the key of a wired headset as push to talk: `ptt toggle` on each long press (the first starts, the next
 sends), nothing on release: the key of a wired headset shorts its microphone while it is held.
 
-BRIDGE until the Termux app does this itself. It keeps a root `cat` on the buttons of the headset jack alive (the input
-device whose name has "Button Jack", KEY_MEDIA; looked up as root at each start) and reads nothing else (keyreader.py).
-Short and double presses are ignored: they stay with the music (play, pause). A long press also starts Android's voice
-search, so no app should answer that (the A9 has none once Whisper is gone).
+BRIDGE until the Termux app does this itself. The buttons of the headset jack (the input device whose name has "Button
+Jack"; looked up as root at each start) are read by a root reader of its own, `headset-ptt --grab DEV` (keyreader.py):
+it takes the device for itself (EVIOCGRAB), so Android does not see a long press (otherwise it sends each repeat of the
+held key to the music app, which pauses and plays by turns, and starts its voice search). What stays with Android is
+passed on through a virtual device ("rootbridge headset", /dev/uinput): a short press (on its release, as one click;
+double presses stay double presses) and the other keys (louder, quieter) as they come. Without /dev/uinput or the grab
+the reader still works, and Android reads the keys as well (as before; the reason is in the log).
 
 Installed by `install.sh` when the headset key is chosen (HEADSET=on in the rootbridge config) and started by
-`rootbridge start|attach`. Runs in Termux as the Termux user; root is only the lookup and the `cat` (su).
+`rootbridge start|attach`. Runs in Termux as the Termux user; root is the lookup and the reader (su). The device is free
+again when the reader ends: it ends with the stdin from headset-ptt.
 Log: ~/.cache/headset-ptt.log      Stop it:  pkill -f headset-ptt
 Test hooks: HEADSET_CMD, HEADSET_PTT, HEADSET_LONG, HEADSET_ONCE, HEADSET_CACHE (see keyreader.py).
 """
+import fcntl
 import os
+import select
+import shlex
+import struct
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path[:0] = [os.path.join(HERE, "..", "lib", "termux-rootbridge"), os.path.join(HERE, "..", "lib")]
 import keyreader  # noqa: E402  (installed next to rootbridge-lib.sh, in the repository in termux/lib)
+
+KEY_MEDIA = 226
+# the keys of the virtual device: KEY_VOLUMEDOWN, KEY_VOLUMEUP, KEY_MEDIA, KEY_VOICECOMMAND (Android's Generic.kl:
+# VOLUME_DOWN, VOLUME_UP, HEADSETHOOK, VOICE_ASSIST)
+PASSED = (114, 115, KEY_MEDIA, 582)
+# ioctls (64 bit): EVIOCGRAB = _IOW('E', 0x90, int); UI_SET_EVBIT, UI_SET_KEYBIT = _IOW('U', 100/101, int);
+# UI_DEV_SETUP = _IOW('U', 3, struct uinput_setup), 92 bytes; UI_DEV_CREATE = _IO('U', 1)
+EVIOCGRAB, UI_SET_EVBIT, UI_SET_KEYBIT, UI_DEV_SETUP, UI_DEV_CREATE = 0x40044590, 0x40045564, 0x40045565, 0x405c5503, 0x5501
+BUS_VIRTUAL = 0x06
+SYN = keyreader.EVENT.pack(0, 0, 0, 0, 0)
 
 # the headset buttons, found by name (their event number depends on the kernel; apps may not read /sys/class/input)
 # (exit 1 when the list cannot be read at all: the reader starts over; a phone without a jack finds nothing, exit 0)
@@ -28,7 +46,7 @@ FIND_HEADSET = ('ls /sys/class/input/event0 >/dev/null || exit 1; '
 
 
 class HeadsetKey(keyreader.Reader):
-    name, prefix, key = "headset-ptt", "HEADSET", 226   # KEY_MEDIA
+    name, prefix, key = "headset-ptt", "HEADSET", KEY_MEDIA
 
     def devices(self):
         try:
@@ -46,6 +64,10 @@ class HeadsetKey(keyreader.Reader):
             return None
         return devices
 
+    def command(self, dev):
+        script = " ".join(shlex.quote(a) for a in (sys.executable, "-I", os.path.realpath(__file__), "--grab", dev))
+        return ["su", "-c", "echo $$; exec " + script]
+
     def on_long(self, proc):
         # A recording started here is not ended when the reader ends: in tap mode (Claude Code's default here) a stop
         # is one more key press, and after the recording was ended by hand (Esc) or by Claude Code that press would
@@ -54,6 +76,65 @@ class HeadsetKey(keyreader.Reader):
         self.log("Headset-Taste lang: ptt toggle")
         self.ptt("toggle")
 
+    def on_release(self, proc, was_long):
+        if not was_long:
+            self.pass_on(proc, [(KEY_MEDIA, 1), (KEY_MEDIA, 0)])
+
+    def on_other(self, proc, code, value):
+        self.pass_on(proc, [(code, value)])
+
+    def pass_on(self, proc, keys):
+        """Hand keys to the root reader of the device, which gives them to Android."""
+        try:
+            proc.stdin.write(b"".join(b"%d %d\n" % k for k in keys))
+            proc.stdin.flush()
+        except (OSError, ValueError):
+            pass                     # the reader is gone: its stream ends, and the reader starts over
+
+
+def grab(dev):
+    """As root: read DEV alone and copy its events to stdout; the keys on stdin ("code value" per line) go to Android
+    through the virtual device. Ends with stdin (headset-ptt is gone) or with the device (the jack goes)."""
+    fd = os.open(dev, os.O_RDONLY)
+    out = None
+    try:
+        out = os.open("/dev/uinput", os.O_WRONLY)
+        fcntl.ioctl(out, UI_SET_EVBIT, keyreader.EV_KEY)
+        for key in PASSED:
+            fcntl.ioctl(out, UI_SET_KEYBIT, key)
+        fcntl.ioctl(out, UI_DEV_SETUP, struct.pack("<HHHH80sI", BUS_VIRTUAL, 0, 0, 0, b"rootbridge headset", 0))
+        fcntl.ioctl(out, UI_DEV_CREATE)
+        fcntl.ioctl(fd, EVIOCGRAB, 1)
+    except OSError as e:
+        print("headset-ptt --grab %s: %s; Android liest die Tasten weiter mit" % (dev, e), file=sys.stderr, flush=True)
+        if out is not None:
+            os.close(out)            # closing it takes the virtual device away
+        out = None
+    pending = b""
+    try:
+        while True:
+            ready, _, _ = select.select([fd, 0], [], [])
+            if fd in ready:
+                data = os.read(fd, 4096)
+                if not data:
+                    return 0
+                os.write(1, data)
+            if 0 in ready:
+                data = os.read(0, 4096)
+                if not data:
+                    return 0
+                lines = (pending + data).split(b"\n")
+                pending = lines.pop()
+                for line in lines:
+                    code, value = map(int, line.split())
+                    if out is not None and code in PASSED:
+                        os.write(out, keyreader.EVENT.pack(0, 0, keyreader.EV_KEY, code, value) + SYN)
+    except (BrokenPipeError, OSError) as e:
+        print("headset-ptt --grab %s: %s" % (dev, e), file=sys.stderr, flush=True)
+        return 1
+
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--grab"] and len(sys.argv) == 3:
+        sys.exit(grab(sys.argv[2]))
     sys.exit(HeadsetKey().main())
