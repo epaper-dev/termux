@@ -277,6 +277,56 @@ rb_find_recorders() {
     done
 }
 
+# rb_fresh_recorders: drop from REC_PIDS the recorders the daemon has seen for RB_REC_MAX seconds (300) or longer: Claude Code
+# sometimes leaves one running, and it would keep the music down and the reading paused for good. The pid is remembered from
+# the round it was first seen (the age of a process is not to be trusted under proot); the recorder itself is left alone.
+# The recorders that count no more go to rec-stale in the bridge directory, one "<pid> <start time>" per line (the start
+# time from /proc/<pid>/stat, so a pid used again later is not taken for it), and the reading in the guest does not wait for
+# them either (speak.py recording()). A file left by an earlier daemon goes in the first round.
+declare -gA RB_REC_SEEN=()   # recorder pid: $SECONDS of the round it was first seen, "old" once it counts no more
+rb_fresh_recorders() {
+    local pid stale tmp fresh=() max="${RB_REC_MAX:-300}"
+    local -A seen=()
+    for pid in "${REC_PIDS[@]}"; do
+        seen[$pid]="${RB_REC_SEEN[$pid]:-$SECONDS}"
+        if [ "${seen[$pid]}" != old ] && (( SECONDS - seen[$pid] >= max )); then
+            echo "$(date '+%F %T') Aufnahme $pid läuft seit $max s: zählt nicht mehr (Musik wieder laut)" >&2
+            seen[$pid]=old
+        fi
+        [ "${seen[$pid]}" = old ] || fresh+=("$pid")
+    done
+    RB_REC_SEEN=()
+    stale=""
+    for pid in "${!seen[@]}"; do
+        RB_REC_SEEN[$pid]="${seen[$pid]}"
+        [ "${seen[$pid]}" != old ] || stale+="$pid $(rb_proc_start "$pid")"$'\n'
+    done
+    REC_PIDS=("${fresh[@]}")
+    # written only when it changes; never through a path in the bridge (the guest can put a link there): a private temp
+    # file moved over it, like rb_speak_focus_tell
+    if [ "$stale" != "$RB_REC_STALE" ]; then
+        if [ -z "$stale" ]; then
+            rm -f "$BRIDGE_DIR/rec-stale" && { RB_REC_STALE=""; return 0; }
+        elif tmp="$(mktemp 2>/dev/null)"; then
+            if printf '%s' "$stale" > "$tmp" && mv -fT "$tmp" "$BRIDGE_DIR/rec-stale" 2>/dev/null; then
+                RB_REC_STALE="$stale"
+                return 0
+            fi
+            rm -f "$tmp"
+        fi
+        echo "$(date '+%F %T') $BRIDGE_DIR/rec-stale nicht geschrieben: das Vorlesen wartet weiter auf die Aufnahme" >&2
+    fi
+}
+RB_REC_STALE="?"   # not known yet: the first round writes or removes the file
+
+# rb_proc_start <pid>: the start time of the process (field 22 of /proc/<pid>/stat, after the name in parentheses)
+rb_proc_start() {
+    local stat fields
+    stat="$(< "$RB_PROC_DIR/$1/stat")" 2>/dev/null || return 0
+    read -r -a fields <<< "${stat##*) }"
+    printf '%s' "${fields[19]-}"
+}
+
 # rb_speak_focus: called by the daemon every round. While the guest reads aloud (a live player in speak.pid) or Claude Code
 # records for /voice (a recorder, rb_find_recorders), our
 # Termux:API holds the audio focus for speech (AudioFocus): Android turns music down, like for a navigation app, and
@@ -310,6 +360,7 @@ rb_speak_focus() {
     [ "$rb_focus_skip" -eq 0 ] || rb_focus_skip=$((rb_focus_skip - 1))
     REC_PIDS=()
     [ "$VOICE" != on ] || rb_find_recorders "$RB_PROC_DIR"
+    rb_fresh_recorders
     if pid="$(rb_speak_player)" || [ "${#REC_PIDS[@]}" -gt 0 ]; then
         if [ "$rb_focus_skip" -gt 0 ]; then answer=off
         else

@@ -66,6 +66,7 @@ FOCUS = os.path.join(BRIDGE_DIR, "speak-focus")       # the daemon's answer for 
 ALIVE = os.path.join(BRIDGE_DIR, ".alive")             # the daemon's heartbeat (every round)
 FOCUS_WAIT_SECONDS = 1.5   # a round of the daemon is 0.5 s, its question to Android up to 2 s more
 STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop (--stop here, rb_speak_stop in Termux)
+REC_STALE = os.path.join(BRIDGE_DIR, "rec-stale")     # "<pid> <start time>" of recorders the daemon no longer counts
 HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about to record (rb_speak_hold in Termux)
 HOLD_SECONDS = 3          # how long that pauses reading when no recorder comes (ptt waits PTT_WARMUP + 2 s for one)
 # a prompt that is only one of these words (case, marks and spaces aside) stops the reading and stays with us (--command)
@@ -613,14 +614,38 @@ def hook_input():
     return data
 
 
+def proc_start(pid):
+    """The start time of a process (field 22 of /proc/<pid>/stat, after the name in parentheses), or None."""
+    try:
+        with open(os.path.join(PROC, pid, "stat"), "rb") as fh:   # bytes: the name may be cut inside a UTF-8 character
+            return fh.read().rpartition(b") ")[2].split()[19].decode("ascii")
+    except (OSError, IndexError, UnicodeDecodeError):
+        return None
+
+
 def recording():
     """True while Claude Code records for /voice: its recorder is SoX `rec ... --buffer 1024 -t raw ...` (the same test as
-    rb_find_recorders in rootbridge-lib.sh). The microphone would take what is read into the prompt."""
+    rb_find_recorders in rootbridge-lib.sh). The microphone would take what is read into the prompt. A recorder in
+    rec-stale (left running, rb_fresh_recorders) does not count."""
     try:
         pids = [p for p in os.listdir(PROC) if p.isdigit()]
     except OSError:
         return False
+    stale = set()
+    try:   # a regular file only, not through a link, and not much of it (the bridge directory is shared)
+        fd = os.open(REC_STALE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            if stat.S_ISREG(os.fstat(fd).st_mode):
+                stale = {tuple(w.decode("ascii") for w in line.split()) for line in os.read(fd, 4096).split(b"\n")
+                         if len(line.split()) == 2 and line.replace(b" ", b"").isdigit()}
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+    stale_pids = {pid for pid, _ in stale}
     for pid in pids:
+        if pid in stale_pids and (pid, proc_start(pid)) in stale:   # only the listed pids: their stat, nobody else's
+            continue
         try:
             with open(os.path.join(PROC, pid, "cmdline"), "rb") as fh:
                 args = fh.read().split(b"\0")

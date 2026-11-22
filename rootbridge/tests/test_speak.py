@@ -808,6 +808,20 @@ class TestPlayer(unittest.TestCase):
             fh.write(b"/usr/bin/rec\0-q\0--buffer\0" + b"1024\0-t\0raw\0-")
         return {"RB_SPEAK_PROC": proc_dir}, os.path.join(proc_dir, "4711")
 
+    def test_a_recorder_the_daemon_no_longer_counts_does_not_pause(self):
+        env, rec = self.fake_recorder()
+        with open(os.path.join(rec, "stat"), "w") as fh:
+            fh.write("4711 (rec) S" + " 0" * 18 + " 98765 0 0\n")
+        stale = os.path.join(self.bridge, "rec-stale")
+        with open(stale, "w") as fh:
+            fh.write("4711 11111\n")   # the same pid, but another process (an earlier recorder): still a recording
+        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Trotzdem."}), **env)
+        time.sleep(0.5)
+        self.assertIsNone(self.out_file("piper.in"))
+        with open(stale, "w") as fh:
+            fh.write("4711 98765\n")
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Trotzdem."))
+
     def test_a_text_that_waits_too_long_is_dropped(self):
         # a recording that does not end (Claude Code left it running): the answer is out of date when it could be read
         env, rec = self.fake_recorder()
