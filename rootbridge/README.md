@@ -364,7 +364,7 @@ side key use `--sidekey` below.
 **The keys at installation:** on a terminal `install.sh` asks about each key nobody decided yet: the side key (`--sidekey`, default
 no), a long press on Home (`--home-key`, default yes) and the headset key (`--headset`, default yes). The answer is stored in the config
 (`SIDEKEY`, `HOMEKEY`, `HEADSET`) and later runs do not ask again; the `--no-…` forms switch a key off. The same run sets everything up:
-the key reader for the side and headset keys and the assistant role for Home (root; on every run, in case "Force stop" took it away).
+a key reader each for the side and the headset key and the assistant role for Home (root; on every run, in case "Force stop" took it away).
 Without a terminal it asks nothing and names the command for Home.
 
 **Side key of the Hisense A9** (`--sidekey`, off by default, stored as `SIDEKEY`): hold the side key to record, let go to stop. The installer puts
@@ -372,9 +372,11 @@ Without a terminal it asks nothing and names the command for Home.
 Short and double presses stay with the E-Ink app; set its long press to "Nothing". `rootbridge start|attach` start the reader (one instance), and
 `--no-sidekey` removes it. It is a bridge until the E-Ink app and the Termux app do this themselves.
 The **key of a wired headset** toggles instead (a long press starts, let go and speak, the next long press sends: the key shorts the
-microphone while it is held; a short press still plays and pauses the music): the reader
-also keeps a root `cat` on the buttons of the headset jack (the input device named "… Button Jack", `KEY_MEDIA`), also with the phone locked.
-A long press on that key also starts Android's voice search: no app should answer it, or its window opens as well.
+microphone while it is held; a short press still plays and pauses the music): a reader of its own, `headset-ptt`
+(`--headset`), reads the buttons of the headset jack (the input device named "… Button Jack", `KEY_MEDIA`) as root, also with the phone locked.
+It takes the device for itself, so Android no longer sees a long press (before, the music paused and played by turns while the key
+was held, and Android's voice search started); short and double presses and louder/quieter reach Android through a virtual
+device ("rootbridge headset"). When the reader ends, the device is Android's again.
 
 ## Logins and MCP links
 

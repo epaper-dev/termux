@@ -68,8 +68,8 @@
 # --home-key / --no-home-key: a long press on Home starts and stops push to talk: the installer makes Termux the digital
 #   assistant (root, `rootbridge voice assistant on`), on every run on a terminal ("Force stop" in the app info takes the role
 #   away). Needs the Termux app of this repository (Termux push to talk). Stored as HOMEKEY; --no-home-key takes the role back.
-# --headset / --no-headset: a long press on the key of a wired headset starts and stops push to talk (sidekey-ptt reads it as
-#   root). Stored as HEADSET.
+# --headset / --no-headset: a long press on the key of a wired headset starts and stops push to talk: installs headset-ptt,
+#   which reads the key as root. Stored as HEADSET.
 # Keys nobody decided yet (no option, nothing in the config) are asked on a terminal, one question each; the answer is stored.
 #
 # Claude Code starts in /root/work in the guest (WORKDIR; the installer creates the folder).
@@ -329,7 +329,8 @@ inst "$REPO/termux/bin/rootbridge"        "$PREFIX/bin/rootbridge"
 inst "$REPO/termux/bin/rootbridge-daemon" "$PREFIX/bin/rootbridge-daemon"
 inst "$REPO/termux/bin/ptt"               "$PREFIX/bin/ptt"
 inst "$REPO/termux/lib/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
-chmod 644 "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
+inst "$REPO/termux/lib/keyreader.py"      "$PREFIX/lib/termux-rootbridge/keyreader.py"
+chmod 644 "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/keyreader.py"
 # A running daemon keeps its old code in memory (an old one wants tickets that nothing issues any more): stop it. The new
 # one starts at the end of the installation.
 old_pid="$(cat "$BRIDGE_DIR/.lock/pid" 2>/dev/null || true)"
@@ -730,37 +731,39 @@ if [ -n "$role" ]; then
         say "  Home-Taste: einmal von Hand   rootbridge voice assistant $role   (braucht Root)"
     fi
 fi
-# the side key reader (Hisense A9): installed on request only; a reader of an earlier install goes when it is switched off.
-# It runs as "<python> $PREFIX/bin/sidekey-ptt" (its shebang): only that command line is the reader, not an editor or a `tail`
-# on its file or log.
-SIDEKEY_RE="^[^ ]*python[^ ]* $PREFIX/bin/sidekey-ptt\$"
-SIDEKEY_KEYS=""   # what the reader reads (as rootbridge sidekey_keys): side, headset
-[ "$USE_SIDEKEY" = yes ] && SIDEKEY_KEYS="side"
-[ "$USE_HEADSET" = yes ] && SIDEKEY_KEYS="${SIDEKEY_KEYS:+$SIDEKEY_KEYS }headset"
-if [ -n "$SIDEKEY_KEYS" ] && [ "$VOICE_ON" = yes ]; then
-    inst "$REPO/termux/bin/sidekey-ptt" "$PREFIX/bin/sidekey-ptt" python3
-    # start it now (otherwise only the next `rootbridge start` does), and a reader of an earlier install with the new code. The
-    # old one has to be gone first: it holds the lock, and a new one that does not get it leaves without a word.
-    pkill -f "$SIDEKEY_RE" 2>/dev/null || true
-    for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "$SIDEKEY_RE" >/dev/null 2>&1 || break; sleep 0.3; done
-    if pgrep -f "$SIDEKEY_RE" >/dev/null 2>&1; then
-        say "  Seitentasten-Leser: der alte läuft noch, nicht neu gestartet (pkill -f sidekey-ptt, dann rootbridge start)"
-    else
-        SIDEKEY_KEYS="$SIDEKEY_KEYS" setsid nohup "$PREFIX/bin/sidekey-ptt" >/dev/null 2>&1 < /dev/null &
-        sleep 0.5
-        if pgrep -f "$SIDEKEY_RE" >/dev/null 2>&1; then
-            say "  Tasten-Leser gestartet: $SIDEKEY_KEYS (fragt einmal nach Root; Log: ~/.cache/sidekey-ptt.log)"
+# key_reader <reader> <yes|no> <label>: a key reader (sidekey-ptt: side key of the Hisense A9, headset-ptt: key of a wired
+# headset) is installed on request only; one of an earlier install goes when it is switched off. It runs as
+# "<python> $PREFIX/bin/<reader>" (its shebang): only that command line is the reader, not an editor or a `tail` on its file
+# or log.
+key_reader() {
+    local reader="$1" re="^[^ ]*python[^ ]* $PREFIX/bin/$1\$" label="$3"
+    if [ "$2" = yes ] && [ "$VOICE_ON" = yes ]; then
+        inst "$REPO/termux/bin/$reader" "$PREFIX/bin/$reader" python3
+        # start it now (otherwise only the next `rootbridge start` does), and a reader of an earlier install with the new
+        # code. The old one has to be gone first: it holds the lock, and a new one that does not get it leaves without a word.
+        pkill -f "$re" 2>/dev/null || true
+        for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "$re" >/dev/null 2>&1 || break; sleep 0.3; done
+        if pgrep -f "$re" >/dev/null 2>&1; then
+            say "  $label: der alte Leser läuft noch, nicht neu gestartet (pkill -f $reader, dann rootbridge start)"
         else
-            say "  Seitentasten-Leser: Start fehlgeschlagen (siehe ~/.cache/sidekey-ptt.log; rootbridge start versucht es erneut)"
+            setsid nohup "$PREFIX/bin/$reader" >/dev/null 2>&1 < /dev/null &
+            sleep 0.5
+            if pgrep -f "$re" >/dev/null 2>&1; then
+                say "  $label: Leser gestartet (fragt einmal nach Root; Log: ~/.cache/$reader.log)"
+            else
+                say "  $label: Start fehlgeschlagen (siehe ~/.cache/$reader.log; rootbridge start versucht es erneut)"
+            fi
         fi
+    elif [ -f "$PREFIX/bin/$reader" ] && grep -q "$reader" "$PREFIX/bin/$reader" 2>/dev/null; then
+        pkill -f "$re" 2>/dev/null || true
+        rm -f "$PREFIX/bin/$reader"
+        say "  $label: Leser entfernt (abgewählt)"
+    elif [ "$2" = yes ]; then
+        say "  $label: ohne die Sprachsteuerung nicht eingerichtet"
     fi
-elif [ -f "$PREFIX/bin/sidekey-ptt" ] && grep -q 'sidekey-ptt' "$PREFIX/bin/sidekey-ptt" 2>/dev/null; then
-    pkill -f "$SIDEKEY_RE" 2>/dev/null || true
-    rm -f "$PREFIX/bin/sidekey-ptt"
-    say "  Seitentasten-Leser entfernt (abgewählt)"
-elif [ -n "$SIDEKEY_KEYS" ]; then
-    say "  Seitentaste / Headset-Taste: ohne die Sprachsteuerung nicht eingerichtet"
-fi
+}
+key_reader sidekey-ptt "$USE_SIDEKEY" Seitentaste
+key_reader headset-ptt "$USE_HEADSET" Headset-Taste
 
 say "== 4/5 Migration der alten Popup-Bridge (v1)"
 if [ "$DO_MIGRATE" = 1 ]; then

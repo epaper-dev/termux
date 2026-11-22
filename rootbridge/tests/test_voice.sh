@@ -2,12 +2,12 @@
 # Test: voice dictation for Claude Code (/voice) and the side key as push to talk.
 #   - rootbridge-lib.sh: VOICE (default on) and SIDEKEY (default off), only on|off
 #   - `rootbridge voice start|stop|status|grant`: PulseAudio, the microphone source, Android's permission (su is a stub)
-#   - `rootbridge attach|start` start PulseAudio (VOICE=on) and the side key reader (SIDEKEY=on)
+#   - `rootbridge attach|start` start PulseAudio (VOICE=on) and the key readers (SIDEKEY=on, HEADSET=on)
 #   - install.sh: --voice / --no-voice / --sidekey / --no-sidekey, the stored choice, ~/.config/pulse/default.pa (ours, a user's own
-#     file stays, updates keep a backup), sidekey-ptt with the Termux python shebang, pkg install pulseaudio, the microphone
+#     file stays, updates keep a backup), sidekey-ptt and headset-ptt with the Termux python shebang, pkg install pulseaudio, the microphone
 #     permission only on a terminal, --voice handed to the guest
 #   - install-guest.sh: keybindings.json (meta+k = voice:pushToTalk) and "voice" in settings.json, never over a choice of the user
-#   - setup-guest.sh: sox only with Claude Code and voice; uninstall.sh removes sidekey-ptt and our default.pa only
+#   - setup-guest.sh: sox only with Claude Code and voice; uninstall.sh removes the key readers and our default.pa only
 # Nothing real is touched: pulseaudio, pactl, su, pkg, tmux and proot-distro are stubs, HOME/PREFIX/guest root are temp dirs.
 #   bash tests/test_voice.sh
 # shellcheck disable=SC1090  # the library is sourced from a variable on purpose
@@ -107,7 +107,8 @@ case "$*" in *voice_interaction_service*) printf '%s\n' "${STUB_ASSISTANT:-null}
 touch "$STUB_STATE/perm"
 exit 0
 EOF
-printf '#!/bin/bash\necho "sidekey-ptt $* keys=$SIDEKEY_KEYS" >> "$STUB_LOG"\nexit 0\n' > "$T/vstubs/sidekey-ptt"
+printf '#!/bin/bash\necho "sidekey-ptt $*" >> "$STUB_LOG"\nexit 0\n' > "$T/vstubs/sidekey-ptt"
+printf '#!/bin/bash\necho "headset-ptt $*" >> "$STUB_LOG"\nexit 0\n' > "$T/vstubs/headset-ptt"
 cat > "$T/vstubs/pgrep" <<'EOF'
 #!/bin/bash
 [ "${STUB_PGREP_FAIL:-0}" = 1 ] && exit 2
@@ -469,23 +470,23 @@ reset_pa
 rb bash "$T/bin/rootbridge" attach
 check "attach (VOICE on): PulseAudio gestartet"           1 "$(calls '^pulseaudio --start')"
 sleep 0.3
-check "attach (SIDEKEY off): kein Seitentasten-Leser"     0 "$(calls '^sidekey-ptt')"
+check "attach (SIDEKEY off): kein Tasten-Leser"          "0 0" "$(calls '^sidekey-ptt') $(calls '^headset-ptt')"
 reset_pa; printf 'SIDEKEY=on\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
 sleep 0.3
-check "attach (SIDEKEY on, HEADSET offen): die Headset-Taste folgt" 1 "$(calls '^sidekey-ptt  *keys=side headset$')"
+check "attach (SIDEKEY on, HEADSET offen): die Headset-Taste folgt" "1 1" "$(calls '^sidekey-ptt') $(calls '^headset-ptt')"
 reset_pa; printf 'SIDEKEY=on\nHEADSET=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
 sleep 0.3
-check "attach (SIDEKEY on, HEADSET=off): nur die Seitentaste" 1 "$(calls '^sidekey-ptt  *keys=side$')"
+check "attach (SIDEKEY on, HEADSET=off): nur die Seitentaste" "1 0" "$(calls '^sidekey-ptt') $(calls '^headset-ptt')"
 reset_pa; printf 'HEADSET=on\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
 sleep 0.3
-check "attach (HEADSET on): Leser nur für die Headset-Taste" 1 "$(calls '^sidekey-ptt  *keys=headset$')"
+check "attach (HEADSET on): Leser nur für die Headset-Taste" "0 1" "$(calls '^sidekey-ptt') $(calls '^headset-ptt')"
 reset_pa; printf 'SIDEKEY=on\nHEADSET=on\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
 sleep 0.3
-check "attach (beide): ein Leser für beide Tasten"        1 "$(calls '^sidekey-ptt  *keys=side headset$')"
+check "attach (beide): je ein Leser"                      "1 1" "$(calls '^sidekey-ptt') $(calls '^headset-ptt')"
 reset_pa; printf 'VOICE=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" start --no-attach
 check "start (VOICE off): PulseAudio bleibt aus"          0 "$(calls '^pulseaudio --start')"
@@ -512,8 +513,8 @@ echo "pkill $*" >> "$STUB_LOG"
 [ "${STUB_READER_STAYS:-0}" = 1 ] || rm -f "$STUB_LOG.reader"
 exit 1
 EOF
-printf '#!/bin/bash\necho "setsid $* keys=${SIDEKEY_KEYS:-}" >> "$STUB_LOG"\n[ "${STUB_READER_DIES:-0}" = 1 ] || : > "$STUB_LOG.reader"\nexit 0\n' > "$T/istubs/setsid"
-printf '#!/bin/bash\ncase "$*" in *sidekey-ptt*) [ -e "$STUB_LOG.reader" ] ;; *) exit 1 ;; esac\n' > "$T/istubs/pgrep"
+printf '#!/bin/bash\necho "setsid $*" >> "$STUB_LOG"\n[ "${STUB_READER_DIES:-0}" = 1 ] || : > "$STUB_LOG.reader"\nexit 0\n' > "$T/istubs/setsid"
+printf '#!/bin/bash\ncase "$*" in *-ptt*) [ -e "$STUB_LOG.reader" ] ;; *) exit 1 ;; esac\n' > "$T/istubs/pgrep"
 chmod +x "$T/istubs"/*
 export STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$T/iguest"
 ILOG="$T/i.log"
@@ -607,12 +608,13 @@ check "--sidekey: läuft, SIDEKEY=on gespeichert"           "0 on" "$IRC $(iget 
 check "--sidekey: sidekey-ptt installiert, ausführbar"     "ja ja" "$(has "$P/bin/sidekey-ptt") $([ -x "$P/bin/sidekey-ptt" ] && echo ja || echo nein)"
 check "--sidekey: Shebang zeigt auf das Python von Termux" "#!$P/bin/python3" "$(head -n 1 "$P/bin/sidekey-ptt")"
 check "--sidekey: Meldung zum Langdruck 'Nothing'"         1 "$(count "$T/install.log" "Langdruck auf 'Nothing'")"
-check "--sidekey (HEADSET offen: die Headset-Taste folgt wie bisher): Leser neu gestartet, beide Tasten" "1 1 1" "$(count "$ILOG" "^pkill -f .*python.* $P/bin/sidekey-ptt") $(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt keys=side headset$") $(count "$T/install.log" 'Tasten-Leser gestartet: side')"
+check "--sidekey (HEADSET offen: die Headset-Taste folgt wie bisher): beide Leser neu gestartet" "1 1 1 1" "$(count "$ILOG" "^pkill -f .*python.* $P/bin/sidekey-ptt") $(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt$") $(count "$ILOG" "^setsid nohup $P/bin/headset-ptt$") $(count "$T/install.log" 'Seitentaste: Leser gestartet')"
+check "--sidekey: der gemeinsame Teil der Leser liegt bei der Bibliothek" ja "$(has "$P/lib/termux-rootbridge/keyreader.py")"
 STUB_READER_STAYS=1 irun --sidekey
-check "--sidekey: alter Leser endet nicht, kein zweiter, Meldung" "0 1" "$(count "$ILOG" '^setsid nohup .*sidekey-ptt') $(count "$T/install.log" 'der alte läuft noch')"
+check "--sidekey: alter Leser endet nicht, kein zweiter, Meldung" "0 1" "$(count "$ILOG" '^setsid nohup .*sidekey-ptt') $(count "$T/install.log" 'Seitentaste: der alte Leser läuft noch')"
 rm -f "$ILOG.reader"
 STUB_READER_DIES=1 irun --sidekey
-check "--sidekey: neuer Leser endet sofort, Meldung"        "1 1" "$(count "$ILOG" '^setsid nohup .*sidekey-ptt') $(count "$T/install.log" 'Start fehlgeschlagen')"
+check "--sidekey: neuer Leser endet sofort, Meldung"        "1 1" "$(count "$ILOG" '^setsid nohup .*sidekey-ptt') $(count "$T/install.log" 'Seitentaste: Start fehlgeschlagen')"
 irun
 check "ohne Option nach --sidekey: bleibt installiert (Konfig)" "ja" "$(has "$P/bin/sidekey-ptt")"
 check "ohne Option nach --sidekey: Meldung aus der Konfig" 1 "$(count "$T/install.log" 'Seitentaste: an (aus der Konfig')"
@@ -625,17 +627,18 @@ irun --sidekey --no-voice
 check "--sidekey --no-voice: abgelehnt (Exit 2)"           2 "$IRC"
 irun --no-voice
 irun --sidekey
-check "--sidekey bei gespeichertem VOICE=off: kein Leser, Meldung" "nein 1" "$(has "$P/bin/sidekey-ptt") $(count "$T/install.log" 'ohne die Sprachsteuerung nicht eingerichtet')"
+check "--sidekey bei gespeichertem VOICE=off: kein Leser, Meldung" "nein 1" "$(has "$P/bin/sidekey-ptt") $(count "$T/install.log" 'Seitentaste: ohne die Sprachsteuerung nicht eingerichtet')"
 irun --voice --no-sidekey
 
 # --headset / --home-key: the headset key alone, both keys in one reader; the Home key needs a terminal for its root step
 irun --headset
-check "--headset: HEADSET=on, Leser nur für die Headset-Taste" "0 on 1" "$IRC $(iget HEADSET) $(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt keys=headset$")"
+check "--headset: HEADSET=on, Leser nur für die Headset-Taste" "0 on 1 0" "$IRC $(iget HEADSET) $(count "$ILOG" "^setsid nohup $P/bin/headset-ptt$") $(count "$ILOG" "^setsid nohup .*sidekey-ptt")"
+check "--headset: headset-ptt installiert, Shebang Termux-Python" "ja #!$P/bin/python3" "$(has "$P/bin/headset-ptt") $(head -n 1 "$P/bin/headset-ptt")"
 check "--headset: Abschlussmeldung zur Headset-Taste"      1 "$(count "$T/install.log" '^Headset-Taste: Langdruck')"
 irun --sidekey
-check "--sidekey nach --headset: ein Leser für beide Tasten" 1 "$(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt keys=side headset$")"
+check "--sidekey nach --headset: je ein Leser"              "1 1" "$(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt$") $(count "$ILOG" "^setsid nohup $P/bin/headset-ptt$")"
 irun --no-sidekey --no-headset
-check "--no-sidekey --no-headset: Leser entfernt"          "nein off off" "$(has "$P/bin/sidekey-ptt") $(iget SIDEKEY) $(iget HEADSET)"
+check "--no-sidekey --no-headset: Leser entfernt"          "nein nein off off" "$(has "$P/bin/sidekey-ptt") $(has "$P/bin/headset-ptt") $(iget SIDEKEY) $(iget HEADSET)"
 irun --home-key
 check "--home-key: HOMEKEY=on, ohne Terminal nur der Hinweis" "0 on 1 0" "$IRC $(iget HOMEKEY) $(count "$T/install.log" 'rootbridge voice assistant on') $(count "$ILOG" '^rootbridge voice assistant')"
 irun --no-home-key
@@ -657,7 +660,7 @@ irun --voice
 # a config from before HEADSET: SIDEKEY=on read the headset key as well, and an update keeps that
 sed -i '/^HEADSET=/d; /^SIDEKEY=/d' "$ICFG"; echo SIDEKEY=on >> "$ICFG"
 irun
-check "alte Konfig mit SIDEKEY=on ohne HEADSET: der Leser liest weiter beide Tasten" 1 "$(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt keys=side headset$")"
+check "alte Konfig mit SIDEKEY=on ohne HEADSET: beide Tasten werden weiter gelesen" "1 1" "$(count "$ILOG" "^setsid nohup $P/bin/sidekey-ptt$") $(count "$ILOG" "^setsid nohup $P/bin/headset-ptt$")"
 irun --no-sidekey --no-headset
 
 # a file of the user called sidekey-ptt is not ours: --no-sidekey leaves it
@@ -937,12 +940,13 @@ rm -f "$T/gstubs/rec"; piper_present
 # =========================================================================== 7. uninstall.sh
 H2="$T/uh"; P2="$T/up"; mkdir -p "$H2/.config/pulse" "$P2/bin"
 printf '#!/bin/sh\n# sidekey-ptt\n' > "$P2/bin/sidekey-ptt"
+printf '#!/bin/sh\n# headset-ptt\n' > "$P2/bin/headset-ptt"
 printf '# termux-rootbridge voice: x\n' > "$H2/.config/pulse/default.pa"
 run_un() { : > "$ILOG"; STUB_LOG="$ILOG" HOME="$H2" PREFIX="$P2" PATH="$T/istubs:$PATH" bash "$UNINSTALL" --no-guest > "$T/uninstall.log" 2>&1; }
 mkdir -p "$H2/.shortcuts/tasks"
 cp "$ROOT/termux/shortcuts/speak" "$H2/.shortcuts/tasks/Vorlesen"; cp "$ROOT/termux/shortcuts/speak-stop" "$H2/.shortcuts/tasks/Stopp"
 run_un
-check "uninstall: sidekey-ptt weg, Leser beendet"          "nein 1" "$(has "$P2/bin/sidekey-ptt") $(count "$ILOG" '^pkill -f sidekey-ptt')"
+check "uninstall: beide Leser weg und beendet"            "nein nein 1 1" "$(has "$P2/bin/sidekey-ptt") $(has "$P2/bin/headset-ptt") $(count "$ILOG" '^pkill -f sidekey-ptt') $(count "$ILOG" '^pkill -f headset-ptt')"
 check "uninstall: Widgets Vorlesen und Stopp weg"          "nein nein" "$(has "$H2/.shortcuts/tasks/Vorlesen") $(has "$H2/.shortcuts/tasks/Stopp")"
 printf '#!/bin/sh\necho mine\n' > "$H2/.shortcuts/tasks/Stopp"
 run_un
