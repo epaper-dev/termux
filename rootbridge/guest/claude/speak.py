@@ -10,8 +10,11 @@ the PreToolUse hook; a new text ends the one still being read.
   speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once; before
                       ExitPlanMode also the whole plan (tool_input.plan), also with speak-first
   speak.py --stop     end what is being read and what waits (rootbridge-speak --stop)
-  speak.py --command  UserPromptSubmit hook: a prompt that is only a stop word ("Stopp", "Halt", ...; STOP_WORDS) ends
-                      what is being read and what waits, at once and also when the switch is off, and does not go to Claude
+  speak.py --command  UserPromptSubmit hook: a prompt that is one of our sentences does not go to Claude: a stop
+                      sentence ("Beende die Sprachausgabe", "Hör auf zu reden", "Stop reading aloud", ...; STOP_PHRASES)
+                      ends what is read, "Schalte die Sprachausgabe aus|ein" (OFF_PHRASES, ON_PHRASES) switches reading
+                      off (and ends it) or on again. A stop ends what is being read and what waits, at once (never
+                      through the queue); the sentences work also when the switch is off
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
                       yet, so ask on the terminal (yes records, no asks again at the next start, "nie" never again;
@@ -69,8 +72,16 @@ STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop
 REC_STALE = os.path.join(BRIDGE_DIR, "rec-stale")     # "<pid> <start time>" of recorders the daemon no longer counts
 HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about to record (rb_speak_hold in Termux)
 HOLD_SECONDS = 3          # how long that pauses reading when no recorder comes (ptt waits PTT_WARMUP + 2 s for one)
-# a prompt that is only one of these words (case, marks and spaces aside) stops the reading and stays with us (--command)
-STOP_WORDS = {"stopp", "stop", "halt", "ruhe", "still"}
+# A prompt that is one of these sentences (case and marks aside) is for us and stays from Claude (--command): stop what is
+# read now, switch reading off for good (and stop), or on again. Sentences of three words or more, not single words:
+# Claude Code sends a dictated prompt of several words by itself, one word waits for Enter.
+STOP_PHRASES = {"beende die sprachausgabe", "stoppe die sprachausgabe", "stopp die sprachausgabe",
+                "beende die sprachansage", "stoppe die sprachansage", "stoppe jetzt die sprachansage",
+                "hör auf zu reden", "höre auf zu reden", "stop reading aloud", "stop the speech", "stop talking now"}
+OFF_PHRASES = {"schalte die sprachausgabe aus", "schalte das vorlesen aus", "sprachausgabe dauerhaft aus",
+               "turn speech off", "turn reading off", "switch speech off"}
+ON_PHRASES = {"schalte die sprachausgabe ein", "schalte die sprachausgabe an", "schalte das vorlesen ein",
+              "schalte das vorlesen an", "turn speech on", "turn reading on", "switch speech on"}
 MAX_WAIT = float(os.environ.get("RB_SPEAK_MAX_WAIT", 120))   # seconds a text may wait for its turn; older is dropped unread
 CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
 PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key
@@ -664,16 +675,36 @@ def speak_answer(message):
 
 
 def command():
-    """A prompt that is just a stop word is for us: stop at once (never through the queue) and keep it from Claude."""
+    """A prompt that is one of our sentences: stop at once (never through the queue), switch reading off or on, and keep
+    it from Claude. Also when reading is off (the sentence to switch it on must work then)."""
     try:
         data = json.load(sys.stdin)
     except ValueError:
         return
     prompt = isinstance(data, dict) and data.get("prompt")
-    if isinstance(prompt, str) and re.sub(r"[\W_]+", "", prompt.lower()) in STOP_WORDS:
-        mark_stopped()
-        stop()
-        print(json.dumps({"decision": "block", "reason": "Vorlesen gestoppt."}))
+    if not isinstance(prompt, str):
+        return
+    sentence = " ".join(re.sub(r"[\W_]+", " ", prompt.lower()).split())
+    try:
+        if sentence in STOP_PHRASES:
+            reason = "Vorlesen gestoppt."
+        elif sentence in OFF_PHRASES:
+            os.close(os.open(OFF, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600))   # the switch, as `rootbridge voice speak off`
+            reason = "Vorlesen ausgeschaltet (wieder an: „Schalte die Sprachausgabe ein“)."
+        elif sentence in ON_PHRASES:
+            if os.path.lexists(OFF):
+                os.remove(OFF)
+            print(json.dumps({"decision": "block", "reason": "Vorlesen eingeschaltet."}))
+            return
+        else:
+            return
+    except OSError as e:
+        log("Schalter %s: %s" % (OFF, e))
+        print(json.dumps({"decision": "block", "reason": "Vorlesen ließ sich nicht umschalten: %s" % e}))
+        return
+    mark_stopped()
+    stop()
+    print(json.dumps({"decision": "block", "reason": reason}))
 
 
 def hook():

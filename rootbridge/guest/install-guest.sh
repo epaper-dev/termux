@@ -30,7 +30,7 @@
 #                     ~/.claude/settings.json "voice": {"enabled": true, "mode": "tap"} where you have not set it yet;
 #                     speech output: rootbridge-speak and three hooks in the managed settings (Stop reads Claude's answer
 #                     aloud with Piper or Articulino, PreToolUse its notes between tool calls; a new prompt does not end it,
-#                     UserPromptSubmit ends it when the prompt is only a stop word like "Stopp"), and a
+#                     UserPromptSubmit ends it when the prompt is a stop sentence like "Beende die Sprachausgabe"), and a
 #                     text in our block of ~/.claude/CLAUDE.md (templates/speech.claude.md: summary first, questions last, for
 #                     the short version read aloud). no removes the command, the hooks and that text again.
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
