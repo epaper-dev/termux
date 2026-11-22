@@ -18,8 +18,12 @@ the PreToolUse hook; a new text ends the one still being read.
                       "Fahre mit dem Vorlesen fort" (RESUME_PHRASES) go on with the last text where it was stopped,
                       "Wiederhole den letzten Satz" (REPEAT_SENTENCE_PHRASES) reads that sentence again (and goes on
                       from there next time), "Wiederhole den Text nochmal" (REPEAT_TEXT_PHRASES) the whole text; in
-                      place of what is read now, the texts that wait come afterwards. "Welche Sprachbefehle gibt es"
-                      (HELP_PHRASES) shows all of them in Claude Code. The sentence goes to
+                      place of what is read now, the texts that wait come afterwards. "Lies mir alles vor"
+                      (WHOLE_PHRASES) reads the newest answer whole once (speak-answer), "Lies immer alles vor" /
+                      "Lies nur die Kurzfassung vor" (ALL_PHRASES, SHORT_PHRASES) switch speak-first. "Welche Sprachbefehle gibt
+                      es" (HELP_PHRASES) shows all of them in Claude Code. Two short beeps say how it went: high when
+                      it was done, low when it stopped or switched off, or there was nothing to do (RB_SPEAK_BEEP=off:
+                      none). The sentence goes to
                       prompt-clear: Termux empties the input line, where Claude Code puts a blocked prompt back
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
@@ -56,6 +60,7 @@ Python >= 3.8, standard library only.
 import contextlib
 import fcntl
 import json
+import math
 import os
 import stat
 import struct
@@ -83,6 +88,8 @@ FOCUS_WAIT_SECONDS = 1.5   # a round of the daemon is 0.5 s, its question to And
 PROMPT_CLEAR = os.path.join(BRIDGE_DIR, "prompt-clear")   # a sentence below, for Termux to take out of the input line
 LAST = os.path.join(BRIDGE_DIR, "speak-last")         # JSON: the sentences of the last text read and the one it is at
 LAST_MAX = 1 << 20
+ANSWER = os.path.join(BRIDGE_DIR, "speak-answer")     # .<session>: the whole speakable text of its newest answer or note
+ANSWER_DAYS = 7           # a speak-answer.<session> not written for so long goes
 STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop (--stop here, rb_speak_stop in Termux)
 REC_STALE = os.path.join(BRIDGE_DIR, "rec-stale")     # "<pid> <start time>" of recorders the daemon no longer counts
 HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about to record (rb_speak_hold in Termux)
@@ -114,13 +121,26 @@ REPEAT_SENTENCE_SENTENCES = ("Wiederhole den letzten Satz", "Lies den letzten Sa
                              "Lies den letzten Satz noch mal", "Repeat the last sentence")
 REPEAT_TEXT_SENTENCES = ("Wiederhole den Text nochmal", "Wiederhole den Text noch mal", "Lies das nochmal vor",
                          "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text")
+# read the newest answer whole now (once; also after its short version was read); read whole answers (without code) or
+# only their short version from now on (speak-first, as `rootbridge voice speak all|first`)
+WHOLE_SENTENCES = ("Lies alles vor", "Lese alles vor", "Lies mir alles vor", "Lese mir alles vor",
+                   "Lies die ganze Antwort vor", "Lies mir die ganze Antwort vor", "Lies den gesamten Text vor",
+                   "Lies mir den gesamten Text vor", "Lese mir den gesamten Text vor", "Read everything aloud",
+                   "Read the whole answer")
+ALL_SENTENCES = ("Lies immer alles vor", "Lies mir immer alles vor", "Lese immer alles vor", "Lies ab jetzt alles vor",
+                 "Lies ab jetzt immer alles vor", "Always read everything", "Always read the whole answer")
+SHORT_SENTENCES = ("Lies nur die Kurzfassung vor", "Lies immer nur die Kurzfassung vor",
+                   "Lies ab jetzt nur die Kurzfassung vor", "Lies die Kurzfassung vor", "Lies mir die Kurzfassung vor",
+                   "Lese mir die Kurzfassung vor", "Lies nur die Zusammenfassung vor", "Lies nur das Wichtigste vor",
+                   "Read only the summary", "Read only the short version", "Always read only the summary")
 # shows all these sentences in Claude Code
 HELP_SENTENCES = ("Welche Sprachbefehle gibt es", "Zeige die Sprachbefehle", "Zeig mir die Sprachbefehle",
                   "Zeige mir die Sprachbefehle", "Show the speech commands")
-STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES, REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, HELP_PHRASES = (
+(STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES, REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, WHOLE_PHRASES,
+ ALL_PHRASES, SHORT_PHRASES, HELP_PHRASES) = (
     {said(sentence) for sentence in sentences}
     for sentences in (STOP_SENTENCES, OFF_SENTENCES, ON_SENTENCES, RESUME_SENTENCES, REPEAT_SENTENCE_SENTENCES,
-                      REPEAT_TEXT_SENTENCES, HELP_SENTENCES))
+                      REPEAT_TEXT_SENTENCES, WHOLE_SENTENCES, ALL_SENTENCES, SHORT_SENTENCES, HELP_SENTENCES))
 MAX_WAIT = float(os.environ.get("RB_SPEAK_MAX_WAIT", 120))   # seconds a text may wait for its turn; older is dropped unread
 CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
 PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key
@@ -866,11 +886,61 @@ def recording():
     return False
 
 
-def speak_answer(message):
+def speak_answer(message, session):
+    """Keep the whole speakable text (speak-answer of the session) and read it, or its short version, unless reading is
+    off."""
     text = speakable(message)
+    save_answer(text, session)
+    if os.path.exists(OFF):
+        return
     if os.path.exists(FIRST):
         text = summary(text)
     start(text)   # the hooks stay silent towards Claude Code: a failure is in the log
+
+
+def answer_file(session):
+    """speak-answer.<session id of Claude Code>: each window reads its own newest answer again."""
+    if not (isinstance(session, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session)):
+        session = "unbekannt"
+    return "%s.%s" % (ANSWER, session)
+
+
+def save_answer(text, session):
+    """speak-answer of the session: the whole speakable text, for "Lies mir alles vor" after its short version was read.
+    Those of sessions that wrote none for ANSWER_DAYS go."""
+    path = answer_file(session)
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    try:
+        for name in os.listdir(BRIDGE_DIR):
+            old = os.path.join(BRIDGE_DIR, name)
+            if name.startswith("speak-answer.") and time.time() - os.lstat(old).st_mtime > ANSWER_DAYS * 86400:
+                os.remove(old)
+    except OSError as e:
+        log("%s: %s" % (ANSWER, e))
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except OSError as e:
+        log("%s: %s" % (path, e))
+
+
+def saved_answer(session):
+    """The text in speak-answer of the session, or "" (the file lies where others can write: a regular file, not too
+    big)."""
+    path = answer_file(session)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as fh:
+            if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+                raise OSError("keine reguläre Datei")
+            return fh.read(LAST_MAX).decode("utf-8", "replace")
+    except FileNotFoundError:
+        return ""
+    except OSError as e:
+        log("%s: %s" % (path, e))
+        return ""
 
 
 def clear_prompt(prompt):
@@ -898,43 +968,91 @@ def command():
     if not isinstance(prompt, str):
         return
     sentence = said(prompt)
-    halt = True                                   # this sentence also ends what is being read
+    halt = False                                  # this sentence also ends what is being read
     replay = None                                 # what of the last text is read again: (parts, first, end, player)
+    high = True                                   # the beep: high = on, done; low = stopped, off, nothing to do
     try:
         if sentence in STOP_PHRASES:
-            reason = "Vorlesen gestoppt."
+            halt, high, reason = True, False, "Vorlesen gestoppt."
         elif sentence in OFF_PHRASES:
-            os.close(os.open(OFF, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600))   # the switch, as `rootbridge voice speak off`
-            reason = "Vorlesen ausgeschaltet (wieder an: „Schalte die Sprachausgabe ein“)."
+            switch(OFF, True)   # as `rootbridge voice speak off`
+            halt, high, reason = True, False, "Vorlesen ausgeschaltet (wieder an: „Schalte die Sprachausgabe ein“)."
         elif sentence in ON_PHRASES:
-            halt = False
-            if os.path.lexists(OFF):
-                os.remove(OFF)
+            switch(OFF, False)
             reason = "Vorlesen eingeschaltet."
+        elif sentence in WHOLE_PHRASES:
+            parts = text_parts(saved_answer(data.get("session_id")))
+            if parts:   # in place of what is read now; whether the next answers are read whole stays as it is
+                replay, reason = (parts, 0, None, player_pid() or 0), "Ich lese die letzte Antwort ganz vor."
+            else:
+                high, reason = False, "Es gibt keine Antwort, die ich vorlesen könnte."
+        elif sentence in ALL_PHRASES:
+            switch(FIRST, False)   # as `rootbridge voice speak all`
+            reason = "Ab jetzt lese ich immer ganze Antworten vor (ohne Code)."
+        elif sentence in SHORT_PHRASES:
+            switch(FIRST, True)    # as `rootbridge voice speak first`
+            reason = "Ab jetzt lese ich nur noch die Kurzfassung vor."
         elif sentence in HELP_PHRASES:
-            halt, reason = False, help_text()
+            reason = help_text()
         elif sentence in RESUME_PHRASES | REPEAT_SENTENCE_PHRASES | REPEAT_TEXT_PHRASES:
             replay, reason = again(sentence)   # in place of what is read now: the texts that wait come afterwards
-            halt = False
+            high = replay is not None
         else:
             return
     except OSError as e:
-        log("Schalter %s: %s" % (OFF, e))
-        halt, reason = False, "Vorlesen ließ sich nicht umschalten: %s" % e
+        log("Schalter: %s" % e)
+        halt, high, reason = False, False, "Vorlesen ließ sich nicht umschalten: %s" % e
     clear_prompt(prompt)
     if halt:
         mark_stopped()
         stop()
     if replay:
-        reason = launch(*replay) or reason
+        error = launch(*replay)
+        if error:
+            high, reason = False, error
+    beep(high)
     print(json.dumps({"decision": "block", "reason": reason}))
+
+
+def switch(path, on):
+    """A switch file in the bridge directory (speak-off, speak-first): there or not, not through a link."""
+    if on:
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600))
+    elif os.path.lexists(path):
+        os.remove(path)
+
+
+def beep(high):
+    """Two short beeps for a sentence of --command, through play in the background (the hook does not wait): high when it
+    was done, low when it stopped or switched off, or there was nothing to do. The tones of ptt (800 and 400 Hz), twice,
+    so they are not taken for its start and end. RB_SPEAK_BEEP=off: none."""
+    if os.environ.get("RB_SPEAK_BEEP", "on") == "off":
+        return
+    rate, hz = 8000, 800 if high else 400
+    tone = b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * hz * n / rate))) for n in range(rate * 8 // 100))
+    audio = tone + bytes(rate * 2 * 6 // 100) + tone      # 80 ms, 60 ms quiet, 80 ms
+    # a shell in the background waits for play: what play says and its exit code go to the log
+    script = '"$@" 2>> "$0" || echo "$(date "+%Y-%m-%d %H:%M:%S") Ton nicht abgespielt: play Exit $?" >> "$0"'
+    try:
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        play = subprocess.Popen(["sh", "-c", script, LOG, PLAY, "-q", "-t", "raw", "-r", str(rate), "-e", "signed", "-b",
+                                 "16", "-c", "1", "-", "-t", "pulseaudio"], stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=pulse_env(),
+                                start_new_session=True)
+        play.stdin.write(audio)   # 3.5 KiB: fits the pipe, the hook goes on at once
+        play.stdin.close()
+    except OSError as e:
+        log("Ton nicht abgespielt: %s" % e)
 
 
 def help_text():
     """All sentences, by what they do (what Claude Code shows for "Welche Sprachbefehle gibt es")."""
     groups = (("Stoppen", STOP_SENTENCES), ("Weiterlesen", RESUME_SENTENCES),
               ("Letzten Satz wiederholen", REPEAT_SENTENCE_SENTENCES), ("Ganzen Text wiederholen", REPEAT_TEXT_SENTENCES),
-              ("Dauerhaft aus", OFF_SENTENCES), ("Wieder ein", ON_SENTENCES), ("Diese Liste", HELP_SENTENCES))
+              ("Dauerhaft aus", OFF_SENTENCES), ("Wieder ein", ON_SENTENCES),
+              ("Letzte Antwort einmal ganz vorlesen", WHOLE_SENTENCES),
+              ("Ab jetzt immer ganze Antworten (ohne Code)", ALL_SENTENCES), ("Ab jetzt nur die Kurzfassung", SHORT_SENTENCES),
+              ("Diese Liste", HELP_SENTENCES))
     return "Sprachbefehle fürs Vorlesen:\n" + "\n".join(
         "%s: %s" % (title, ", ".join("„%s“" % sentence for sentence in sentences)) for title, sentences in groups)
 
@@ -955,10 +1073,13 @@ def again(sentence):
 
 
 def hook():
-    data = hook_input()
-    message = data and data.get("last_assistant_message")
+    try:
+        data = json.load(sys.stdin)
+    except ValueError:
+        return
+    message = isinstance(data, dict) and data.get("last_assistant_message")
     if isinstance(message, str):
-        speak_answer(message)
+        speak_answer(message, data.get("session_id"))   # kept also when off: "Lies mir alles vor" reads the newest one
 
 
 def transcript_tail(path, tool_use_id):
@@ -1018,7 +1139,7 @@ def progress():
     tail = isinstance(path, str) and transcript_tail(path, tool_use_id if isinstance(tool_use_id, str) else None)
     note = tail and newest_note(tail)
     if note:
-        read_note(note, begun)
+        read_note(note, begun, data.get("session_id"))
     # a plan (ExitPlanMode) is read whole after the note, also with speak-first: the user decides on all of it
     plan = data and data.get("tool_name") == "ExitPlanMode" and (data.get("tool_input") or {}).get("plan")
     if isinstance(plan, str) and not os.path.exists(OFF) and not stopped_since(begun):
@@ -1028,7 +1149,7 @@ def progress():
             stop()
 
 
-def read_note(note, begun):
+def read_note(note, begun, session):
     """Read the note (uuid, text) unless it was read already."""
     # parallel tool calls run their hooks at the same time: the lock makes one of them claim the note and start the player
     try:
@@ -1042,7 +1163,7 @@ def read_note(note, begun):
             fh.flush()
             # switched off or stopped while it waited for the transcript: the note counts as read, nothing starts
             if not os.path.exists(OFF) and not stopped_since(begun):
-                speak_answer(note[1])
+                speak_answer(note[1], session)
                 # a stop between that check and the ticket missed the player: a new stop ends it before the first sound
                 if os.path.exists(OFF) or stopped_since(begun):
                     mark_stopped()
