@@ -372,7 +372,7 @@ nada), ninguna app: para la tecla lateral usa `--sidekey` (abajo).
 **Las teclas en la instalación:** en una terminal `install.sh` pregunta por cada tecla aún sin decidir: la tecla lateral (`--sidekey`,
 por defecto no), la pulsación larga en Inicio (`--home-key`, por defecto sí) y la tecla del auricular (`--headset`, por defecto sí). La
 respuesta se guarda en la configuración (`SIDEKEY`, `HOMEKEY`, `HEADSET`) y las ejecuciones siguientes ya no preguntan; las formas `--no-…`
-desactivan una tecla. La misma ejecución lo deja todo listo: el lector de las teclas lateral y del auricular y el rol de asistente para
+desactivan una tecla. La misma ejecución lo deja todo listo: un lector para la tecla lateral y otro para la del auricular y el rol de asistente para
 Inicio (root; en cada ejecución, por si «Forzar detención» lo quitó). Sin terminal no pregunta y nombra la orden para Inicio.
 
 **Tecla lateral del Hisense A9** (`--sidekey`, desactivada por defecto, se guarda como `SIDEKEY`): mantener la tecla lateral = grabar, soltar = parar. El instalador coloca
@@ -380,7 +380,7 @@ Inicio (root; en cada ejecución, por si «Forzar detención» lo quitó). Sin t
 La pulsación corta y la doble siguen con la app E-Ink; ajusta su pulsación larga a «Nothing». `rootbridge start|attach` arrancan el lector (una instancia),
 `--no-sidekey` lo elimina. Es un puente hasta que la app E-Ink y la app de Termux lo hagan por sí mismas.
 La **tecla de un auricular con cable** alterna (una pulsación larga empieza, suelta y habla, la siguiente pulsación larga envía: la tecla
-cortocircuita el micrófono mientras se mantiene; una pulsación corta sigue reproduciendo y pausando la música): el lector mantiene además un `cat` de root sobre las teclas del conector del auricular (el dispositivo «… Button Jack», `KEY_MEDIA`),
+cortocircuita el micrófono mientras se mantiene; una pulsación corta sigue reproduciendo y pausando la música): un lector propio, `headset-ptt` (`--headset`), mantiene un `cat` de root sobre las teclas del conector del auricular (el dispositivo «… Button Jack», `KEY_MEDIA`),
 también con el teléfono bloqueado. Una pulsación larga en esa tecla inicia además la búsqueda por voz de Android: ninguna app debería
 atenderla, o se abre también su ventana.
 

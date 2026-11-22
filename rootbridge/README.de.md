@@ -394,7 +394,7 @@ App: Für die Seitentaste nimm `--sidekey` (unten).
 **Die Tasten bei der Installation:** Auf einem Terminal fragt `install.sh` nach jeder Taste, über die noch nicht entschieden ist:
 Seitentaste (`--sidekey`, Standard nein), langer Druck auf Home (`--home-key`, Standard ja) und Headset-Taste (`--headset`, Standard ja).
 Die Antwort steht danach in der Konfig (`SIDEKEY`, `HOMEKEY`, `HEADSET`), spätere Läufe fragen nicht mehr; die `--no-…`-Formen schalten ab.
-Der Installer richtet im selben Lauf alles ein: den Tasten-Leser für Seiten- und Headset-Taste und die Assistenten-Rolle für Home (Root;
+Der Installer richtet im selben Lauf alles ein: je einen Tasten-Leser für Seiten- und Headset-Taste und die Assistenten-Rolle für Home (Root;
 bei jedem Lauf neu, falls „Beenden erzwingen“ sie genommen hat). Ohne Terminal fragt er nicht und nennt den Befehl für Home.
 
 **Seitentaste des Hisense A9** (`--sidekey`, standardmäßig aus, gespeichert als `SIDEKEY`): Seitentaste halten = aufnehmen, loslassen = stoppen. Der Installer legt
@@ -403,7 +403,7 @@ Kurz- und Doppeldruck bleiben bei der E-Ink-App; ihren Langdruck auf „Nothing�
 `--no-sidekey` entfernt ihn. Es ist eine Brücke, bis die E-Ink-App und die Termux-App das selbst können.
 Die **Taste eines Kabel-Headsets** schaltet um (Langdruck startet, loslassen und sprechen, der nächste Langdruck schickt ab: Die Taste
 schließt beim Halten das Mikrofon kurz; ein kurzer Druck startet und stoppt weiter die Musik):
-Der Leser hält zusätzlich ein root-`cat` auf den Tasten der Headset-Buchse (das Eingabegerät „… Button Jack“, `KEY_MEDIA`), auch bei gesperrtem
+Ein eigener Leser, `headset-ptt` (`--headset`), hält ein root-`cat` auf den Tasten der Headset-Buchse (das Eingabegerät „… Button Jack“, `KEY_MEDIA`), auch bei gesperrtem
 Handy. Ein Langdruck auf diese Taste startet außerdem Androids Sprachsuche: Keine App sollte sie übernehmen, sonst geht deren Fenster mit auf.
 
 ## Logins und MCP-Links

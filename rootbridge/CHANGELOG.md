@@ -5,6 +5,10 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **The headset key has a reader of its own.** `headset-ptt` reads the key of a wired headset, `sidekey-ptt` only the
+  side key of the Hisense A9; what both need (root readers, long press, log, lock) is in `keyreader.py` next to
+  `rootbridge-lib.sh`. `rootbridge start|attach` start each reader that is chosen (`SIDEKEY`, `HEADSET`), `install.sh`
+  installs and starts them one by one, `uninstall.sh` removes both. Tests: `tests/test_sidekey.py`, `tests/test_voice.sh`.
 * **Texts are read one after another.** A new answer or note no longer cuts off the one being read: each player takes a
   ticket in `~/.rootbridge/speak-queue` and reads when the older ones are done (tickets of dead players go). A stop
   (`rootbridge voice speak stop`, the widget "Stopp") ends the one that reads, and the waiting ones see it in

@@ -389,35 +389,35 @@ cmd_voice() {
     esac
 }
 
-# sidekey_keys: the keys the reader reads (SIDEKEY_KEYS of sidekey-ptt), empty when none is chosen
-sidekey_keys() {
-    local keys=""
-    [ "$SIDEKEY" = on ] && keys="side"
+# key_readers: the key readers that are chosen, sidekey-ptt (side key of the Hisense A9: SIDEKEY=on) and headset-ptt (key
+# of a wired headset: HEADSET=on); empty when none is
+key_readers() {
+    local readers=""
+    [ "$SIDEKEY" = on ] && readers="sidekey-ptt"
     # HEADSET not decided yet: it follows SIDEKEY, like install.sh
-    if [ "$HEADSET" = on ] || { [ -z "$HEADSET" ] && [ "$SIDEKEY" = on ]; }; then keys="${keys:+$keys }headset"; fi
-    printf '%s' "$keys"
+    if [ "$HEADSET" = on ] || { [ -z "$HEADSET" ] && [ "$SIDEKEY" = on ]; }; then readers="${readers:+$readers }headset-ptt"; fi
+    printf '%s' "$readers"
 }
 
-# sidekey_start: the key reader (side key of the Hisense A9: SIDEKEY=on, headset key: HEADSET=on), one instance (it takes a
-# lock itself)
-sidekey_start() {
-    local keys
-    keys="$(sidekey_keys)"
-    [ -n "$keys" ] || return 0
-    command -v sidekey-ptt >/dev/null 2>&1 || return 0
-    pgrep -f 'sidekey-ptt' >/dev/null 2>&1 && return 0
-    SIDEKEY_KEYS="$keys" setsid nohup sidekey-ptt >/dev/null 2>&1 < /dev/null &
+# keys_start: the chosen key readers, one instance each (each takes a lock itself)
+keys_start() {
+    local reader
+    for reader in $(key_readers); do
+        command -v "$reader" >/dev/null 2>&1 || continue
+        pgrep -f "$reader" >/dev/null 2>&1 && continue
+        setsid nohup "$reader" >/dev/null 2>&1 < /dev/null &
+    done
     return 0
 }
 
-# what runs next to a session: the microphone (VOICE=on) and the side key reader (SIDEKEY=on)
+# what runs next to a session: the microphone (VOICE=on) and the key readers (SIDEKEY=on, HEADSET=on)
 extras_start() {
     if [ "$VOICE" = on ]; then voice_start; fi
-    sidekey_start
+    keys_start
 }
 
 cmd_status() {
-    local pid root
+    local pid root reader
     echo "rootbridge $VERSION"
     if pid="$(daemon_pid)"; then
         echo "Daemon:       läuft (PID $pid)"
@@ -457,9 +457,9 @@ cmd_status() {
     else
         echo "Sprache:      nicht Teil der Installation (--no-voice)"
     fi
-    if [ -n "$(sidekey_keys)" ]; then
-        if pgrep -f 'sidekey-ptt' >/dev/null 2>&1; then echo "Tasten:       Leser läuft ($(sidekey_keys))"; else echo "Tasten:       Leser gestoppt (rootbridge start)"; fi
-    fi
+    for reader in $(key_readers); do
+        if pgrep -f "$reader" >/dev/null 2>&1; then echo "Tasten:       $reader läuft"; else echo "Tasten:       $reader gestoppt (rootbridge start)"; fi
+    done
     if [ -f "$BRIDGE_DIR/audit.log" ]; then
         echo "Letzte Audit-Einträge:"
         tail -n 5 "$BRIDGE_DIR/audit.log" | sed 's/^/  /'

@@ -20,7 +20,7 @@ TOOL_CLAUDE="on"        # on | off: Claude Code is part of this installation (in
 TOOL_CODEX="on"         # on | off: Codex is part of this installation (install.sh --no-codex sets off)
 VOICE="on"              # on | off: voice dictation for Claude Code (sox, PulseAudio, microphone); install.sh --no-voice sets off
 SIDEKEY="off"           # on | off: side key of the Hisense A9 as push to talk (sidekey-ptt); install.sh --sidekey sets on
-HEADSET=""              # on | off: long press on the key of a wired headset toggles push to talk (sidekey-ptt); install.sh --headset sets on;
+HEADSET=""              # on | off: long press on the key of a wired headset toggles push to talk (headset-ptt); install.sh --headset sets on;
                         # empty (not decided, a config from before it): follows SIDEKEY, as the reader always read both keys
 HOMEKEY="off"           # on | off: long press on Home toggles push to talk (Termux as the assistant, set by install.sh --home-key)
 AUTOSTART_DELAY=3

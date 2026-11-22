@@ -37,11 +37,13 @@ for f in "$HOME/.bashrc" "$HOME/.tmux.conf" "$HOME/.termux/termux.properties"; d
     say "Block entfernt: $f"
 done
 
-# the side key reader and our PulseAudio configuration (a default.pa of the user, without our marker, stays)
-if [ -f "$PREFIX/bin/sidekey-ptt" ] && grep -q 'sidekey-ptt' "$PREFIX/bin/sidekey-ptt" 2>/dev/null; then
-    pkill -f 'sidekey-ptt' 2>/dev/null || true
-    rm -f "$PREFIX/bin/sidekey-ptt"
-fi
+# the key readers and our PulseAudio configuration (a default.pa of the user, without our marker, stays)
+for reader in sidekey-ptt headset-ptt; do
+    if [ -f "$PREFIX/bin/$reader" ] && grep -q "$reader" "$PREFIX/bin/$reader" 2>/dev/null; then
+        pkill -f "$reader" 2>/dev/null || true
+        rm -f "$PREFIX/bin/$reader"
+    fi
+done
 if grep -qs 'termux-rootbridge voice' "$HOME/.config/pulse/default.pa"; then
     rm -f "$HOME/.config/pulse/default.pa"
     say "PulseAudio-Konfiguration entfernt: ~/.config/pulse/default.pa"
