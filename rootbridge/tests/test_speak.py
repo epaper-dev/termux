@@ -1,6 +1,6 @@
 """Tests for guest/claude/speak.py, reading Claude's answers aloud (run: python3 -I -m unittest).
 
-piper and play are stubs (RB_SPEAK_PIPER / RB_SPEAK_PLAY), the bridge directory is a temp dir (RB_SPEAK_DIR).
+Piper (speak.py --piper-worker with Piper's Python) and play are stubs (RB_SPEAK_PIPER_PYTHON / RB_SPEAK_PLAY), the bridge directory is a temp dir (RB_SPEAK_DIR).
 """
 import fcntl
 import importlib.util
@@ -262,7 +262,7 @@ try:
             if not chunk:
                 break
             data += chunk
-        if not os.environ.get("STUB_SERVER_SILENT"):
+        if not os.environ.get("STUB_SERVER_SILENT") and os.environ.get("STUB_SERVER_MUTE", "-").encode() not in data:
             conn.sendall(b"PCM:" + data)
         conn.close()
 finally:
@@ -293,18 +293,27 @@ class TestPlayer(unittest.TestCase):
         open(self.voice, "w").close()
         with open(self.voice + ".json", "w") as fh:
             json.dump({"audio": {"sample_rate": 16000}}, fh)
-        self.piper = self.stub("piper", 'echo "$@" > "$OUT/piper.args"; cat > "$OUT/piper.in"\n'
-                                        '[ -z "${SLOW:-}" ] || sleep 30\nprintf RAW\n')
+        # piper.in: the sentences of one text, by spaces
+        self.piper = self.piper_stub("piper", '[ "$n" = 0 ] && printf %s "$line" > "$OUT/piper.in" '
+                                              '|| printf " %s" "$line" >> "$OUT/piper.in"\n'
+                                              '[ -z "${SLOW:-}" ] || sleep 30')
         self.play = self.stub("play", 'echo "$@" > "$OUT/play.args"; echo "$PULSE_LATENCY_MSEC" > "$OUT/play.latency"; '
                                       'cat > "$OUT/play.in"\n')
         self.pids = []
 
     def tearDown(self):
-        for pid in self.pids:
+        # the players still running (each has a ticket in the queue): they write speak-last until they end
+        try:
+            tickets = os.listdir(os.path.join(self.bridge, "speak-queue"))
+        except OSError:
+            tickets = []
+        players = set(self.pids) | {int(t.partition(".")[2]) for t in tickets if t.partition(".")[2].isdigit()}
+        for pid in players:
             try:
                 os.killpg(pid, 15)
             except OSError:
                 pass
+        self.wait_for(lambda: not any(os.path.exists("/proc/%d" % pid) for pid in players))
         self.tmp.cleanup()
 
     def stub(self, name, body):
@@ -314,8 +323,13 @@ class TestPlayer(unittest.TestCase):
         os.chmod(path, 0o755)
         return path
 
+    def piper_stub(self, name, on_line, audio=r"printf '\0\0\0\3RAW'"):
+        """--piper-worker: on_line for each sentence ($line, $n counts from 0), then its audio after its length."""
+        return self.stub(name, 'echo "$@" > "$OUT/piper.args"\nn=0\nwhile IFS= read -r line; do\n%s\n%s\nn=$((n + 1))\ndone\n'
+                         % (on_line, audio))
+
     def env(self, **extra):
-        env = dict(os.environ, RB_SPEAK_DIR=self.bridge, RB_SPEAK_PIPER=self.piper, RB_SPEAK_PLAY=self.play,
+        env = dict(os.environ, RB_SPEAK_DIR=self.bridge, RB_SPEAK_PIPER_PYTHON=self.piper, RB_SPEAK_PLAY=self.play,
                    PIPER_VOICE=self.voice, OUT=self.out, RB_SPEAK_LOG=self.log,
                    RB_SPEAK_ENGLISH=os.path.join(self.tmp.name, "keine-liste.txt"),   # the text as it is, unless a test sets one
                    RB_SPEAK_ARTICULINO=os.path.join(self.tmp.name, "kein-articulino"))   # Piper, unless a test sets one
@@ -361,7 +375,7 @@ class TestPlayer(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "RAW"))
         self.assertEqual(self.out_file("piper.in"), "Fertig: alles gut.")
-        self.assertEqual(self.out_file("piper.args").split(), ["-m", self.voice, "--output-raw"])
+        self.assertEqual(self.out_file("piper.args").split(), ["-I", os.path.abspath(SPEAK), "--piper-worker", self.voice])
         self.assertIn("-r 16000", self.out_file("play.args"))          # the rate of the voice, from its .json
         self.assertIn("--buffer 4096", self.out_file("play.args"))
         self.assertIn("-t pulseaudio", self.out_file("play.args"))
@@ -373,13 +387,13 @@ class TestPlayer(unittest.TestCase):
         r = self.run_speak(["--hook"], json.dumps({"last_assistant_message":
                                                    "**Alles** gut, z. B. hier. Danach Details.\n\nMehr.\n\n- Soll ich pushen?"}))
         self.assertEqual(r.returncode, 0)
-        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "RAW"))
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "RAW" * 3))   # three sentences
         self.assertEqual(self.out_file("piper.in"), "Alles gut, z. B. hier. Danach Details. Soll ich pushen?")
 
     def test_speak_first_leaves_the_command_line_whole(self):
         open(os.path.join(self.bridge, "speak-first"), "w").close()
         self.run_speak(["Erster Satz. Zweiter Satz."])
-        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "RAW"))
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "RAWRAW"))
         self.assertEqual(self.out_file("piper.in"), "Erster Satz. Zweiter Satz.")
 
     def test_hook_returns_at_once(self):
@@ -452,6 +466,30 @@ class TestPlayer(unittest.TestCase):
         self.run_speak(["Hallo."], STUB_SERVER_SILENT="1", **env)
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Hallo."))
         self.assertTrue(self.wait_for(lambda: "Articulino lieferte kein Audio" in self.read_log()))
+
+    def test_a_sentence_without_audio_is_left_out(self):
+        env = self.articulino()
+        self.run_speak(["Eins. Zwei. Drei."], STUB_SERVER_MUTE="Zwei", **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "PCM:Eins.PCM:Drei."), self.out_file("play.in"))
+        self.assertTrue(self.logged("Articulino lieferte für Satz 2 kein Audio, er wird übersprungen"))
+        self.assertTrue(self.wait_for(lambda: (self.last() or {}).get("index") == 3))
+
+    def test_a_sentence_counts_as_heard_only_when_its_audio_went_to_play(self):
+        hold = os.path.join(self.bridge, "speak-hold")
+        piper = self.piper_stub("piper-hold", '[ "$line" = Zwei. ] && touch "%s"' % hold)   # ptt start after "Eins."
+        self.run_speak(["Eins. Zwei."], RB_SPEAK_PIPER_PYTHON=piper)
+        self.assertTrue(self.wait_for(lambda: os.path.exists(hold)))
+        time.sleep(0.3)
+        self.assertEqual(self.last(), {"parts": ["Eins.", "Zwei."], "index": 0, "heard": 0},
+                         "Zwei. wartet noch auf das Ende der Aufnahme")
+        os.remove(hold)
+        self.assertTrue(self.wait_for(lambda: self.last() == {"parts": ["Eins.", "Zwei."], "index": 2, "heard": 1}))
+
+    def test_a_text_is_done_only_when_play_played_it(self):
+        play = self.stub("play-fails", 'cat > /dev/null; exit 1\n')
+        self.run_speak(["Eins."], RB_SPEAK_PLAY=play)
+        self.assertTrue(self.wait_for(lambda: self.logged("play Exit 1")))
+        self.assertEqual(self.last(), {"parts": ["Eins."], "index": 0, "heard": 0})
 
     def test_a_hanging_server_is_ended_and_piper_reads(self):
         env = self.articulino()
@@ -598,7 +636,7 @@ class TestPlayer(unittest.TestCase):
 
     def test_without_piper_the_hook_stays_quiet_and_logs(self):
         r = self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Hallo"}),
-                           RB_SPEAK_PIPER=os.path.join(self.tmp.name, "gibt-es-nicht"))
+                           RB_SPEAK_PIPER_PYTHON=os.path.join(self.tmp.name, "gibt-es-nicht"))
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, b"", b""))
         time.sleep(0.5)
         self.assertFalse(os.path.exists(self.pidfile()))
@@ -622,7 +660,7 @@ class TestPlayer(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "lang"))
         self.run_speak(["--stop"])
         self.assertTrue(self.wait_for(lambda: not os.path.exists("/proc/%d" % pid)))
-        self.assertFalse(os.path.exists(self.log))
+        self.assertFalse(os.path.exists(self.log), os.path.exists(self.log) and self.read_log())
 
     def test_stop_ends_the_player_and_its_children(self):
         self.run_speak(["--hook"], json.dumps({"last_assistant_message": "lang"}), SLOW="1")
@@ -672,6 +710,120 @@ class TestPlayer(unittest.TestCase):
             r = self.command(prompt)
             self.assertEqual((r.returncode, r.stdout), (0, b""), prompt)
         self.assertFalse(os.path.exists(os.path.join(self.bridge, "prompt-clear")))
+
+    def last(self):
+        """speak-last without the pid of its player."""
+        try:
+            with open(os.path.join(self.bridge, "speak-last"), encoding="utf-8") as fh:
+                last = json.load(fh)
+        except OSError:
+            return None
+        last.pop("player", None)
+        return last
+
+    def stopped_at_the_second(self):
+        """"Eins. Zwei. Drei." stopped while its second sentence is read (Piper still makes the third one); the stub of
+        Piper for what comes after."""
+        slow = self.piper_stub("piper-slow", '[ "$n" = 0 ] && printf %s "$line" > "$OUT/piper.in" '
+                                             '|| printf " %s" "$line" >> "$OUT/piper.in"\n'
+                                             '[ "$line" = Drei. ] && [ -n "${SLOW_THREE:-}" ] && sleep 30')
+        self.run_speak(["Eins. Zwei. Drei."], RB_SPEAK_PIPER_PYTHON=slow, SLOW_THREE="1")
+        pid = self.player_pid()
+        self.assertTrue(self.wait_for(lambda: (self.last() or {}).get("index") == 1), self.last())
+        self.run_speak(["--stop"])
+        self.assertTrue(self.wait_for(lambda: not os.path.exists("/proc/%d" % pid)))
+        os.remove(os.path.join(self.out, "piper.in"))
+        return slow
+
+    def test_the_player_remembers_the_text_and_where_it_is(self):
+        self.run_speak(["Eins. Zwei.\nDrei"])
+        self.assertTrue(self.wait_for(lambda: self.last() == {"parts": ["Eins.", "Zwei.", "Drei"], "index": 3, "heard": 2}),
+                        self.last())
+
+    def test_parts_without_letters_are_not_read(self):
+        self.assertEqual(speak.text_parts("Fertig.\n✅\n— !\nWeiter 2."), ["Fertig.", "Weiter 2."])
+
+    def test_go_on_reads_from_the_sentence_that_was_stopped(self):
+        slow = self.stopped_at_the_second()
+        r = self.command("Lies weiter vor.", RB_SPEAK_PIPER_PYTHON=slow)
+        self.assertEqual(json.loads(r.stdout), {"decision": "block", "reason": "Ich lese weiter."})
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Zwei. Drei."), self.out_file("piper.in"))
+        self.assertTrue(self.wait_for(lambda: (self.last() or {}).get("index") == 3))
+
+    def test_repeat_the_last_sentence_and_go_on_after_it(self):
+        slow = self.stopped_at_the_second()
+        r = self.command("Wiederhole den letzten Satz", RB_SPEAK_PIPER_PYTHON=slow)
+        self.assertEqual(json.loads(r.stdout)["reason"], "Ich wiederhole den letzten Satz.")
+        self.assertTrue(self.wait_for(lambda: (self.last() or {}).get("index") == 2), self.last())
+        self.assertEqual(self.out_file("piper.in"), "Zwei.")
+        os.remove(os.path.join(self.out, "piper.in"))
+        self.command("Wiederhole den letzten Satz", RB_SPEAK_PIPER_PYTHON=slow)   # again the same, not the next one
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Zwei."), self.out_file("piper.in"))
+        self.assertTrue(self.wait_for(lambda: os.listdir(os.path.join(self.bridge, "speak-queue")) == []))
+        self.command("Fahre mit dem Vorlesen fort", RB_SPEAK_PIPER_PYTHON=slow)
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Drei."), self.out_file("piper.in"))
+
+    def test_repeat_comes_at_once_and_the_waiting_texts_after_it(self):
+        slow = self.piper_stub("piper-slow", '[ "$line" = Drei. ] && [ -n "${SLOW_THREE:-}" ] && sleep 30')
+        self.run_speak(["Eins. Zwei. Drei."], RB_SPEAK_PIPER_PYTHON=slow, SLOW_THREE="1")
+        pid = self.player_pid()
+        self.assertTrue(self.wait_for(lambda: (self.last() or {}).get("heard") == 1), self.last())
+        piper = self.piper_stub("piper-all", 'printf "%s\\n" "$line" >> "$OUT/piper.all"')
+        self.run_speak(["Der Plan."], RB_SPEAK_PIPER_PYTHON=piper)   # waits behind the text that is read
+        time.sleep(1.2)   # older than the time a text may wait: the repeat counts from when it was said
+        r = self.command("Wiederhole den letzten Satz", RB_SPEAK_PIPER_PYTHON=piper, RB_SPEAK_MAX_WAIT="1")
+        self.assertEqual(json.loads(r.stdout)["reason"], "Ich wiederhole den letzten Satz.")
+        self.assertTrue(self.wait_for(lambda: not os.path.exists("/proc/%d" % pid)), "der alte Text liest noch")
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.all") == "Zwei.\nDer Plan.\n"), self.out_file("piper.all"))
+        self.assertFalse(os.path.exists(os.path.join(self.bridge, "speak-stopped")), "die Warteschlange wurde gestoppt")
+
+    def test_a_repeat_does_not_end_a_text_that_began_after_its_own(self):
+        # speak-last is of a player that ended; another text began to read since: it reads on, the repeat follows it
+        with open(os.path.join(self.bridge, "speak-last"), "w") as fh:
+            json.dump({"parts": ["Eins.", "Zwei."], "index": 2, "heard": 1, "player": 1}, fh)
+        self.run_speak(["Neu."], SLOW="1")
+        pid = self.player_pid()
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Neu."))
+        piper = self.piper_stub("piper-all", 'printf "%s\\n" "$line" >> "$OUT/piper.all"')
+        self.command("Wiederhole den letzten Satz", RB_SPEAK_PIPER_PYTHON=piper)
+        time.sleep(0.5)
+        self.assertTrue(os.path.exists("/proc/%d" % pid), "der neue Text wurde beendet")
+        self.assertIsNone(self.out_file("piper.all"), "die Wiederholung spricht gleichzeitig")
+        os.killpg(pid, 15)   # the new text is done
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.all") == "Zwei.\n"), self.out_file("piper.all"))
+
+    def test_repeat_the_whole_text(self):
+        self.stopped_at_the_second()
+        r = self.command("Wiederhole den Text noch mal.")
+        self.assertEqual(json.loads(r.stdout)["reason"], "Ich wiederhole den Text.")
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Eins. Zwei. Drei."), self.out_file("piper.in"))
+
+    def test_go_on_after_the_end_and_without_a_text_reads_nothing(self):
+        r = self.command("Lies den Text weiter")
+        self.assertEqual(json.loads(r.stdout)["reason"], "Es gibt keinen Text, der vorgelesen wurde.")
+        self.run_speak(["Fertig."])
+        self.assertTrue(self.wait_for(lambda: (self.last() or {}).get("index") == 1))
+        os.remove(os.path.join(self.out, "piper.in"))
+        r = self.command("Lies den Text weiter")
+        self.assertEqual(json.loads(r.stdout)["reason"], "Der letzte Text ist zu Ende gelesen.")
+        self.assertFalse(os.path.exists(os.path.join(self.bridge, "speak-stopped")), "ein Hinweis stoppt nichts")
+        time.sleep(0.5)
+        self.assertIsNone(self.out_file("piper.in"))
+
+    def test_a_broken_or_linked_speak_last_counts_as_none(self):
+        last = os.path.join(self.bridge, "speak-last")
+        other = os.path.join(self.tmp.name, "anderswo.json")
+        with open(other, "w") as fh:
+            json.dump({"parts": ["Fremd."], "index": 0, "heard": 0}, fh)
+        os.symlink(other, last)
+        for content in (None, '{"parts": ["Eins."], "index": 5, "heard": 0}', '{"parts": ["Eins."], "index": 0, "heard": 1}',
+                        '{"parts": [1], "index": 0, "heard": 0}', "kein json"):
+            if content is not None:
+                os.remove(last)
+                with open(last, "w") as fh:
+                    fh.write(content)
+            r = self.command("Wiederhole den Text nochmal")
+            self.assertEqual(json.loads(r.stdout)["reason"], "Es gibt keinen Text, der vorgelesen wurde.", content)
 
     def test_a_spoken_stop_works_also_when_reading_is_off(self):
         open(os.path.join(self.bridge, "speak-off"), "w").close()
@@ -756,10 +908,10 @@ class TestPlayer(unittest.TestCase):
         self.assertIsNone(self.out_file("piper.in"), "derselbe Zwischenstand zweimal gelesen")
 
     def test_parallel_progress_hooks_read_the_note_once(self):
-        piper = self.stub("piper-count", 'echo x >> "$OUT/piper.count"; cat > /dev/null\n')
+        piper = self.piper_stub("piper-count", 'echo x >> "$OUT/piper.count"')
         data = self.transcript(("a1", "assistant", [{"type": "text", "text": "Einmal."}]))
         procs = [subprocess.Popen([sys.executable, "-I", SPEAK, "--progress"], stdin=subprocess.PIPE,
-                                  env=self.env(RB_SPEAK_PIPER=piper)) for _ in range(4)]
+                                  env=self.env(RB_SPEAK_PIPER_PYTHON=piper)) for _ in range(4)]
         for p in procs:
             p.communicate(data.encode(), timeout=20)
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.count") is not None))
@@ -849,18 +1001,27 @@ class TestPlayer(unittest.TestCase):
 
     def test_answers_during_a_recording_are_read_afterwards_in_order(self):
         env, rec = self.fake_recorder()
-        piper = self.stub("piper-all", 'cat >> "$OUT/piper.all"; echo >> "$OUT/piper.all"\n')
+        piper = self.piper_stub("piper-all", 'printf "%s\\n" "$line" >> "$OUT/piper.all"')
         self.run_speak(["--progress"], self.transcript(("a1", "assistant", [{"type": "text", "text": "Erst."}])),
-                       RB_SPEAK_PIPER=piper, **env)
-        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Dann."}), RB_SPEAK_PIPER=piper, **env)
+                       RB_SPEAK_PIPER_PYTHON=piper, **env)
+        self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Dann."}), RB_SPEAK_PIPER_PYTHON=piper, **env)
         time.sleep(0.5)
         self.assertIsNone(self.out_file("piper.all"))
         shutil.rmtree(rec)   # the recording is over
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.all") == "Erst.\nDann.\n"))
 
     def test_reading_pauses_while_the_microphone_is_on_and_goes_on(self):
-        piper = self.stub("piper-long", 'cat > /dev/null; for i in $(seq 40); do head -c 4096 /dev/zero; sleep 0.05; done\n')
-        self.run_speak(["Lang."], RB_SPEAK_PIPER=piper)
+        piper = self.piper_stub("piper-long", ":", r"printf '\0\2\200\0'; head -c 163840 /dev/zero")
+        # play takes a piece every 0.05 s, as a speaker would
+        play = self.stub("play-paced", 'exec python3 -c \'import os, sys, time\n'
+                                        'out = open(os.environ["OUT"] + "/play.in", "ab", 0)\n'
+                                        'while True:\n'
+                                        '    data = sys.stdin.buffer.read1(4096)\n'
+                                        '    if not data:\n'
+                                        '        break\n'
+                                        '    out.write(data)\n'
+                                        '    time.sleep(0.05)\'\n')
+        self.run_speak(["Lang."], RB_SPEAK_PIPER_PYTHON=piper, RB_SPEAK_PLAY=play)
         size = lambda: len(self.out_file("play.in") or "")
         self.assertTrue(self.wait_for(lambda: size() >= 8192))
         hold = os.path.join(self.bridge, "speak-hold")
@@ -895,11 +1056,11 @@ class TestPlayer(unittest.TestCase):
 
     def test_a_plan_is_read_whole_after_its_note(self):
         open(os.path.join(self.bridge, "speak-first"), "w").close()
-        piper = self.stub("piper-all", 'cat >> "$OUT/piper.all"; echo >> "$OUT/piper.all"\n')
+        piper = self.piper_stub("piper-all", 'printf "%s\\n" "$line" >> "$OUT/piper.all"')
         data = json.loads(self.transcript(("a1", "assistant", [{"type": "text", "text": "Der Plan steht.\nDetails."}])))
         data.update(tool_name="ExitPlanMode",
                     tool_input={"plan": "# Plan\n\nErst dies.\n\n- Dann das.\n\n```\ncode\n```\nZuletzt prüfen."})
-        self.run_speak(["--progress"], json.dumps(data), RB_SPEAK_PIPER=piper)
+        self.run_speak(["--progress"], json.dumps(data), RB_SPEAK_PIPER_PYTHON=piper)
         self.assertTrue(self.wait_for(lambda: (self.out_file("piper.all") or "").endswith("prüfen.\n")),
                         self.out_file("piper.all"))
         self.assertEqual(self.out_file("piper.all"), "Der Plan steht.\nPlan\nErst dies.\nDann das.\nZuletzt prüfen.\n")

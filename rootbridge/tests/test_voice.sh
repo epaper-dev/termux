@@ -501,7 +501,8 @@ import ast, sys
 tree = ast.parse(open(sys.argv[1], encoding="utf-8").read())
 py = set()
 for node in tree.body:
-    if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") in ("STOP_PHRASES", "OFF_PHRASES", "ON_PHRASES"):
+    if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") in ("STOP_PHRASES", "OFF_PHRASES", "ON_PHRASES", "RESUME_PHRASES",
+                                                                 "REPEAT_SENTENCE_PHRASES", "REPEAT_TEXT_PHRASES"):
         py |= ast.literal_eval(node.value)
 print("gleich" if py == set(sys.argv[2:]) and len(sys.argv[2:]) == len(py) else "anders: %s" % (py ^ set(sys.argv[2:])))
 PY

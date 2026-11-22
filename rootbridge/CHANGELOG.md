@@ -5,6 +5,14 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Go on reading, or hear it again.** "Lies weiter vor" / "Fahre mit dem Vorlesen fort" go on with the last text at the
+  sentence where it was stopped, "Wiederhole den letzten Satz" reads that sentence again, "Wiederhole den Text nochmal" the
+  whole text (sentences that `speak.py --command` keeps from Claude, like the stop sentences; long enough that Claude Code
+  sends them by itself). They take the place of what is read now: the texts that wait, a plan for instance, come
+  afterwards. For this the player reads sentence by sentence: Articulino one request per sentence, Piper through
+  `speak.py --piper-worker` (the voice loaded once, the audio of each sentence with its length), the next sentence made
+  while one plays; it notes the text and its sentence in `speak-last` in the bridge directory. Tests:
+  `tests/test_speak.py`, `tests/test_voice.sh`.
 * **Plans are read aloud in full.** Before ExitPlanMode the PreToolUse hook reads the whole plan (`tool_input.plan`) after
   the note, also with `speak first`; the text for `~/.claude/CLAUDE.md` (`templates/speech*.claude.md`) asks for plans
   that are easy to listen to. Tests: `tests/test_speak.py`.
