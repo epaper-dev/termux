@@ -5,6 +5,10 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **"Welche Sprachbefehle gibt es" shows all voice commands.** Claude Code shows the sentences to stop, go on, repeat and
+  switch reading, by what they do (`speak.py --command`, `HELP_PHRASES`); the READMEs list them as well (a test keeps
+  them complete), and the block for `~/.claude/CLAUDE.md` tells Claude about them, so it can name the right sentence
+  when one reaches it. The sentences are written as they are shown (`*_SENTENCES`) and compared without case and marks.
 * **Go on reading, or hear it again.** "Lies weiter vor" / "Fahre mit dem Vorlesen fort" go on with the last text at the
   sentence where it was stopped, "Wiederhole den letzten Satz" reads that sentence again, "Wiederhole den Text nochmal" the
   whole text (sentences that `speak.py --command` keeps from Claude, like the stop sentences; long enough that Claude Code

@@ -348,6 +348,15 @@ On by default; `--no-voice` leaves it out (stored as `VOICE`, so a reinstall kee
 
 **Triggers without root** (the Termux app of this repository, `app/`, shows "Termux push to talk" to Android; each one runs `ptt toggle`: one
 event, the first starts talking, the next stops):
+* **Voice commands for reading aloud**: these sentences, spoken or typed (case and marks aside), do not go to Claude; Claude
+  Code shows briefly what happened instead. "Welche Sprachbefehle gibt es" shows this list in Claude Code.
+  * Stop (and what waits): "Beende die Sprachausgabe", "Stoppe die Sprachausgabe", "Stopp die Sprachausgabe", "Beende die Sprachansage", "Stoppe die Sprachansage", "Stoppe jetzt die Sprachansage", "Beende das Vorlesen", "Stoppe das Vorlesen", "Stopp das Vorlesen", "Hör auf zu reden", "Höre auf zu reden", "Stop reading aloud", "Stop the speech", "Stop talking now"
+  * Go on (from the sentence that was stopped): "Lies weiter vor", "Lese weiter vor", "Lies bitte weiter vor", "Lies den Text weiter", "Fahre mit dem Vorlesen fort", "Continue reading aloud"
+  * Repeat the last sentence: "Wiederhole den letzten Satz", "Lies den letzten Satz nochmal", "Lies den letzten Satz noch mal", "Repeat the last sentence"
+  * Repeat the whole text: "Wiederhole den Text nochmal", "Wiederhole den Text noch mal", "Lies das nochmal vor", "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text"
+  * Off for good: "Schalte die Sprachausgabe aus", "Schalte das Vorlesen aus", "Sprachausgabe dauerhaft aus", "Turn speech off", "Turn reading off", "Switch speech off"
+  * On again: "Schalte die Sprachausgabe ein", "Schalte die Sprachausgabe an", "Schalte das Vorlesen ein", "Schalte das Vorlesen an", "Starte die Sprachausgabe", "Starte das Vorlesen", "Turn speech on", "Turn reading on", "Switch speech on"
+  * Show this list: "Welche Sprachbefehle gibt es", "Zeige die Sprachbefehle", "Zeig mir die Sprachbefehle", "Show the speech commands"
 * **Long press on Home**: Settings, Apps, Default apps, Digital assistant app, "Termux push to talk". Some phones do not show that choice (the
   Hisense A9 does not); the app is a valid assistant all the same, and with root you set it yourself:
   `rootbridge voice assistant on` (undo with `off`, check with `status`). "Force stop" of Termux in the app info drops the role, and the

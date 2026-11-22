@@ -497,13 +497,11 @@ rm -f "$T/keys.lsfail"
 printf 'Mein Entwurf' > "$BRIDGE_DIR/prompt-clear"; echo "Mein Entwurf" > "$T/pane"; : > "$T/keys"; clear_round 2> "$T/clear.err"
 check "Eingabezeile: ein anderer Text vom Gast leert nichts" ";nein;1" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear");$(count "$T/clear.err" 'kein Satz')"
 check "Eingabezeile: die Sätze in Termux und in speak.py sind dieselben" gleich "$( ( . "$LIB"; python3 -I - "$ROOT/guest/claude/speak.py" "${RB_SPEAK_SENTENCES[@]}" <<'PY'
-import ast, sys
-tree = ast.parse(open(sys.argv[1], encoding="utf-8").read())
-py = set()
-for node in tree.body:
-    if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") in ("STOP_PHRASES", "OFF_PHRASES", "ON_PHRASES", "RESUME_PHRASES",
-                                                                 "REPEAT_SENTENCE_PHRASES", "REPEAT_TEXT_PHRASES"):
-        py |= ast.literal_eval(node.value)
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("speak", sys.argv[1])
+speak = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(speak)
+py = set().union(*(getattr(speak, name) for name in dir(speak) if name.endswith("_PHRASES")))
 print("gleich" if py == set(sys.argv[2:]) and len(sys.argv[2:]) == len(py) else "anders: %s" % (py ^ set(sys.argv[2:])))
 PY
 ) )"

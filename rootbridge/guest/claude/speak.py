@@ -18,7 +18,8 @@ the PreToolUse hook; a new text ends the one still being read.
                       "Fahre mit dem Vorlesen fort" (RESUME_PHRASES) go on with the last text where it was stopped,
                       "Wiederhole den letzten Satz" (REPEAT_SENTENCE_PHRASES) reads that sentence again (and goes on
                       from there next time), "Wiederhole den Text nochmal" (REPEAT_TEXT_PHRASES) the whole text; in
-                      place of what is read now, the texts that wait come afterwards. The sentence goes to
+                      place of what is read now, the texts that wait come afterwards. "Welche Sprachbefehle gibt es"
+                      (HELP_PHRASES) shows all of them in Claude Code. The sentence goes to
                       prompt-clear: Termux empties the input line, where Claude Code puts a blocked prompt back
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
@@ -86,25 +87,40 @@ STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop
 REC_STALE = os.path.join(BRIDGE_DIR, "rec-stale")     # "<pid> <start time>" of recorders the daemon no longer counts
 HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about to record (rb_speak_hold in Termux)
 HOLD_SECONDS = 3          # how long that pauses reading when no recorder comes (ptt waits PTT_WARMUP + 2 s for one)
+
+
+def said(text):
+    """A prompt as it is compared with the sentences below: lower case, without marks."""
+    return " ".join(re.sub(r"[\W_]+", " ", text.lower()).split())
+
+
 # A prompt that is one of these sentences (case and marks aside) is for us and stays from Claude (--command): stop what is
 # read now, switch reading off for good (and stop), or on again. Sentences of three words or more, not single words:
-# Claude Code sends a dictated prompt of several words by itself, one word waits for Enter.
-STOP_PHRASES = {"beende die sprachausgabe", "stoppe die sprachausgabe", "stopp die sprachausgabe",
-                "beende die sprachansage", "stoppe die sprachansage", "stoppe jetzt die sprachansage",
-                "hör auf zu reden", "höre auf zu reden", "beende das vorlesen", "stoppe das vorlesen", "stopp das vorlesen",
-                "stop reading aloud", "stop the speech", "stop talking now"}
-OFF_PHRASES = {"schalte die sprachausgabe aus", "schalte das vorlesen aus", "sprachausgabe dauerhaft aus",
-               "turn speech off", "turn reading off", "switch speech off"}
-ON_PHRASES = {"schalte die sprachausgabe ein", "schalte die sprachausgabe an", "schalte das vorlesen ein",
-              "schalte das vorlesen an", "starte die sprachausgabe", "starte das vorlesen", "turn speech on",
-              "turn reading on", "switch speech on"}
+# Claude Code sends a dictated prompt of several words by itself, one word waits for Enter. Written as they are shown
+# ("Welche Sprachbefehle gibt es"); the *_PHRASES are what is compared.
+STOP_SENTENCES = ("Beende die Sprachausgabe", "Stoppe die Sprachausgabe", "Stopp die Sprachausgabe",
+                  "Beende die Sprachansage", "Stoppe die Sprachansage", "Stoppe jetzt die Sprachansage",
+                  "Beende das Vorlesen", "Stoppe das Vorlesen", "Stopp das Vorlesen", "Hör auf zu reden",
+                  "Höre auf zu reden", "Stop reading aloud", "Stop the speech", "Stop talking now")
+OFF_SENTENCES = ("Schalte die Sprachausgabe aus", "Schalte das Vorlesen aus", "Sprachausgabe dauerhaft aus",
+                 "Turn speech off", "Turn reading off", "Switch speech off")
+ON_SENTENCES = ("Schalte die Sprachausgabe ein", "Schalte die Sprachausgabe an", "Schalte das Vorlesen ein",
+                "Schalte das Vorlesen an", "Starte die Sprachausgabe", "Starte das Vorlesen", "Turn speech on",
+                "Turn reading on", "Switch speech on")
 # go on where the last text was stopped, read its sentence once more, or the whole text
-RESUME_PHRASES = {"fahre mit dem vorlesen fort", "lies den text weiter", "lies weiter vor", "lese weiter vor",
-                  "lies bitte weiter vor", "continue reading aloud"}
-REPEAT_SENTENCE_PHRASES = {"wiederhole den letzten satz", "lies den letzten satz nochmal", "lies den letzten satz noch mal",
-                           "repeat the last sentence"}
-REPEAT_TEXT_PHRASES = {"wiederhole den text nochmal", "wiederhole den text noch mal", "lies das nochmal vor",
-                       "lies das noch mal vor", "wiederhole die letzte ausgabe", "repeat the last text"}
+RESUME_SENTENCES = ("Lies weiter vor", "Lese weiter vor", "Lies bitte weiter vor", "Lies den Text weiter",
+                    "Fahre mit dem Vorlesen fort", "Continue reading aloud")
+REPEAT_SENTENCE_SENTENCES = ("Wiederhole den letzten Satz", "Lies den letzten Satz nochmal",
+                             "Lies den letzten Satz noch mal", "Repeat the last sentence")
+REPEAT_TEXT_SENTENCES = ("Wiederhole den Text nochmal", "Wiederhole den Text noch mal", "Lies das nochmal vor",
+                         "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text")
+# shows all these sentences in Claude Code
+HELP_SENTENCES = ("Welche Sprachbefehle gibt es", "Zeige die Sprachbefehle", "Zeig mir die Sprachbefehle",
+                  "Show the speech commands")
+STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES, REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, HELP_PHRASES = (
+    {said(sentence) for sentence in sentences}
+    for sentences in (STOP_SENTENCES, OFF_SENTENCES, ON_SENTENCES, RESUME_SENTENCES, REPEAT_SENTENCE_SENTENCES,
+                      REPEAT_TEXT_SENTENCES, HELP_SENTENCES))
 MAX_WAIT = float(os.environ.get("RB_SPEAK_MAX_WAIT", 120))   # seconds a text may wait for its turn; older is dropped unread
 CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
 PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key
@@ -881,7 +897,7 @@ def command():
     prompt = isinstance(data, dict) and data.get("prompt")
     if not isinstance(prompt, str):
         return
-    sentence = " ".join(re.sub(r"[\W_]+", " ", prompt.lower()).split())
+    sentence = said(prompt)
     halt = True                                   # this sentence also ends what is being read
     replay = None                                 # what of the last text is read again: (parts, first, end, player)
     try:
@@ -895,6 +911,8 @@ def command():
             if os.path.lexists(OFF):
                 os.remove(OFF)
             reason = "Vorlesen eingeschaltet."
+        elif sentence in HELP_PHRASES:
+            halt, reason = False, help_text()
         elif sentence in RESUME_PHRASES | REPEAT_SENTENCE_PHRASES | REPEAT_TEXT_PHRASES:
             replay, reason = again(sentence)   # in place of what is read now: the texts that wait come afterwards
             halt = False
@@ -910,6 +928,15 @@ def command():
     if replay:
         reason = launch(*replay) or reason
     print(json.dumps({"decision": "block", "reason": reason}))
+
+
+def help_text():
+    """All sentences, by what they do (what Claude Code shows for "Welche Sprachbefehle gibt es")."""
+    groups = (("Stoppen", STOP_SENTENCES), ("Weiterlesen", RESUME_SENTENCES),
+              ("Letzten Satz wiederholen", REPEAT_SENTENCE_SENTENCES), ("Ganzen Text wiederholen", REPEAT_TEXT_SENTENCES),
+              ("Dauerhaft aus", OFF_SENTENCES), ("Wieder ein", ON_SENTENCES), ("Diese Liste", HELP_SENTENCES))
+    return "Sprachbefehle fürs Vorlesen:\n" + "\n".join(
+        "%s: %s" % (title, ", ".join("„%s“" % sentence for sentence in sentences)) for title, sentences in groups)
 
 
 def again(sentence):

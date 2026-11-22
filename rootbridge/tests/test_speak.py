@@ -705,6 +705,22 @@ class TestPlayer(unittest.TestCase):
         self.assertEqual(json.loads(r.stdout), {"decision": "block", "reason": "Vorlesen eingeschaltet."})
         self.assertFalse(os.path.exists(off))
 
+    def test_a_sentence_shows_all_sentences(self):
+        r = self.command("Welche Sprachbefehle gibt es?")
+        reason = json.loads(r.stdout)["reason"]
+        for phrase in ("„Stoppe das Vorlesen“", "„Lies weiter vor“", "„Wiederhole den letzten Satz“",
+                       "„Wiederhole den Text nochmal“", "„Schalte die Sprachausgabe aus“", "„Starte das Vorlesen“",
+                       "„Welche Sprachbefehle gibt es“"):
+            self.assertIn(phrase, reason)
+        self.assertFalse(os.path.exists(os.path.join(self.bridge, "speak-stopped")), "die Liste stoppt nichts")
+
+    def test_the_readmes_name_every_sentence(self):
+        sentences = [x for name in dir(speak) if name.endswith("_SENTENCES") for x in getattr(speak, name)]
+        for readme, quotes in (("README.de.md", "„%s“"), ("README.md", '"%s"'), ("README.es.md", "«%s»")):
+            with open(os.path.join(HERE, "..", readme), encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertEqual([x for x in sentences if quotes % x not in text], [], readme)
+
     def test_a_prompt_with_more_words_goes_to_claude(self):
         for prompt in ("Stopp", "Beende die Sprachausgabe und mach weiter", "Stop the build", "Weiter"):
             r = self.command(prompt)

@@ -258,7 +258,7 @@ rb_speak_hold() {
 }
 
 # the sentences that speak.py --command keeps from Claude (STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES,
-# REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES there; written the same way:
+# REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, HELP_PHRASES there; written the same way:
 # lower case, marks out): only these leave the input line (rb_prompt_clear). tests/test_voice.sh checks that both lists match.
 RB_SPEAK_SENTENCES=(
     "beende die sprachausgabe" "stoppe die sprachausgabe" "stopp die sprachausgabe" "beende die sprachansage"
@@ -273,6 +273,7 @@ RB_SPEAK_SENTENCES=(
     "wiederhole den letzten satz" "lies den letzten satz nochmal" "lies den letzten satz noch mal" "repeat the last sentence"
     "wiederhole den text nochmal" "wiederhole den text noch mal" "lies das nochmal vor" "lies das noch mal vor"
     "wiederhole die letzte ausgabe" "repeat the last text"
+    "welche sprachbefehle gibt es" "zeige die sprachbefehle" "zeig mir die sprachbefehle" "show the speech commands"
 )
 
 # rb_prompt_clear: called by the daemon every round. Claude Code puts a prompt that a hook blocked back into its input line,

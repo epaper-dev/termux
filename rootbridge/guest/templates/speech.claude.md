@@ -9,3 +9,6 @@ read: the first paragraph, and the last question when it stands further down (`r
 - Details, code and commands follow after the summary; they are shown, not read.
 - Plans (plan mode) are read aloud in full. So write them to be heard: first, in a few sentences, what it is about and
   what changes; code, paths and commands short and only after that.
+- The user controls the reading with sentences like "Stoppe das Vorlesen", "Lies weiter vor" or "Wiederhole den letzten
+  Satz"; they do not reach you. "Welche Sprachbefehle gibt es" shows all of them. When such a wish reaches you after all,
+  the sentence was not on the list: tell the user the sentence of the list that fits.

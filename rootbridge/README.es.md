@@ -356,6 +356,15 @@ Activado por defecto; `--no-voice` lo omite (se guarda como `VOICE`, una reinsta
 
 **Disparadores sin root** (la app Termux de este repositorio, `app/`, muestra «Termux push to talk» a Android; cada uno ejecuta `ptt toggle`: un
 solo evento, el primero empieza a hablar y el siguiente lo detiene):
+* **Órdenes de voz para la lectura**: estas frases, dichas o escritas (sin importar mayúsculas ni signos), no llegan a Claude;
+  Claude Code muestra en su lugar brevemente qué pasó. «Welche Sprachbefehle gibt es» muestra esta lista en Claude Code.
+  * Parar (y lo que espera): «Beende die Sprachausgabe», «Stoppe die Sprachausgabe», «Stopp die Sprachausgabe», «Beende die Sprachansage», «Stoppe die Sprachansage», «Stoppe jetzt die Sprachansage», «Beende das Vorlesen», «Stoppe das Vorlesen», «Stopp das Vorlesen», «Hör auf zu reden», «Höre auf zu reden», «Stop reading aloud», «Stop the speech», «Stop talking now»
+  * Seguir (desde la frase interrumpida): «Lies weiter vor», «Lese weiter vor», «Lies bitte weiter vor», «Lies den Text weiter», «Fahre mit dem Vorlesen fort», «Continue reading aloud»
+  * Repetir la última frase: «Wiederhole den letzten Satz», «Lies den letzten Satz nochmal», «Lies den letzten Satz noch mal», «Repeat the last sentence»
+  * Repetir el texto entero: «Wiederhole den Text nochmal», «Wiederhole den Text noch mal», «Lies das nochmal vor», «Lies das noch mal vor», «Wiederhole die letzte Ausgabe», «Repeat the last text»
+  * Desactivar: «Schalte die Sprachausgabe aus», «Schalte das Vorlesen aus», «Sprachausgabe dauerhaft aus», «Turn speech off», «Turn reading off», «Switch speech off»
+  * Activar de nuevo: «Schalte die Sprachausgabe ein», «Schalte die Sprachausgabe an», «Schalte das Vorlesen ein», «Schalte das Vorlesen an», «Starte die Sprachausgabe», «Starte das Vorlesen», «Turn speech on», «Turn reading on», «Switch speech on»
+  * Mostrar esta lista: «Welche Sprachbefehle gibt es», «Zeige die Sprachbefehle», «Zeig mir die Sprachbefehle», «Show the speech commands»
 * **Pulsación larga de Inicio**: Ajustes, Apps, Apps predeterminadas, Asistente digital, «Termux push to talk». Algunos teléfonos no muestran esa
   opción (el Hisense A9 no); la app es un asistente válido de todos modos, y con root lo configuras tú mismo:
   `rootbridge voice assistant on` (se deshace con `off`, se comprueba con `status`). «Forzar detención» de Termux en la información de la
