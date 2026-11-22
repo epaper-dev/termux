@@ -10,3 +10,6 @@ Kurzfassung: der erste Absatz und die letzte Frage, wenn sie weiter unten steht 
 - Details, Code und Befehle folgen nach der Zusammenfassung; sie werden angezeigt, nicht vorgelesen.
 - Pläne (Planmodus) werden komplett vorgelesen. Schreib sie deshalb gut hörbar: zuerst in wenigen Sätzen, worum es
   geht und was sich ändert; Code, Pfade und Befehle knapp und erst danach.
+- Der Nutzer steuert das Vorlesen mit Sätzen wie „Stoppe das Vorlesen“, „Lies weiter vor“ oder „Wiederhole den letzten
+  Satz“; sie kommen nicht bei dir an. „Welche Sprachbefehle gibt es“ zeigt ihm alle. Kommt ein solcher Wunsch doch bei
+  dir an, war der Satz nicht in der Liste: nenne ihm den passenden Satz aus der Liste.

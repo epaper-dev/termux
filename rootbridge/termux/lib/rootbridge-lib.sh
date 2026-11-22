@@ -257,7 +257,8 @@ rb_speak_hold() {
     rb_speak_stop
 }
 
-# the sentences that speak.py --command keeps from Claude (STOP_PHRASES, OFF_PHRASES, ON_PHRASES there; written the same way:
+# the sentences that speak.py --command keeps from Claude (STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES,
+# REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, HELP_PHRASES there; written the same way:
 # lower case, marks out): only these leave the input line (rb_prompt_clear). tests/test_voice.sh checks that both lists match.
 RB_SPEAK_SENTENCES=(
     "beende die sprachausgabe" "stoppe die sprachausgabe" "stopp die sprachausgabe" "beende die sprachansage"
@@ -267,6 +268,13 @@ RB_SPEAK_SENTENCES=(
     "turn reading off" "switch speech off"
     "schalte die sprachausgabe ein" "schalte die sprachausgabe an" "schalte das vorlesen ein" "schalte das vorlesen an"
     "starte die sprachausgabe" "starte das vorlesen" "turn speech on" "turn reading on" "switch speech on"
+    "fahre mit dem vorlesen fort" "lies den text weiter" "lies weiter vor" "lese weiter vor" "lies bitte weiter vor"
+    "continue reading aloud"
+    "wiederhole den letzten satz" "lies den letzten satz nochmal" "lies den letzten satz noch mal" "repeat the last sentence"
+    "wiederhole den text nochmal" "wiederhole den text noch mal" "lies das nochmal vor" "lies das noch mal vor"
+    "wiederhole die letzte ausgabe" "repeat the last text"
+    "welche sprachbefehle gibt es" "zeige die sprachbefehle" "zeig mir die sprachbefehle" "zeige mir die sprachbefehle"
+    "show the speech commands"
 )
 
 # rb_prompt_clear: called by the daemon every round. Claude Code puts a prompt that a hook blocked back into its input line,

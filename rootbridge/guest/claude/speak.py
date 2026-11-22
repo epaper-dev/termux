@@ -14,20 +14,28 @@ the PreToolUse hook; a new text ends the one still being read.
                       sentence ("Beende die Sprachausgabe", "Hör auf zu reden", "Stop reading aloud", ...; STOP_PHRASES)
                       ends what is read, "Schalte die Sprachausgabe aus|ein" (OFF_PHRASES, ON_PHRASES) switches reading
                       off (and ends it) or on again. A stop ends what is being read and what waits, at once (never
-                      through the queue); the sentences work also when the switch is off. The sentence goes to
+                      through the queue); the sentences work also when the switch is off. "Lies weiter vor",
+                      "Fahre mit dem Vorlesen fort" (RESUME_PHRASES) go on with the last text where it was stopped,
+                      "Wiederhole den letzten Satz" (REPEAT_SENTENCE_PHRASES) reads that sentence again (and goes on
+                      from there next time), "Wiederhole den Text nochmal" (REPEAT_TEXT_PHRASES) the whole text; in
+                      place of what is read now, the texts that wait come afterwards. "Welche Sprachbefehle gibt es"
+                      (HELP_PHRASES) shows all of them in Claude Code. The sentence goes to
                       prompt-clear: Termux empties the input line, where Claude Code puts a blocked prompt back
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
                       yet, so ask on the terminal (yes records, no asks again at the next start, "nie" never again;
                       no answer in OFFER_SECONDS, as when nobody watches the start: Claude Code starts)
   speak.py [TEXT...]  read TEXT, or stdin, aloud (also when the switch is off)
+  speak.py --piper-worker VOICE  run by the player with the Python of Piper: the audio of each line of stdin, after its
+                      length (Piper's --output-raw runs the sentences together)
 
 What is read: the text without code blocks, tables, URLs and Markdown marks. The English words of the list
 speak-english.txt next to this file go to Piper as phonemes ([[...]]) and to Articulino in [en]...[/en], so the German voice
 says them in English, and German forms of English verbs as they are said ("gemergt" as "gemörtscht"). With the file speak-first in the bridge
 directory (`rootbridge voice speak first|all`) the hooks read only a short version of an answer or note: its whole first
 paragraph, and the last question of the text when it stands further down.
---progress remembers the id of the note it read in speak-progress, so each note is read once.
+--progress remembers the id of the note it read in speak-progress, so each note is read once. The player reads sentence by
+sentence (the next one is made while one plays) and notes in speak-last the sentences of its text and the one it is at.
 The switch: the file speak-off in the bridge directory (Termux and the guest both see it; `rootbridge voice speak
 on|off|toggle` in Termux, the widget "Vorlesen"). Texts are read one after another: each player has a ticket in speak-queue
 and waits until the older ones are done. The one that reads runs in its own process group, its id in speak.pid next to
@@ -38,18 +46,21 @@ afterwards where it stopped.
 Errors of piper and play go to ~/.cache/rootbridge-speak.log (the hook and the player run detached); the command line
 also says when Piper or the voice is missing.
 
-Environment (tests, other voices): PIPER_VOICE (.onnx file), RB_SPEAK_PIPER (piper program), RB_SPEAK_PLAY (play of sox),
+Environment (tests, other voices): PIPER_VOICE (.onnx file), RB_SPEAK_PIPER_PYTHON (the Python of the venv of Piper), RB_SPEAK_PLAY (play of sox),
 RB_SPEAK_DIR (bridge directory), RB_SPEAK_LOG (log file), RB_SPEAK_ENGLISH (the list of English words),
 RB_SPEAK_ARTICULINO (its venv, the model in model/), RB_SPEAK_VOICE_SAMPLE (your voice), RB_SPEAK_SERVER (speak-server.py),
 RB_SPEAK_SOCKET (its socket), RB_SPEAK_SERVER_START (how long to wait for it), RB_SPEAK_REC (rec of sox),
 RB_SPEAK_OFFER_SECONDS (how long --offer-record waits for an answer).
 Python >= 3.8, standard library only.
 """
+import contextlib
 import fcntl
 import json
 import os
 import stat
+import struct
 import re
+import queue
 import select
 import signal
 import socket
@@ -70,28 +81,52 @@ FOCUS = os.path.join(BRIDGE_DIR, "speak-focus")       # the daemon's answer for 
 ALIVE = os.path.join(BRIDGE_DIR, ".alive")             # the daemon's heartbeat (every round)
 FOCUS_WAIT_SECONDS = 1.5   # a round of the daemon is 0.5 s, its question to Android up to 2 s more
 PROMPT_CLEAR = os.path.join(BRIDGE_DIR, "prompt-clear")   # a sentence below, for Termux to take out of the input line
+LAST = os.path.join(BRIDGE_DIR, "speak-last")         # JSON: the sentences of the last text read and the one it is at
+LAST_MAX = 1 << 20
 STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop (--stop here, rb_speak_stop in Termux)
 REC_STALE = os.path.join(BRIDGE_DIR, "rec-stale")     # "<pid> <start time>" of recorders the daemon no longer counts
 HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about to record (rb_speak_hold in Termux)
 HOLD_SECONDS = 3          # how long that pauses reading when no recorder comes (ptt waits PTT_WARMUP + 2 s for one)
+
+
+def said(text):
+    """A prompt as it is compared with the sentences below: lower case, without marks."""
+    return " ".join(re.sub(r"[\W_]+", " ", text.lower()).split())
+
+
 # A prompt that is one of these sentences (case and marks aside) is for us and stays from Claude (--command): stop what is
 # read now, switch reading off for good (and stop), or on again. Sentences of three words or more, not single words:
-# Claude Code sends a dictated prompt of several words by itself, one word waits for Enter.
-STOP_PHRASES = {"beende die sprachausgabe", "stoppe die sprachausgabe", "stopp die sprachausgabe",
-                "beende die sprachansage", "stoppe die sprachansage", "stoppe jetzt die sprachansage",
-                "hör auf zu reden", "höre auf zu reden", "beende das vorlesen", "stoppe das vorlesen", "stopp das vorlesen",
-                "stop reading aloud", "stop the speech", "stop talking now"}
-OFF_PHRASES = {"schalte die sprachausgabe aus", "schalte das vorlesen aus", "sprachausgabe dauerhaft aus",
-               "turn speech off", "turn reading off", "switch speech off"}
-ON_PHRASES = {"schalte die sprachausgabe ein", "schalte die sprachausgabe an", "schalte das vorlesen ein",
-              "schalte das vorlesen an", "starte die sprachausgabe", "starte das vorlesen", "turn speech on",
-              "turn reading on", "switch speech on"}
+# Claude Code sends a dictated prompt of several words by itself, one word waits for Enter. Written as they are shown
+# ("Welche Sprachbefehle gibt es"); the *_PHRASES are what is compared.
+STOP_SENTENCES = ("Beende die Sprachausgabe", "Stoppe die Sprachausgabe", "Stopp die Sprachausgabe",
+                  "Beende die Sprachansage", "Stoppe die Sprachansage", "Stoppe jetzt die Sprachansage",
+                  "Beende das Vorlesen", "Stoppe das Vorlesen", "Stopp das Vorlesen", "Hör auf zu reden",
+                  "Höre auf zu reden", "Stop reading aloud", "Stop the speech", "Stop talking now")
+OFF_SENTENCES = ("Schalte die Sprachausgabe aus", "Schalte das Vorlesen aus", "Sprachausgabe dauerhaft aus",
+                 "Turn speech off", "Turn reading off", "Switch speech off")
+ON_SENTENCES = ("Schalte die Sprachausgabe ein", "Schalte die Sprachausgabe an", "Schalte das Vorlesen ein",
+                "Schalte das Vorlesen an", "Starte die Sprachausgabe", "Starte das Vorlesen", "Turn speech on",
+                "Turn reading on", "Switch speech on")
+# go on where the last text was stopped, read its sentence once more, or the whole text
+RESUME_SENTENCES = ("Lies weiter vor", "Lese weiter vor", "Lies bitte weiter vor", "Lies den Text weiter",
+                    "Fahre mit dem Vorlesen fort", "Continue reading aloud")
+REPEAT_SENTENCE_SENTENCES = ("Wiederhole den letzten Satz", "Lies den letzten Satz nochmal",
+                             "Lies den letzten Satz noch mal", "Repeat the last sentence")
+REPEAT_TEXT_SENTENCES = ("Wiederhole den Text nochmal", "Wiederhole den Text noch mal", "Lies das nochmal vor",
+                         "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text")
+# shows all these sentences in Claude Code
+HELP_SENTENCES = ("Welche Sprachbefehle gibt es", "Zeige die Sprachbefehle", "Zeig mir die Sprachbefehle",
+                  "Zeige mir die Sprachbefehle", "Show the speech commands")
+STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES, REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, HELP_PHRASES = (
+    {said(sentence) for sentence in sentences}
+    for sentences in (STOP_SENTENCES, OFF_SENTENCES, ON_SENTENCES, RESUME_SENTENCES, REPEAT_SENTENCE_SENTENCES,
+                      REPEAT_TEXT_SENTENCES, HELP_SENTENCES))
 MAX_WAIT = float(os.environ.get("RB_SPEAK_MAX_WAIT", 120))   # seconds a text may wait for its turn; older is dropped unread
 CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
 PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key
 TAIL_BYTES = 512 * 1024   # the newest note stands near the end of the transcript; the hook runs before every tool call
 WAIT_SECONDS = 2          # how long --progress waits for its tool call (and the note before it) to reach the transcript
-PIPER = os.environ.get("RB_SPEAK_PIPER", "/opt/piper/bin/piper")
+PIPER_PYTHON = os.environ.get("RB_SPEAK_PIPER_PYTHON", "/opt/piper/bin/python3")   # the venv of Piper: --piper-worker
 PLAY = os.environ.get("RB_SPEAK_PLAY", "play")
 VOICE = os.environ.get("PIPER_VOICE", "/opt/piper/voices/de_DE-kerstin-medium.onnx")
 PULSE_COOKIE = "/data/data/com.termux/files/home/.config/pulse/cookie"
@@ -109,6 +144,8 @@ SERVER_RATE = 24000         # what speak-server.py sends
 SERVER_START_SECONDS = float(os.environ.get("RB_SPEAK_SERVER_START", 30))   # loading takes about 5 s on the A9
 RECORD_SECONDS = 12         # Articulino uses the first 8 s after the silence
 MIN_VOICE_SECONDS = 3
+PIPER_WORKER_ARG = "--piper-worker"   # speak.py with the Python of Piper: the voice loaded once, the audio sentence by sentence
+FRAME = struct.Struct(">I")          # what --piper-worker writes before the audio of a sentence: its length
 RUN_ARG = "--run"   # the player process; Termux recognises it by "speak.py --run" in its command line
 PAUSES_ARG = "pauses"   # last on its command line: this player pauses itself for a recording (rb_speak_hold in Termux)
 
@@ -225,8 +262,9 @@ def player_pid():
     return pid if is_player(pid) else None
 
 
-def stop():
-    pid = player_pid()
+def stop(pid=None):
+    """End the player that reads (pid: that one, found before)."""
+    pid = pid or player_pid()
     if pid:
         try:
             os.killpg(pid, signal.SIGTERM)
@@ -270,44 +308,76 @@ def sample_rate():
         return 22050
 
 
+def text_parts(text):
+    """The sentences of a speakable text, in order (the player reads and remembers them one by one); without the parts
+    that have nothing to say (no letter or digit, like a line of only an emoji: no voice reads them)."""
+    return [part for line in text.split("\n") for part in sentences(line) if re.search(r"[^\W_]", part)]
+
+
 def start(text):
     """Read text in a detached process after what is being read now (the hook and the caller do not wait).
     Returns an error message when Piper or the voice is missing, else None."""
-    text = text.strip()
-    if not text:
-        return None
-    for what, path in (("Piper", PIPER), ("die Stimme", VOICE)):
-        if not os.path.exists(path):
-            error = "%s fehlt: %s (bash install.sh --setup in Termux)" % (what, path)
-            log(error)
-            return error
-    # The player reads when no older ticket of a live player is left; a stop after the start changes speak-stopped
-    # (wait_turn compares stop_mark). The stamp, the start and the ticket under one lock: a start at the same time gets a
-    # newer stamp only after this ticket is in the queue.
+    return launch(text_parts(text))
+
+
+@contextlib.contextmanager
+def queue_lock():
+    """The lock of the queue: a new ticket, and a player that starts to read (speak.pid), one at a time. Yields False
+    when there is no lock (then there is no ticket either)."""
     try:
         os.makedirs(QUEUE, mode=0o700, exist_ok=True)
         lock = os.open(QUEUE + ".lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     except OSError as e:
         log("Warteschlange %s: %s" % (QUEUE, e))
-        lock = None   # the player reads anyway, maybe at the same time as another
+        yield False   # the player reads anyway, maybe at the same time as another
+        return
     try:
-        if lock is not None:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-        ticket = "%020d" % time.time_ns()
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield True
+    finally:
+        os.close(lock)
+
+
+def launch(parts, first=0, end=None, replace=None):
+    """Read the sentences parts[first:end] (as start); the player remembers all of them in speak-last, and where it is.
+    replace: the pid of the player whose text this is (repeat, go on; 0 when it is unknown): this one goes before all
+    texts that wait, in place of that player, which ends. When another one reads already (it began after that one), the
+    new one waits for it."""
+    end = len(parts) if end is None else end
+    if first >= end:
+        return None
+    for what, path in (("Piper", PIPER_PYTHON), ("die Stimme", VOICE)):
+        if not os.path.exists(path):
+            error = "%s fehlt: %s (bash install.sh --setup in Termux)" % (what, path)
+            log(error)
+            return error
+    # The player reads when no older ticket of a live player is left; a stop after the start changes speak-stopped
+    # (wait_turn compares stop_mark). The stamp, the start and the ticket under the lock of the queue: a start at the same
+    # time gets a newer stamp only after this ticket is in the queue, and no player begins to read meanwhile.
+    after = 0
+    with queue_lock() as locked:
+        since = time.time_ns()
+        ticket = "%020d" % since
+        if replace is not None:
+            older = [stamp for stamp, _, pid in (name.partition(".") for name in os.listdir(QUEUE))
+                     if stamp.isdigit() and pid.isdigit() and is_player(int(pid))]
+            if older:
+                ticket = "%020d" % (int(min(older)) - 1)
+            after = player_pid() or 0
+            if after and after == replace:
+                stop(after)
         proc = subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), RUN_ARG, ticket, stop_mark(),
                                  PAUSES_ARG],
                                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                 start_new_session=True)
-        if lock is not None:
+        if locked:
             try:
                 os.close(os.open(os.path.join(QUEUE, "%s.%d" % (ticket, proc.pid)),
                                  os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600))
             except OSError as e:
                 log("Warteschlange %s: %s" % (QUEUE, e))
-    finally:
-        if lock is not None:
-            os.close(lock)
-    proc.stdin.write(text.encode("utf-8"))
+    proc.stdin.write(json.dumps({"parts": parts, "first": first, "end": end, "since": since, "after": after})
+                     .encode("utf-8"))
     proc.stdin.close()
     return None
 
@@ -419,19 +489,87 @@ def focus_allows():
         time.sleep(0.05)
 
 
-def play_from_server(conn, text, err, env):
-    """Sends text to speak-server.py and plays its audio; the exit codes, or None when no audio came (then Piper reads)."""
+def read_all(conn):
+    data = []
+    while True:
+        chunk = conn.recv(65536)
+        if not chunk:
+            return b"".join(data)
+        data.append(chunk)
+
+
+def articulino(conn, text):
+    """The audio of one sentence from speak-server.py (b"" when none came)."""
     with conn:
         conn.sendall(english(text, articulino=True).encode("utf-8"))
         conn.shutdown(socket.SHUT_WR)
-        audio = conn.recv(CHUNK)   # small like the rest: pump checks for a pause between its pieces
-        if not audio:
-            return None
-        if not focus_allows():
-            return 0, 0
-        play = subprocess.Popen(play_command(SERVER_RATE), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=err,
-                                env=env, bufsize=0)
-        return 0, pump(play, conn.recv, audio)
+        return read_all(conn)
+
+
+def read_exact(fh, size):
+    data = fh.read(size)
+    if len(data) < size:
+        raise OSError("Piper endete mitten im Satz")
+    return data
+
+
+def piper_audio(worker, text):
+    """The audio of one sentence from --piper-worker."""
+    worker.stdin.write(english(text).encode("utf-8") + b"\n")
+    worker.stdin.flush()
+    size, = FRAME.unpack(read_exact(worker.stdout, FRAME.size))
+    return read_exact(worker.stdout, size)
+
+
+def piper_worker(voice):
+    """Runs with the Python of Piper: loads the voice once, then for each line of stdin its audio (raw, 16 bit, mono) on
+    stdout, after its length (FRAME). Piper's own --output-raw writes the audio of all lines as one stream."""
+    from piper import PiperVoice   # only in the venv of Piper
+    model = PiperVoice.load(voice)
+    out = sys.stdout.buffer
+    for line in sys.stdin.buffer:
+        text = line.decode("utf-8", "replace").strip()
+        audio = b"".join(chunk.audio_int16_bytes for chunk in model.synthesize(text)) if text else b""
+        out.write(FRAME.pack(len(audio)) + audio)
+        out.flush()
+    return 0
+
+
+def remember(parts, index, heard):
+    """speak-last: the sentences of the text, the index where going on starts (the one that is read now; len(parts): all
+    were read), that of the sentence heard last (the one to repeat) and the pid of the player."""
+    tmp = "%s.%d" % (LAST, os.getpid())
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"parts": parts, "index": index, "heard": heard, "player": os.getpid()}, fh)
+        os.replace(tmp, LAST)
+    except OSError as e:
+        log("%s: %s" % (LAST, e))
+
+
+def last_read():
+    """The sentences of the last text read, the index where going on starts, that of the sentence heard last and the pid
+    of its player, from
+    speak-last; None when there is none (the file lies where others can write: a regular file, not too big, of the right
+    form)."""
+    try:
+        fd = os.open(LAST, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as fh:
+            if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+                return None
+            last = json.loads(fh.read(LAST_MAX + 1)[:LAST_MAX].decode("utf-8"))
+        parts, index, heard, player = last["parts"], last["index"], last["heard"], last.get("player", 0)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not (isinstance(parts, list) and parts and all(isinstance(p, str) for p in parts)
+            and isinstance(index, int) and 0 <= index <= len(parts) and isinstance(heard, int) and 0 <= heard < len(parts)
+            and isinstance(player, int)):
+        return None
+    return parts, index, heard, player
 
 
 def paused():
@@ -445,104 +583,161 @@ def paused():
     return recording()
 
 
-def pump(play, read, data=b""):
-    """Hands the audio from read() to play in pieces of CHUNK. While paused() nothing more goes: play has only what is in its
-    small pipe left and then waits in silence, and the reading goes on where it stopped. Returns the exit code of play.
-    (A stop signal does not hold a process under proot, so the player holds itself.)"""
+def produce(items, parts, first, end, audio, worker, mark):
+    """The audio of the sentences parts[first:end] into items, one sentence ahead of the one that plays (audio: that of
+    the first one, when it came already); None at the end. worker: --piper-worker, else Articulino. A sentence that
+    Articulino has no audio for (a quotation in another script) is left out; when it does not answer, or Piper fails,
+    the reading ends there: (that index, None)."""
+    index = first
+    try:
+        for index in range(first, end):
+            if index > first or not audio:
+                if worker:
+                    audio = piper_audio(worker, parts[index])
+                else:
+                    conn = server_connection()
+                    if not conn:
+                        raise OSError("Articulino antwortet nicht mehr")
+                    audio = articulino(conn, parts[index])
+                    if not audio:
+                        log("Articulino lieferte für Satz %d kein Audio, er wird übersprungen" % (index + 1))
+            items.put((index, audio))
+    except OSError as e:
+        if stop_mark() == mark:   # a stop ends Piper as well: no failure
+            log("Vorlesen abgebrochen: %s" % e)
+        items.put((index, None))
+    items.put(None)
+
+
+def play_parts(items, parts, rate, err, env):
+    """Plays the sentences from items in pieces of CHUNK and notes in speak-last which one plays (after the last one, when
+    play has played all of it: the text is done) and which one was heard last. While paused() nothing more goes: play has only what is in its small
+    pipe left and then waits in silence, and the reading goes on where it stopped (a stop signal does not hold a process
+    under proot, so the player holds itself). Returns the exit code of play."""
+    item = items.get()
+    if item is None:
+        return 0
+    play = subprocess.Popen(play_command(rate), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=err, env=env,
+                            bufsize=0)
     try:
         fcntl.fcntl(play.stdin, fcntl.F_SETPIPE_SZ, CHUNK)
     except (OSError, AttributeError):
         pass
+    # what is on its way to the speaker when a piece goes to play: the pipe, SoX and PulseAudio; a sentence counts as heard
+    # (and going on starts with it) once that much of it went, so the end of the one before was heard
+    lag = 2 * CHUNK + rate * 2 * PULSE_LATENCY_MS // 1000
+    done, heard = False, None
     try:
-        while True:
-            data = data or read(CHUNK)
-            if not data:
+        while item is not None:
+            index, audio = item
+            if heard is None or audio is None:   # the first one, or no audio for this one: going on starts with it
+                remember(parts, index, index if heard is None else heard)
+            if audio is None:
                 break
-            while paused():
-                time.sleep(0.1)
-            play.stdin.write(data)
-            data = b""
+            for at in range(0, len(audio), CHUNK):
+                while paused():
+                    time.sleep(0.1)
+                play.stdin.write(audio[at:at + CHUNK])
+                if heard != index and at + CHUNK >= min(lag, len(audio)):
+                    heard = index
+                    remember(parts, index, heard)
+            item = items.get()
+        else:
+            done = True
         play.stdin.close()
     except BrokenPipeError:
         pass
-    return play.wait()
+    code = play.wait()
+    if done and code == 0:
+        remember(parts, index + 1, heard)
+    return code
 
 
-def feed(pipe, data):
+def ahead_of(ticket, after):
+    """Whether a live player has an older ticket than this one, or the player after still reads (tickets of dead players
+    go)."""
     try:
-        pipe.write(data)
-        pipe.close()
-    except BrokenPipeError:
-        pass
+        names = os.listdir(QUEUE)
+    except OSError:
+        return False
+    ahead = after > 0 and is_player(after)
+    for name in names:
+        stamp, _, pid = name.partition(".")
+        if stamp >= ticket or not pid.isdigit():
+            continue
+        if is_player(int(pid)):
+            ahead = True
+        else:
+            try:
+                os.remove(os.path.join(QUEUE, name))
+            except OSError:
+                pass
+    return ahead
 
 
-def wait_turn(ticket, mark):
-    """Waits until no older ticket of a live player is in the queue (tickets of dead players go) and nobody records for
-    /voice (a text that waited must not play into the microphone). False when a stop came after the start (speak-stopped
-    is no longer as it was then, mark) or the text waited longer than MAX_WAIT: then the player does not read."""
+def wait_turn(ticket, mark, since, after=0):
+    """Waits until no older ticket of a live player is in the queue and nobody records for /voice (a text that waited must
+    not play into the microphone), then takes the turn: speak.pid, under the lock of the queue (a repeat that goes ahead
+    sees who reads). False when a stop came after the start (speak-stopped is no longer as it was then, mark) or the text
+    waited longer than MAX_WAIT since it came (since): then the player does not read. after: a player that reads until
+    it ends (repeat and go on take its place)."""
     while stop_mark() == mark:
-        if time.time_ns() - int(ticket) > MAX_WAIT * 10**9:
+        if time.time_ns() - since > MAX_WAIT * 10**9:
             log("Text verworfen: wartete länger als %g s" % MAX_WAIT)
             return False
-        try:
-            names = os.listdir(QUEUE)
-        except OSError:
-            return True
-        ahead = False
-        for name in names:
-            stamp, _, pid = name.partition(".")
-            if stamp >= ticket or not pid.isdigit():
-                continue
-            if is_player(int(pid)):
-                ahead = True
-            else:
-                try:
-                    os.remove(os.path.join(QUEUE, name))
-                except OSError:
-                    pass
-        if not ahead and not paused():
-            return True
+        if not ahead_of(ticket, after) and not paused():
+            with queue_lock():
+                if stop_mark() != mark:
+                    return False
+                if not ahead_of(ticket, after):
+                    write_pidfile(os.getpid())   # for a stop and for the daemon's audio focus
+                    return True
         time.sleep(0.1)
     return False
 
 
 def run(ticket, mark):
-    """The player: waits for its turn, then speak-server.py or piper | play, in its own process group (the group id is in
-    speak.pid while it reads)."""
+    """The player: waits for its turn, then reads sentence by sentence with speak-server.py or --piper-worker into play, in
+    its own process group (the group id is in speak.pid while it reads)."""
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop still removes speak.pid and the ticket (finally below)
-    text = sys.stdin.buffer.read().decode("utf-8", "replace")
     env = pulse_env()
     me = str(os.getpid())
     try:
-        if not wait_turn(ticket, mark):
+        job = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
+        parts, first, end, since, after = job["parts"], job["first"], job["end"], int(job["since"]), int(job["after"])
+        if not wait_turn(ticket, mark, since, after):
             return
-        write_pidfile(os.getpid())   # for a stop and for the daemon's audio focus
         if stop_mark() != mark:   # a stop between the check and speak.pid missed this player
             return
-        conn = server_connection()
-        with tempfile.TemporaryFile() as err:   # what piper and play say, into the log only on a failure
-            engine, codes = "Articulino", None
+        if not focus_allows():
+            return
+        with tempfile.TemporaryFile() as err:   # what Piper and play say, into the log only on a failure
+            engine, rate, worker, audio = "Articulino", SERVER_RATE, None, b""
+            conn = server_connection()
             if conn:
-                codes = play_from_server(conn, text, err, env)
-                if codes is None:
+                audio = articulino(conn, parts[first])
+                if not audio:
                     log("Articulino lieferte kein Audio (siehe oben), es liest Piper")
-            if codes is None and not focus_allows():
-                codes = (0, 0)
-            if codes is None:
-                engine = "piper"
-                piper = subprocess.Popen([PIPER, "-m", VOICE, "--output-raw"], stdin=subprocess.PIPE,
-                                         stdout=subprocess.PIPE, stderr=err, env=env)
-                play = subprocess.Popen(play_command(sample_rate()), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
-                                        stderr=err, env=env, bufsize=0)
-                threading.Thread(target=feed, args=(piper.stdin, english(text).encode("utf-8")), daemon=True).start()
-                played = pump(play, piper.stdout.read1)
-                piper.stdout.close()   # play ended early: Piper must not hang on output nobody reads
-                codes = (piper.wait(), played)
-            if codes != (0, 0):
+            if not audio:
+                engine, rate = "piper", sample_rate()
+                worker = subprocess.Popen([PIPER_PYTHON, "-I", os.path.abspath(__file__), PIPER_WORKER_ARG, VOICE],
+                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err, env=env)
+            items = queue.Queue(maxsize=2)
+            threading.Thread(target=produce, args=(items, parts, first, end, audio, worker, mark), daemon=True).start()
+            played = play_parts(items, parts, rate, err, env)
+            made = 0
+            if worker:
+                worker.stdin.close()
+                try:
+                    made = worker.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    worker.kill()
+                    made = worker.wait()
+            if (made, played) != (0, 0):
                 err.seek(0)
-                log("%s Exit %d, play Exit %d: %s" % (engine, codes[0], codes[1],
+                log("%s Exit %d, play Exit %d: %s" % (engine, made, played,
                                                      err.read()[-2000:].decode("utf-8", "replace").strip()))
-    except OSError as e:
+    except (OSError, ValueError, KeyError, TypeError) as e:
         log("Abspielen ging nicht: %s" % e)
     finally:
         try:
@@ -692,8 +887,9 @@ def clear_prompt(prompt):
 
 
 def command():
-    """A prompt that is one of our sentences: stop at once (never through the queue), switch reading off or on, and keep
-    it from Claude. Also when reading is off (the sentence to switch it on must work then)."""
+    """A prompt that is one of our sentences: stop at once (never through the queue), switch reading off or on, go on with
+    the last text where it stopped or read it (or its sentence) again, and keep it from Claude. Also when reading is off
+    (the sentence to switch it on must work then)."""
     try:
         data = json.load(sys.stdin)
     except ValueError:
@@ -701,8 +897,9 @@ def command():
     prompt = isinstance(data, dict) and data.get("prompt")
     if not isinstance(prompt, str):
         return
-    sentence = " ".join(re.sub(r"[\W_]+", " ", prompt.lower()).split())
+    sentence = said(prompt)
     halt = True                                   # this sentence also ends what is being read
+    replay = None                                 # what of the last text is read again: (parts, first, end, player)
     try:
         if sentence in STOP_PHRASES:
             reason = "Vorlesen gestoppt."
@@ -714,6 +911,11 @@ def command():
             if os.path.lexists(OFF):
                 os.remove(OFF)
             reason = "Vorlesen eingeschaltet."
+        elif sentence in HELP_PHRASES:
+            halt, reason = False, help_text()
+        elif sentence in RESUME_PHRASES | REPEAT_SENTENCE_PHRASES | REPEAT_TEXT_PHRASES:
+            replay, reason = again(sentence)   # in place of what is read now: the texts that wait come afterwards
+            halt = False
         else:
             return
     except OSError as e:
@@ -723,7 +925,33 @@ def command():
     if halt:
         mark_stopped()
         stop()
+    if replay:
+        reason = launch(*replay) or reason
     print(json.dumps({"decision": "block", "reason": reason}))
+
+
+def help_text():
+    """All sentences, by what they do (what Claude Code shows for "Welche Sprachbefehle gibt es")."""
+    groups = (("Stoppen", STOP_SENTENCES), ("Weiterlesen", RESUME_SENTENCES),
+              ("Letzten Satz wiederholen", REPEAT_SENTENCE_SENTENCES), ("Ganzen Text wiederholen", REPEAT_TEXT_SENTENCES),
+              ("Dauerhaft aus", OFF_SENTENCES), ("Wieder ein", ON_SENTENCES), ("Diese Liste", HELP_SENTENCES))
+    return "Sprachbefehle fürs Vorlesen:\n" + "\n".join(
+        "%s: %s" % (title, ", ".join("„%s“" % sentence for sentence in sentences)) for title, sentences in groups)
+
+
+def again(sentence):
+    """What a sentence to go on or to repeat reads of the last text (speak-last), and what Claude Code shows."""
+    last = last_read()
+    if not last:
+        return None, "Es gibt keinen Text, der vorgelesen wurde."
+    parts, index, heard, player = last
+    if sentence in RESUME_PHRASES:
+        if index >= len(parts):
+            return None, "Der letzte Text ist zu Ende gelesen."
+        return (parts, index, None, player), "Ich lese weiter."
+    if sentence in REPEAT_SENTENCE_PHRASES:
+        return (parts, heard, heard + 1, player), "Ich wiederhole den letzten Satz."
+    return (parts, 0, None, player), "Ich wiederhole den Text."
 
 
 def hook():
@@ -835,6 +1063,8 @@ def main(argv):
         command()
     elif argv[:1] == [RUN_ARG] and len(argv) == 4 and argv[1].isdigit() and argv[3] == PAUSES_ARG:
         run(argv[1], argv[2])
+    elif argv[:1] == [PIPER_WORKER_ARG] and len(argv) == 2:
+        return piper_worker(argv[1])
     elif argv[:1] == ["--record"]:
         return record()
     elif argv[:1] == ["--offer-record"]:
