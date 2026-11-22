@@ -5,6 +5,9 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Texts that wait too long are dropped.** A text that waited more than 2 minutes for its turn (for instance behind a
+  recording that did not end) is out of date: its player leaves unread and says so in the log. What is being read goes on to
+  the end. Tests: `tests/test_speak.py`.
 * **Say "Stopp" to end the reading.** A prompt that is only a stop word ("Stopp", "Halt", "Ruhe", "Still", "Stop";
   case and marks aside) ends what is being read and what waits at once (a new `UserPromptSubmit` hook, `speak.py --command`)
   and is kept from Claude; any other prompt goes on as before and does not cut off the reading. Tests: `tests/test_speak.py`,

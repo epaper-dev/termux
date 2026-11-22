@@ -69,6 +69,7 @@ HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about 
 HOLD_SECONDS = 3          # how long that pauses reading when no recorder comes (ptt waits PTT_WARMUP + 2 s for one)
 # a prompt that is only one of these words (case, marks and spaces aside) stops the reading and stays with us (--command)
 STOP_WORDS = {"stopp", "stop", "halt", "ruhe", "still"}
+MAX_WAIT = float(os.environ.get("RB_SPEAK_MAX_WAIT", 120))   # seconds a text may wait for its turn; older is dropped unread
 CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
 PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key
 TAIL_BYTES = 512 * 1024   # the newest note stands near the end of the transcript; the hook runs before every tool call
@@ -461,8 +462,11 @@ def feed(pipe, data):
 def wait_turn(ticket, mark):
     """Waits until no older ticket of a live player is in the queue (tickets of dead players go) and nobody records for
     /voice (a text that waited must not play into the microphone). False when a stop came after the start (speak-stopped
-    is no longer as it was then, mark): then the player does not read."""
+    is no longer as it was then, mark) or the text waited longer than MAX_WAIT: then the player does not read."""
     while stop_mark() == mark:
+        if time.time_ns() - int(ticket) > MAX_WAIT * 10**9:
+            log("Text verworfen: wartete länger als %g s" % MAX_WAIT)
+            return False
         try:
             names = os.listdir(QUEUE)
         except OSError:
