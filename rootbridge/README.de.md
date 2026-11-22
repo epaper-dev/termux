@@ -149,10 +149,10 @@ außerhalb unseres Blocks) wird nie ersetzt, der Installer nennt dann nur die Ta
 `termux/extra-keys.snippet`). `--no-extra-keys` überspringt das Ganze, `uninstall.sh` entfernt den Block. Die Farben der
 Leiste legt Termux fest, sie lassen sich von hier aus nicht ändern.
 
-**Gerätename in Claude.** Der Installer fragt in einer interaktiven Termux-Shell nach dem Namen für
-Claude Remote Control, etwa `boox-max-lumi`. Enter übernimmt den gespeicherten Namen (beim ersten Mal `android`).
-Der Name bleibt in der Termux-Konfiguration gespeichert und wird an den Ubuntu-Gast weitergegeben.
-Mit `bash install.sh --remote-name boox-max-lumi` setzt du ihn ohne Nachfrage. Ohne Terminal wird der vorhandene
+**Gerätename in Claude.** Der Installer fragt in einer interaktiven Termux-Shell einmal nach dem Namen für
+Claude Remote Control, etwa `boox-max-lumi`; Enter übernimmt den Vorschlag `android`. Der Name bleibt in der
+Termux-Konfiguration gespeichert und wird an den Ubuntu-Gast weitergegeben; spätere Läufe fragen nicht mehr.
+Mit `bash install.sh --remote-name boox-max-lumi` setzt oder änderst du ihn ohne Nachfrage. Ohne Terminal wird der vorhandene
 Name beziehungsweise `android` verwendet; bei einer Installation nur mit Codex entfällt die Frage.
 
 **Neue Unterhaltung.** `rootbridge attach claude -n` (oder `--new`) und das Widget **Claude Neu** starten Claude

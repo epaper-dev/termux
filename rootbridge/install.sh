@@ -12,8 +12,8 @@
 #                   [--voice | --no-voice] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
 #                   [--headset | --no-headset]
 #
-# Setup: an interactive Termux shell asks for the device name used in Claude Remote Control
-# (Enter accepts the suggested name; --remote-name NAME skips the question).
+# Setup: an interactive Termux shell asks once for the device name used in Claude Remote Control
+# (Enter accepts the suggested name; --remote-name NAME skips the question and changes a stored name).
 # Missing components are installed automatically: the Termux packages
 #   (pkg install), the Ubuntu guest (proot-distro install, a download of a few hundred MB),
 #   python3/curl/certificates in the guest and Claude Code (official installer). A device that has it
@@ -452,11 +452,14 @@ OLD_VOICE="$(cfg_get VOICE)"   # off before this run, or on (also empty): switch
 if [ "$USE_VOICE_SET" = 1 ]; then
     cfg_set VOICE "$(onoff "$USE_VOICE")" "Sprache: $USE_VOICE"
 fi
-# Resolve the device name after the enabled tools, so Codex-only installs ask no Claude question.
+# Resolve the device name after the enabled tools, so Codex-only installs ask no Claude question. Asked once, like the
+# keys: a valid name in the config counts (change it with --remote-name NAME).
 if [ "$REMOTE_NAME_SET" != 1 ]; then
     v="$(cfg_get REMOTE_NAME)"
-    if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; fi
-    if [ "$USE_CLAUDE" = yes ] && [ -t 0 ]; then
+    if [[ "$v" =~ $NAME_RE ]]; then
+        REMOTE_NAME="$v"
+        say "  Remote-Control-Name: $REMOTE_NAME (aus der Konfig; ändern mit --remote-name NAME)"
+    elif [ "$USE_CLAUDE" = yes ] && [ -t 0 ]; then
         say "Wie soll dieses Gerät in Claude Remote Control heißen?"
         say "  Erlaubt: Buchstaben, Ziffern, Punkt, _ und -; maximal 64 Zeichen (z. B. boox-max-lumi)."
         while true; do
