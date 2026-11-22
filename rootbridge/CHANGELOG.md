@@ -15,7 +15,8 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   Sprachausgabe", "Hör auf zu reden", "Stop reading aloud", "Stop the speech", "Stop talking now"; case and marks aside)
   ends what is being read and what waits at once (a new `UserPromptSubmit` hook, `speak.py --command`) and is kept from
   Claude. "Schalte die Sprachausgabe aus|ein" / "Turn speech off|on" switch reading off for good or on again the same
-  way. Sentences, not single words: Claude Code sends a dictated prompt of several words by itself; any other prompt goes on as before and does not cut off the reading. Tests: `tests/test_speak.py`,
+  way. Sentences, not single words: Claude Code sends a dictated prompt of several words by itself; any other prompt goes on as before and does not cut off the reading. Claude Code keeps a blocked prompt in its input line; the daemon in Termux empties
+  it (Ctrl+U through tmux, `rb_prompt_clear`, only for the known sentences) while it still holds just that sentence. Tests: `tests/test_speak.py`,
   `tests/test_voice.sh`.
 * **A long press on the headset key no longer pauses the music.** Android saw the key as well and sent each repeat
   of the held key to the music app, which paused and played by turns (and started its voice search). The root reader

@@ -469,6 +469,47 @@ check "Fokus: ein neuer Daemon räumt ein altes rec-stale weg" nein "$( ( RB_PRO
     rb_speak_focus; has "$BRIDGE_DIR/rec-stale" ) )"
 rm -f "$T/ftmp/rootbridge-audio-focus" "$BRIDGE_DIR/rec-stale"
 
+# a sentence to stop or switch reading leaves the input line of Claude Code (Claude Code puts a blocked prompt back there)
+cat > "$T/fake-tmux" <<'FT'
+#!/bin/bash
+case "$1" in
+    list-panes) [ -e "$T_KEYS.lsfail" ] && exit 1; printf 'bash %%3\nclaude %%1\nclaude-new %%2\n' ;;
+    capture-pane) [ "$4" = %3 ] && echo "FEHLER" >> "$T_KEYS" ;;&
+    capture-pane) [ "$4" = %2 ] || { echo "❯ "; exit; }; printf '│ Antwort\n─────\n❯\xc2\xa0%s  \n─────\n' "$(cat "$T_PANE")" ;;
+    send-keys) [ -e "$T_KEYS.fail" ] && exit 1; echo "$*" >> "$T_KEYS" ;;
+esac
+FT
+chmod +x "$T/fake-tmux"
+clear_round() { ( export RB_TMUX="$T/fake-tmux" T_PANE="$T/pane" T_KEYS="$T/keys"; . "$LIB"; rb_prompt_clear ); }
+: > "$T/keys"; echo "Stoppe die Sprachausgabe." > "$T/pane"; printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"
+clear_round
+check "Eingabezeile: der Satz wird im Fenster mit dem Satz geleert"       "send-keys -t %2 C-u;nein" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear")"
+: > "$T/keys"; echo "Stoppe die Sprachausgabe und mehr" > "$T/pane"; printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"
+clear_round
+check "Eingabezeile: anderer Text bleibt, der Auftrag wartet" ";ja" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear")"
+printf 'Stoppe die Sprachausgabe.\nzweite Zeile' > "$T/pane"; clear_round
+check "Eingabezeile: ein Entwurf über mehrere Zeilen bleibt" ";ja" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear")"
+echo "Stoppe die Sprachausgabe." > "$T/pane"; touch -d '-10 seconds' "$BRIDGE_DIR/prompt-clear"; clear_round 2> "$T/clear.err"
+check "Eingabezeile: ein alter Auftrag geht ohne Taste, mit Log" ";nein;1" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear");$(count "$T/clear.err" 'keinem Claude-Code-Fenster')"
+printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"; : > "$T/keys.lsfail"; clear_round 2> "$T/clear.err"
+check "Eingabezeile: list-panes scheitert: Log, der Auftrag bleibt" "1;ja" "$(count "$T/clear.err" 'list-panes');$(has "$BRIDGE_DIR/prompt-clear")"
+rm -f "$T/keys.lsfail"
+printf 'Mein Entwurf' > "$BRIDGE_DIR/prompt-clear"; echo "Mein Entwurf" > "$T/pane"; : > "$T/keys"; clear_round 2> "$T/clear.err"
+check "Eingabezeile: ein anderer Text vom Gast leert nichts" ";nein;1" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear");$(count "$T/clear.err" 'kein Satz')"
+check "Eingabezeile: die Sätze in Termux und in speak.py sind dieselben" gleich "$( ( . "$LIB"; python3 -I - "$ROOT/guest/claude/speak.py" "${RB_SPEAK_SENTENCES[@]}" <<'PY'
+import ast, sys
+tree = ast.parse(open(sys.argv[1], encoding="utf-8").read())
+py = set()
+for node in tree.body:
+    if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") in ("STOP_PHRASES", "OFF_PHRASES", "ON_PHRASES"):
+        py |= ast.literal_eval(node.value)
+print("gleich" if py == set(sys.argv[2:]) and len(sys.argv[2:]) == len(py) else "anders: %s" % (py ^ set(sys.argv[2:])))
+PY
+) )"
+echo "Stoppe die Sprachausgabe." > "$T/pane"; printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"; : > "$T/keys.fail"; clear_round 2> "$T/clear.err"
+check "Eingabezeile: tmux scheitert: Log, der Auftrag bleibt" "1;ja" "$(count "$T/clear.err" 'nicht geleert');$(has "$BRIDGE_DIR/prompt-clear")"
+rm -f "$T/keys.fail" "$BRIDGE_DIR/prompt-clear"
+
 # the command line of `rootbridge help` and `status`
 rb bash "$T/bin/rootbridge" help
 check "help nennt voice start|stop|status|grant"          1 "$(count "$T/out.txt" 'rootbridge voice start|stop|status|grant')"

@@ -216,6 +216,7 @@ while true; do
     own_lock || { echo "rootbridge-daemon: Lock gehört einem anderen Daemon - beende mich (PID $$)." >&2; exit 0; }
     scan_once
     rb_speak_focus                    # music quieter while the guest reads aloud
+    rb_prompt_clear                   # a sentence to stop or switch reading out of the input line of Claude Code
     : > "$BRIDGE_DIR/.alive"          # heartbeat for the guest
     sleep "$POLL_INTERVAL"
 done

@@ -647,6 +647,8 @@ class TestPlayer(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: os.listdir(os.path.join(self.bridge, "speak-queue")) == []),
                         "ein wartender Text blieb")
         self.assertNotEqual(self.out_file("piper.in"), "danach")
+        with open(os.path.join(self.bridge, "prompt-clear"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "Beende die Sprachausgabe.")   # for Termux to empty the input line
 
     def test_each_stop_sentence_counts(self):
         for word in ("Stoppe die Sprachausgabe!", "hör auf zu reden", "Höre auf, zu reden.", "STOP READING ALOUD",
@@ -669,6 +671,7 @@ class TestPlayer(unittest.TestCase):
         for prompt in ("Stopp", "Beende die Sprachausgabe und mach weiter", "Stop the build", "Weiter"):
             r = self.command(prompt)
             self.assertEqual((r.returncode, r.stdout), (0, b""), prompt)
+        self.assertFalse(os.path.exists(os.path.join(self.bridge, "prompt-clear")))
 
     def test_a_spoken_stop_works_also_when_reading_is_off(self):
         open(os.path.join(self.bridge, "speak-off"), "w").close()

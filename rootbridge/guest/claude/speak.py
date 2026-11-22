@@ -14,7 +14,8 @@ the PreToolUse hook; a new text ends the one still being read.
                       sentence ("Beende die Sprachausgabe", "Hör auf zu reden", "Stop reading aloud", ...; STOP_PHRASES)
                       ends what is read, "Schalte die Sprachausgabe aus|ein" (OFF_PHRASES, ON_PHRASES) switches reading
                       off (and ends it) or on again. A stop ends what is being read and what waits, at once (never
-                      through the queue); the sentences work also when the switch is off
+                      through the queue); the sentences work also when the switch is off. The sentence goes to
+                      prompt-clear: Termux empties the input line, where Claude Code puts a blocked prompt back
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
                       yet, so ask on the terminal (yes records, no asks again at the next start, "nie" never again;
@@ -68,6 +69,7 @@ PROGRESS = os.path.join(BRIDGE_DIR, "speak-progress")
 FOCUS = os.path.join(BRIDGE_DIR, "speak-focus")       # the daemon's answer for the player: "<pid> <answer>"
 ALIVE = os.path.join(BRIDGE_DIR, ".alive")             # the daemon's heartbeat (every round)
 FOCUS_WAIT_SECONDS = 1.5   # a round of the daemon is 0.5 s, its question to Android up to 2 s more
+PROMPT_CLEAR = os.path.join(BRIDGE_DIR, "prompt-clear")   # a sentence below, for Termux to take out of the input line
 STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop (--stop here, rb_speak_stop in Termux)
 REC_STALE = os.path.join(BRIDGE_DIR, "rec-stale")     # "<pid> <start time>" of recorders the daemon no longer counts
 HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about to record (rb_speak_hold in Termux)
@@ -674,6 +676,19 @@ def speak_answer(message):
     start(text)   # the hooks stay silent towards Claude Code: a failure is in the log
 
 
+def clear_prompt(prompt):
+    """Ask Termux to empty the input line: Claude Code puts a blocked prompt back there. Termux (rb_prompt_clear) empties
+    it only while it still holds just this prompt."""
+    tmp = "%s.%d" % (PROMPT_CLEAR, os.getpid())
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(prompt.strip())
+        os.replace(tmp, PROMPT_CLEAR)
+    except OSError as e:
+        log("%s: %s" % (PROMPT_CLEAR, e))
+
+
 def command():
     """A prompt that is one of our sentences: stop at once (never through the queue), switch reading off or on, and keep
     it from Claude. Also when reading is off (the sentence to switch it on must work then)."""
@@ -685,6 +700,7 @@ def command():
     if not isinstance(prompt, str):
         return
     sentence = " ".join(re.sub(r"[\W_]+", " ", prompt.lower()).split())
+    halt = True                                   # this sentence also ends what is being read
     try:
         if sentence in STOP_PHRASES:
             reason = "Vorlesen gestoppt."
@@ -692,18 +708,19 @@ def command():
             os.close(os.open(OFF, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600))   # the switch, as `rootbridge voice speak off`
             reason = "Vorlesen ausgeschaltet (wieder an: „Schalte die Sprachausgabe ein“)."
         elif sentence in ON_PHRASES:
+            halt = False
             if os.path.lexists(OFF):
                 os.remove(OFF)
-            print(json.dumps({"decision": "block", "reason": "Vorlesen eingeschaltet."}))
-            return
+            reason = "Vorlesen eingeschaltet."
         else:
             return
     except OSError as e:
         log("Schalter %s: %s" % (OFF, e))
-        print(json.dumps({"decision": "block", "reason": "Vorlesen ließ sich nicht umschalten: %s" % e}))
-        return
-    mark_stopped()
-    stop()
+        halt, reason = False, "Vorlesen ließ sich nicht umschalten: %s" % e
+    clear_prompt(prompt)
+    if halt:
+        mark_stopped()
+        stop()
     print(json.dumps({"decision": "block", "reason": reason}))
 
 

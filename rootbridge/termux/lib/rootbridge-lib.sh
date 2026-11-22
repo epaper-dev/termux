@@ -38,6 +38,7 @@ GUEST_ISOLATE="on"      # on | off: guest sessions see nothing of Termux but the
 # Test hooks / binaries. Taken from the environment only, never from the
 # config file, because the config file lies in a directory the guest can write.
 RB_SU="${RB_SU:-su}"
+RB_TMUX="${RB_TMUX:-tmux}"
 RB_OPEN_CMD="${RB_OPEN_CMD:-termux-open-url}"
 RB_CLIP_CMD="${RB_CLIP_CMD:-termux-clipboard-set}"
 RB_ASK_CMD="${RB_ASK_CMD:-${PREFIX:-/data/data/com.termux/files/usr}/libexec/termux-api}"   # the client behind termux-dialog
@@ -254,6 +255,70 @@ rb_speak_hold() {
         tr '\0' ' ' < "$RB_PROC_DIR/$pid/cmdline" 2>/dev/null | grep -qE 'speak\.py --run [0-9]{20} [0-9-]+ pauses ' && return 0
     fi
     rb_speak_stop
+}
+
+# the sentences that speak.py --command keeps from Claude (STOP_PHRASES, OFF_PHRASES, ON_PHRASES there; written the same way:
+# lower case, marks out): only these leave the input line (rb_prompt_clear). tests/test_voice.sh checks that both lists match.
+RB_SPEAK_SENTENCES=(
+    "beende die sprachausgabe" "stoppe die sprachausgabe" "stopp die sprachausgabe" "beende die sprachansage"
+    "stoppe die sprachansage" "stoppe jetzt die sprachansage" "hör auf zu reden" "höre auf zu reden" "stop reading aloud"
+    "stop the speech" "stop talking now"
+    "schalte die sprachausgabe aus" "schalte das vorlesen aus" "sprachausgabe dauerhaft aus" "turn speech off"
+    "turn reading off" "switch speech off"
+    "schalte die sprachausgabe ein" "schalte die sprachausgabe an" "schalte das vorlesen ein" "schalte das vorlesen an"
+    "turn speech on" "turn reading on" "switch speech on"
+)
+
+# rb_prompt_clear: called by the daemon every round. Claude Code puts a prompt that a hook blocked back into its input line,
+# also the sentences that stop reading or switch it (speak.py --command); speak.py writes such a sentence to prompt-clear.
+# A line is emptied (Ctrl+U) only while it still holds just that sentence, so nothing typed since is lost. Claude Code may
+# put it back a little later, and a failed tmux call is logged: tried again each round for a few seconds, then the file goes.
+rb_prompt_clear() {
+    local f="$BRIDGE_DIR/prompt-clear" want sentence panes pane screen line cleared=0 failed=0
+    [ -e "$f" ] || [ -L "$f" ] || return 0
+    if [ ! -f "$f" ] || [ -L "$f" ] || [ $(( $(date +%s) - $(stat -c %Y "$f" 2>/dev/null || echo 0) )) -gt 3 ]; then
+        [ -f "$f" ] && [ ! -L "$f" ] && echo "$(date '+%F %T') Eingabezeile nicht geleert: der Satz kam in keinem Claude-Code-Fenster an" >&2
+        rm -f "$f"
+        return 0
+    fi
+    want="$(timeout 1 head -c 512 "$f" 2>/dev/null)"
+    # the guest can write anything there: only one of our sentences is taken (written as speak.py writes it to compare)
+    sentence="$(python3 -I -c 'import re, sys; print(" ".join(re.sub(r"[\W_]+", " ", sys.argv[1].lower()).split()))' \
+        "$want" 2>/dev/null)"
+    if [[ -z $want || $'\n'"$(printf '%s\n' "${RB_SPEAK_SENTENCES[@]}")"$'\n' != *$'\n'"$sentence"$'\n'* ]]; then
+        echo "$(date '+%F %T') Eingabezeile nicht geleert: kein Satz zum Vorlesen in prompt-clear" >&2
+        rm -f "$f"
+        return 0
+    fi
+    # each pane of the Claude Code windows of the session (claude, and claude-new from `rootbridge attach claude --new`;
+    # PTT_TARGET when set): its input box, from the last row with the prompt sign to the frame below it; a draft of more
+    # rows is not ours. tmux cannot read and press in one step: what is typed in the few milliseconds between goes as well.
+    if ! panes="$("$RB_TMUX" list-panes -s -t "$SESSION" -F '#{window_name} #{pane_id}' 2>/dev/null)"; then
+        echo "$(date '+%F %T') Eingabezeile: tmux list-panes -t $SESSION gescheitert" >&2
+        return 0                                                  # next round
+    fi
+    for pane in $(awk -v t="${PTT_TARGET#*:}" '$1 == "claude" || $1 == "claude-new" || $1 == t { print $2 }' <<< "$panes"); do
+        if ! screen="$("$RB_TMUX" capture-pane -p -t "$pane" 2>/dev/null)"; then
+            echo "$(date '+%F %T') Eingabezeile: tmux capture-pane -t $pane gescheitert" >&2
+            failed=1
+            continue
+        fi
+        line="$(awk '/^❯/ { box = $0; n = 1; open = 1; next } open && /^─/ { open = 0; next } open { box = box "\n" $0; n++ }
+                     END { if (n == 1) print box }' <<< "$screen")"
+        line="${line#❯}"
+        line="${line#$'\xc2\xa0'}"                              # the NBSP after the prompt sign
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [ "$line" = "$want" ] || continue
+        if "$RB_TMUX" send-keys -t "$pane" C-u 2>/dev/null; then
+            cleared=1
+        else
+            echo "$(date '+%F %T') Eingabezeile von $pane nicht geleert (tmux send-keys)" >&2
+            failed=1
+        fi
+    done
+    [ "$cleared" = 1 ] && [ "$failed" = 0 ] || return 0      # not (yet) back in a line, or tmux failed: next round
+    rm -f "$f"
 }
 
 # rb_speak_player: prints the pid in speak.pid when that process is the player of the guest (see rb_speak_stop), else fails.
