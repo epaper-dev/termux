@@ -5,6 +5,9 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Plans are read aloud in full.** Before ExitPlanMode the PreToolUse hook reads the whole plan (`tool_input.plan`) after
+  the note, also with `speak first`; the text for `~/.claude/CLAUDE.md` (`templates/speech*.claude.md`) asks for plans
+  that are easy to listen to. Tests: `tests/test_speak.py`.
 * **Texts that wait too long are dropped.** A text that waited more than 2 minutes for its turn (for instance behind a
   recording that did not end) is out of date: its player leaves unread and says so in the log. What is being read goes on to
   the end. Tests: `tests/test_speak.py`.

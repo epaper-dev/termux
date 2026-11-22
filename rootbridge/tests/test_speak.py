@@ -863,6 +863,24 @@ class TestPlayer(unittest.TestCase):
         self.run_speak(["--progress"], self.transcript(("a1", "assistant", [{"type": "text", "text": "Jetzt die Tests.\nDanach mehr."}])))
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") == "Jetzt die Tests."))
 
+    def test_a_plan_is_read_whole_after_its_note(self):
+        open(os.path.join(self.bridge, "speak-first"), "w").close()
+        piper = self.stub("piper-all", 'cat >> "$OUT/piper.all"; echo >> "$OUT/piper.all"\n')
+        data = json.loads(self.transcript(("a1", "assistant", [{"type": "text", "text": "Der Plan steht.\nDetails."}])))
+        data.update(tool_name="ExitPlanMode",
+                    tool_input={"plan": "# Plan\n\nErst dies.\n\n- Dann das.\n\n```\ncode\n```\nZuletzt prüfen."})
+        self.run_speak(["--progress"], json.dumps(data), RB_SPEAK_PIPER=piper)
+        self.assertTrue(self.wait_for(lambda: (self.out_file("piper.all") or "").endswith("prüfen.\n")),
+                        self.out_file("piper.all"))
+        self.assertEqual(self.out_file("piper.all"), "Der Plan steht.\nPlan\nErst dies.\nDann das.\nZuletzt prüfen.\n")
+
+    def test_another_tool_reads_no_plan(self):
+        data = json.loads(self.transcript(("u1", "user", "Frage")))
+        data.update(tool_name="Bash", tool_input={"plan": "Kein Plan."})
+        self.run_speak(["--progress"], json.dumps(data))
+        time.sleep(0.5)
+        self.assertIsNone(self.out_file("piper.in"))
+
     def test_progress_says_nothing_before_a_note_in_this_turn(self):
         data = self.transcript(("a1", "assistant", [{"type": "text", "text": "Alte Antwort."}]),
                                ("u1", "user", "Neue Frage"),

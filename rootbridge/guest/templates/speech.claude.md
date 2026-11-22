@@ -7,3 +7,5 @@ read: the first paragraph, and the last question when it stands further down (`r
   and what the user has to do or decide. No code, paths, commands, tables or lists in it.
 - Put every question to the user at the very end of the answer, as one clear question.
 - Details, code and commands follow after the summary; they are shown, not read.
+- Plans (plan mode) are read aloud in full. So write them to be heard: first, in a few sentences, what it is about and
+  what changes; code, paths and commands short and only after that.

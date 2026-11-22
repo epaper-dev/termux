@@ -7,7 +7,8 @@ with Piper (a local neural voice, de_DE-kerstin-medium); Piper also reads when t
 the PreToolUse hook; a new text ends the one still being read.
 
   speak.py --hook     Stop hook: reads last_assistant_message from the hook JSON on stdin, unless the switch is off
-  speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once
+  speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once; before
+                      ExitPlanMode also the whole plan (tool_input.plan), also with speak-first
   speak.py --stop     end what is being read and what waits (rootbridge-speak --stop)
   speak.py --command  UserPromptSubmit hook: a prompt that is only a stop word ("Stopp", "Halt", ...; STOP_WORDS) ends
                       what is being read and what waits, at once and also when the switch is off, and does not go to Claude
@@ -713,8 +714,19 @@ def progress():
     tool_use_id = data and data.get("tool_use_id")
     tail = isinstance(path, str) and transcript_tail(path, tool_use_id if isinstance(tool_use_id, str) else None)
     note = tail and newest_note(tail)
-    if not note:
-        return
+    if note:
+        read_note(note, begun)
+    # a plan (ExitPlanMode) is read whole after the note, also with speak-first: the user decides on all of it
+    plan = data and data.get("tool_name") == "ExitPlanMode" and (data.get("tool_input") or {}).get("plan")
+    if isinstance(plan, str) and not os.path.exists(OFF) and not stopped_since(begun):
+        start(speakable(plan))
+        if os.path.exists(OFF) or stopped_since(begun):
+            mark_stopped()
+            stop()
+
+
+def read_note(note, begun):
+    """Read the note (uuid, text) unless it was read already."""
     # parallel tool calls run their hooks at the same time: the lock makes one of them claim the note and start the player
     try:
         with open_progress() as fh:
