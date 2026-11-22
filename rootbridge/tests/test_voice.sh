@@ -454,6 +454,61 @@ check "Fokus: Ende der Aufnahme gibt ihn frei"             "held;leer;1" "$( ( R
     rb_speak_focus; printf '%s;' "$RB_SPEAK_FOCUS"; kill "$REC"; wait "$REC" 2>/dev/null; sleep 0.3
     rb_speak_focus; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"; grep -c 'action release' "$T/af.log" ) )"
 kill "$REC" 2>/dev/null; rm -f "$T/ftmp/rootbridge-audio-focus"
+# a recorder Claude Code left running counts no more after RB_REC_MAX seconds: the focus goes, rec-stale tells the guest
+bash -c 'exec -a rec python3 -c "import time; time.sleep(30)" --buffer 1024 -t raw' & REC=$!
+sleep 0.3; : > "$T/af.log"
+# shellcheck disable=SC2034  # RB_ASK_CMD and RB_REC_MAX are read by rb_speak_focus in $LIB
+check "Fokus: eine hängende Aufnahme zählt nach RB_REC_MAX nicht mehr" "held;leer;1;$REC;1" "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp" RB_REC_MAX=1; . "$LIB"
+    rb_speak_focus; printf '%s;' "$RB_SPEAK_FOCUS"; sleep 1.2
+    rb_speak_focus 2> "$T/stale.err"; printf '%s;' "${RB_SPEAK_FOCUS:-leer}"; grep -c 'action release' "$T/af.log" | tr -d '\n'
+    printf ';%s;' "$(cut -d' ' -f1 "$BRIDGE_DIR/rec-stale")"; grep -c 'zählt nicht mehr' "$T/stale.err" ) )"
+check "Fokus: rec-stale nennt PID und Startzeit des Prozesses" 1 "$(grep -c "^$REC [0-9][0-9]*\$" "$BRIDGE_DIR/rec-stale")"
+kill "$REC" 2>/dev/null; wait "$REC" 2>/dev/null
+# shellcheck disable=SC2034
+check "Fokus: ein neuer Daemon räumt ein altes rec-stale weg" nein "$( ( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+    rb_speak_focus; has "$BRIDGE_DIR/rec-stale" ) )"
+rm -f "$T/ftmp/rootbridge-audio-focus" "$BRIDGE_DIR/rec-stale"
+
+# a sentence to stop or switch reading leaves the input line of Claude Code (Claude Code puts a blocked prompt back there)
+cat > "$T/fake-tmux" <<'FT'
+#!/bin/bash
+case "$1" in
+    list-panes) [ -e "$T_KEYS.lsfail" ] && exit 1; printf 'bash %%3\nclaude %%1\nclaude-new %%2\n' ;;
+    capture-pane) [ "$4" = %3 ] && echo "FEHLER" >> "$T_KEYS" ;;&
+    capture-pane) [ "$4" = %2 ] || { echo "❯ "; exit; }; printf '│ Antwort\n─────\n❯\xc2\xa0%s  \n─────\n' "$(cat "$T_PANE")" ;;
+    send-keys) [ -e "$T_KEYS.fail" ] && exit 1; echo "$*" >> "$T_KEYS" ;;
+esac
+FT
+chmod +x "$T/fake-tmux"
+clear_round() { ( export RB_TMUX="$T/fake-tmux" T_PANE="$T/pane" T_KEYS="$T/keys"; . "$LIB"; rb_prompt_clear ); }
+: > "$T/keys"; echo "Stoppe die Sprachausgabe." > "$T/pane"; printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"
+clear_round
+check "Eingabezeile: der Satz wird im Fenster mit dem Satz geleert"       "send-keys -t %2 C-u;nein" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear")"
+: > "$T/keys"; echo "Stoppe die Sprachausgabe und mehr" > "$T/pane"; printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"
+clear_round
+check "Eingabezeile: anderer Text bleibt, der Auftrag wartet" ";ja" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear")"
+printf 'Stoppe die Sprachausgabe.\nzweite Zeile' > "$T/pane"; clear_round
+check "Eingabezeile: ein Entwurf über mehrere Zeilen bleibt" ";ja" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear")"
+echo "Stoppe die Sprachausgabe." > "$T/pane"; touch -d '-10 seconds' "$BRIDGE_DIR/prompt-clear"; clear_round 2> "$T/clear.err"
+check "Eingabezeile: ein alter Auftrag geht ohne Taste, mit Log" ";nein;1" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear");$(count "$T/clear.err" 'keinem Claude-Code-Fenster')"
+printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"; : > "$T/keys.lsfail"; clear_round 2> "$T/clear.err"
+check "Eingabezeile: list-panes scheitert: Log, der Auftrag bleibt" "1;ja" "$(count "$T/clear.err" 'list-panes');$(has "$BRIDGE_DIR/prompt-clear")"
+rm -f "$T/keys.lsfail"
+printf 'Mein Entwurf' > "$BRIDGE_DIR/prompt-clear"; echo "Mein Entwurf" > "$T/pane"; : > "$T/keys"; clear_round 2> "$T/clear.err"
+check "Eingabezeile: ein anderer Text vom Gast leert nichts" ";nein;1" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear");$(count "$T/clear.err" 'kein Satz')"
+check "Eingabezeile: die Sätze in Termux und in speak.py sind dieselben" gleich "$( ( . "$LIB"; python3 -I - "$ROOT/guest/claude/speak.py" "${RB_SPEAK_SENTENCES[@]}" <<'PY'
+import ast, sys
+tree = ast.parse(open(sys.argv[1], encoding="utf-8").read())
+py = set()
+for node in tree.body:
+    if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") in ("STOP_PHRASES", "OFF_PHRASES", "ON_PHRASES"):
+        py |= ast.literal_eval(node.value)
+print("gleich" if py == set(sys.argv[2:]) and len(sys.argv[2:]) == len(py) else "anders: %s" % (py ^ set(sys.argv[2:])))
+PY
+) )"
+echo "Stoppe die Sprachausgabe." > "$T/pane"; printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"; : > "$T/keys.fail"; clear_round 2> "$T/clear.err"
+check "Eingabezeile: tmux scheitert: Log, der Auftrag bleibt" "1;ja" "$(count "$T/clear.err" 'nicht geleert');$(has "$BRIDGE_DIR/prompt-clear")"
+rm -f "$T/keys.fail" "$BRIDGE_DIR/prompt-clear"
 
 # the command line of `rootbridge help` and `status`
 rb bash "$T/bin/rootbridge" help
@@ -755,7 +810,7 @@ check "Gast frisch: voice in settings.json"                '{"enabled": true, "m
 MS="$GA/etc/claude-code/managed-settings.json"
 hookcmd() { python3 -I -c "import json,sys; print(' '.join(h['command'] for e in json.load(open(sys.argv[1])).get('hooks',{}).get(sys.argv[2],[]) for h in e['hooks'] if 'speak.py' in h['command']))" "$1" "$2"; }
 check "Gast frisch: Stop-Hook liest vor (mit Marker für die Deinstallation)" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --hook" "$(hookcmd "$MS" Stop)"
-check "Gast frisch: kein UserPromptSubmit-Hook, Absenden unterbricht das Vorlesen nicht" "" "$(hookcmd "$MS" UserPromptSubmit)"
+check "Gast frisch: UserPromptSubmit nur für Stoppwörter (Absenden unterbricht sonst nicht)" "/usr/bin/python3 -I /usr/local/lib/termux-rootbridge/speak.py --command" "$(hookcmd "$MS" UserPromptSubmit)"
 check "Gast frisch: speak.py und rootbridge-speak"         "ja ja" "$(has "$GA/usr/local/lib/termux-rootbridge/speak.py") $(has "$GA/usr/local/bin/rootbridge-speak")"
 check "Gast frisch: rootbridge-speak mit dem Python des Gasts" 1 "$(count "$GA/usr/local/bin/rootbridge-speak" '^exec /usr/bin/python3 -I .*/usr/local/lib/termux-rootbridge/speak.py')"
 check "Gast frisch: CLAUDE.md, ein Block mit Code Quality und dem Text fürs Vorlesen" "1 1 1" \

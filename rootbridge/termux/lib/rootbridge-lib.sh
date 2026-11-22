@@ -38,6 +38,7 @@ GUEST_ISOLATE="on"      # on | off: guest sessions see nothing of Termux but the
 # Test hooks / binaries. Taken from the environment only, never from the
 # config file, because the config file lies in a directory the guest can write.
 RB_SU="${RB_SU:-su}"
+RB_TMUX="${RB_TMUX:-tmux}"
 RB_OPEN_CMD="${RB_OPEN_CMD:-termux-open-url}"
 RB_CLIP_CMD="${RB_CLIP_CMD:-termux-clipboard-set}"
 RB_ASK_CMD="${RB_ASK_CMD:-${PREFIX:-/data/data/com.termux/files/usr}/libexec/termux-api}"   # the client behind termux-dialog
@@ -256,6 +257,70 @@ rb_speak_hold() {
     rb_speak_stop
 }
 
+# the sentences that speak.py --command keeps from Claude (STOP_PHRASES, OFF_PHRASES, ON_PHRASES there; written the same way:
+# lower case, marks out): only these leave the input line (rb_prompt_clear). tests/test_voice.sh checks that both lists match.
+RB_SPEAK_SENTENCES=(
+    "beende die sprachausgabe" "stoppe die sprachausgabe" "stopp die sprachausgabe" "beende die sprachansage"
+    "stoppe die sprachansage" "stoppe jetzt die sprachansage" "hör auf zu reden" "höre auf zu reden" "beende das vorlesen"
+    "stoppe das vorlesen" "stopp das vorlesen" "stop reading aloud" "stop the speech" "stop talking now"
+    "schalte die sprachausgabe aus" "schalte das vorlesen aus" "sprachausgabe dauerhaft aus" "turn speech off"
+    "turn reading off" "switch speech off"
+    "schalte die sprachausgabe ein" "schalte die sprachausgabe an" "schalte das vorlesen ein" "schalte das vorlesen an"
+    "starte die sprachausgabe" "starte das vorlesen" "turn speech on" "turn reading on" "switch speech on"
+)
+
+# rb_prompt_clear: called by the daemon every round. Claude Code puts a prompt that a hook blocked back into its input line,
+# also the sentences that stop reading or switch it (speak.py --command); speak.py writes such a sentence to prompt-clear.
+# A line is emptied (Ctrl+U) only while it still holds just that sentence, so nothing typed since is lost. Claude Code may
+# put it back a little later, and a failed tmux call is logged: tried again each round for a few seconds, then the file goes.
+rb_prompt_clear() {
+    local f="$BRIDGE_DIR/prompt-clear" want sentence panes pane screen line cleared=0 failed=0
+    [ -e "$f" ] || [ -L "$f" ] || return 0
+    if [ ! -f "$f" ] || [ -L "$f" ] || [ $(( $(date +%s) - $(stat -c %Y "$f" 2>/dev/null || echo 0) )) -gt 3 ]; then
+        [ -f "$f" ] && [ ! -L "$f" ] && echo "$(date '+%F %T') Eingabezeile nicht geleert: der Satz kam in keinem Claude-Code-Fenster an" >&2
+        rm -f "$f"
+        return 0
+    fi
+    want="$(timeout 1 head -c 512 "$f" 2>/dev/null)"
+    # the guest can write anything there: only one of our sentences is taken (written as speak.py writes it to compare)
+    sentence="$(python3 -I -c 'import re, sys; print(" ".join(re.sub(r"[\W_]+", " ", sys.argv[1].lower()).split()))' \
+        "$want" 2>/dev/null)"
+    if [[ -z $want || $'\n'"$(printf '%s\n' "${RB_SPEAK_SENTENCES[@]}")"$'\n' != *$'\n'"$sentence"$'\n'* ]]; then
+        echo "$(date '+%F %T') Eingabezeile nicht geleert: kein Satz zum Vorlesen in prompt-clear" >&2
+        rm -f "$f"
+        return 0
+    fi
+    # each pane of the Claude Code windows of the session (claude, and claude-new from `rootbridge attach claude --new`;
+    # PTT_TARGET when set): its input box, from the last row with the prompt sign to the frame below it; a draft of more
+    # rows is not ours. tmux cannot read and press in one step: what is typed in the few milliseconds between goes as well.
+    if ! panes="$("$RB_TMUX" list-panes -s -t "$SESSION" -F '#{window_name} #{pane_id}' 2>/dev/null)"; then
+        echo "$(date '+%F %T') Eingabezeile: tmux list-panes -t $SESSION gescheitert" >&2
+        return 0                                                  # next round
+    fi
+    for pane in $(awk -v t="${PTT_TARGET#*:}" '$1 == "claude" || $1 == "claude-new" || $1 == t { print $2 }' <<< "$panes"); do
+        if ! screen="$("$RB_TMUX" capture-pane -p -t "$pane" 2>/dev/null)"; then
+            echo "$(date '+%F %T') Eingabezeile: tmux capture-pane -t $pane gescheitert" >&2
+            failed=1
+            continue
+        fi
+        line="$(awk '/^❯/ { box = $0; n = 1; open = 1; next } open && /^─/ { open = 0; next } open { box = box "\n" $0; n++ }
+                     END { if (n == 1) print box }' <<< "$screen")"
+        line="${line#❯}"
+        line="${line#$'\xc2\xa0'}"                              # the NBSP after the prompt sign
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [ "$line" = "$want" ] || continue
+        if "$RB_TMUX" send-keys -t "$pane" C-u 2>/dev/null; then
+            cleared=1
+        else
+            echo "$(date '+%F %T') Eingabezeile von $pane nicht geleert (tmux send-keys)" >&2
+            failed=1
+        fi
+    done
+    [ "$cleared" = 1 ] && [ "$failed" = 0 ] || return 0      # not (yet) back in a line, or tmux failed: next round
+    rm -f "$f"
+}
+
 # rb_speak_player: prints the pid in speak.pid when that process is the player of the guest (see rb_speak_stop), else fails.
 rb_speak_player() {
     local pid f="$BRIDGE_DIR/speak.pid"
@@ -275,6 +340,56 @@ rb_find_recorders() {
         mapfile -d '' -t args 2>/dev/null < "$d/cmdline" || continue   # 2> first: a process can be gone by now
         if [[ ${args[0]-} == *rec && " ${args[*]} " == *" --buffer 1024 -t raw "* ]]; then REC_PIDS+=("${d##*/}"); fi
     done
+}
+
+# rb_fresh_recorders: drop from REC_PIDS the recorders the daemon has seen for RB_REC_MAX seconds (300) or longer: Claude Code
+# sometimes leaves one running, and it would keep the music down and the reading paused for good. The pid is remembered from
+# the round it was first seen (the age of a process is not to be trusted under proot); the recorder itself is left alone.
+# The recorders that count no more go to rec-stale in the bridge directory, one "<pid> <start time>" per line (the start
+# time from /proc/<pid>/stat, so a pid used again later is not taken for it), and the reading in the guest does not wait for
+# them either (speak.py recording()). A file left by an earlier daemon goes in the first round.
+declare -gA RB_REC_SEEN=()   # recorder pid: $SECONDS of the round it was first seen, "old" once it counts no more
+rb_fresh_recorders() {
+    local pid stale tmp fresh=() max="${RB_REC_MAX:-300}"
+    local -A seen=()
+    for pid in "${REC_PIDS[@]}"; do
+        seen[$pid]="${RB_REC_SEEN[$pid]:-$SECONDS}"
+        if [ "${seen[$pid]}" != old ] && (( SECONDS - seen[$pid] >= max )); then
+            echo "$(date '+%F %T') Aufnahme $pid läuft seit $max s: zählt nicht mehr (Musik wieder laut)" >&2
+            seen[$pid]=old
+        fi
+        [ "${seen[$pid]}" = old ] || fresh+=("$pid")
+    done
+    RB_REC_SEEN=()
+    stale=""
+    for pid in "${!seen[@]}"; do
+        RB_REC_SEEN[$pid]="${seen[$pid]}"
+        [ "${seen[$pid]}" != old ] || stale+="$pid $(rb_proc_start "$pid")"$'\n'
+    done
+    REC_PIDS=("${fresh[@]}")
+    # written only when it changes; never through a path in the bridge (the guest can put a link there): a private temp
+    # file moved over it, like rb_speak_focus_tell
+    if [ "$stale" != "$RB_REC_STALE" ]; then
+        if [ -z "$stale" ]; then
+            rm -f "$BRIDGE_DIR/rec-stale" && { RB_REC_STALE=""; return 0; }
+        elif tmp="$(mktemp 2>/dev/null)"; then
+            if printf '%s' "$stale" > "$tmp" && mv -fT "$tmp" "$BRIDGE_DIR/rec-stale" 2>/dev/null; then
+                RB_REC_STALE="$stale"
+                return 0
+            fi
+            rm -f "$tmp"
+        fi
+        echo "$(date '+%F %T') $BRIDGE_DIR/rec-stale nicht geschrieben: das Vorlesen wartet weiter auf die Aufnahme" >&2
+    fi
+}
+RB_REC_STALE="?"   # not known yet: the first round writes or removes the file
+
+# rb_proc_start <pid>: the start time of the process (field 22 of /proc/<pid>/stat, after the name in parentheses)
+rb_proc_start() {
+    local stat fields
+    stat="$(< "$RB_PROC_DIR/$1/stat")" 2>/dev/null || return 0
+    read -r -a fields <<< "${stat##*) }"
+    printf '%s' "${fields[19]-}"
 }
 
 # rb_speak_focus: called by the daemon every round. While the guest reads aloud (a live player in speak.pid) or Claude Code
@@ -310,6 +425,7 @@ rb_speak_focus() {
     [ "$rb_focus_skip" -eq 0 ] || rb_focus_skip=$((rb_focus_skip - 1))
     REC_PIDS=()
     [ "$VOICE" != on ] || rb_find_recorders "$RB_PROC_DIR"
+    rb_fresh_recorders
     if pid="$(rb_speak_player)" || [ "${#REC_PIDS[@]}" -gt 0 ]; then
         if [ "$rb_focus_skip" -gt 0 ]; then answer=off
         else

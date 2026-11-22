@@ -8,3 +8,5 @@ Kurzfassung: der erste Absatz und die letzte Frage, wenn sie weiter unten steht 
   Befehle, Tabellen oder Listen.
 - Stelle jede Frage an den Nutzer ganz ans Ende der Antwort, als eine klare Frage.
 - Details, Code und Befehle folgen nach der Zusammenfassung; sie werden angezeigt, nicht vorgelesen.
+- Pläne (Planmodus) werden komplett vorgelesen. Schreib sie deshalb gut hörbar: zuerst in wenigen Sätzen, worum es
+  geht und was sich ändert; Code, Pfade und Befehle knapp und erst danach.

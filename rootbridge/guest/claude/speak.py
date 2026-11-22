@@ -7,8 +7,15 @@ with Piper (a local neural voice, de_DE-kerstin-medium); Piper also reads when t
 the PreToolUse hook; a new text ends the one still being read.
 
   speak.py --hook     Stop hook: reads last_assistant_message from the hook JSON on stdin, unless the switch is off
-  speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once
+  speak.py --progress PreToolUse hook: reads the newest text of Claude in this turn from transcript_path, once; before
+                      ExitPlanMode also the whole plan (tool_input.plan), also with speak-first
   speak.py --stop     end what is being read and what waits (rootbridge-speak --stop)
+  speak.py --command  UserPromptSubmit hook: a prompt that is one of our sentences does not go to Claude: a stop
+                      sentence ("Beende die Sprachausgabe", "Hör auf zu reden", "Stop reading aloud", ...; STOP_PHRASES)
+                      ends what is read, "Schalte die Sprachausgabe aus|ein" (OFF_PHRASES, ON_PHRASES) switches reading
+                      off (and ends it) or on again. A stop ends what is being read and what waits, at once (never
+                      through the queue); the sentences work also when the switch is off. The sentence goes to
+                      prompt-clear: Termux empties the input line, where Claude Code puts a blocked prompt back
   speak.py --record   record your voice for Articulino from the microphone (RECORD_SECONDS, silence cut)
   speak.py --offer-record  rootbridge-claude before Claude Code starts: Articulino is installed but no voice is recorded
                       yet, so ask on the terminal (yes records, no asks again at the next start, "nie" never again;
@@ -62,9 +69,24 @@ PROGRESS = os.path.join(BRIDGE_DIR, "speak-progress")
 FOCUS = os.path.join(BRIDGE_DIR, "speak-focus")       # the daemon's answer for the player: "<pid> <answer>"
 ALIVE = os.path.join(BRIDGE_DIR, ".alive")             # the daemon's heartbeat (every round)
 FOCUS_WAIT_SECONDS = 1.5   # a round of the daemon is 0.5 s, its question to Android up to 2 s more
+PROMPT_CLEAR = os.path.join(BRIDGE_DIR, "prompt-clear")   # a sentence below, for Termux to take out of the input line
 STOPPED = os.path.join(BRIDGE_DIR, "speak-stopped")   # its mtime: the last stop (--stop here, rb_speak_stop in Termux)
+REC_STALE = os.path.join(BRIDGE_DIR, "rec-stale")     # "<pid> <start time>" of recorders the daemon no longer counts
 HOLD = os.path.join(BRIDGE_DIR, "speak-hold")         # its mtime: ptt is about to record (rb_speak_hold in Termux)
 HOLD_SECONDS = 3          # how long that pauses reading when no recorder comes (ptt waits PTT_WARMUP + 2 s for one)
+# A prompt that is one of these sentences (case and marks aside) is for us and stays from Claude (--command): stop what is
+# read now, switch reading off for good (and stop), or on again. Sentences of three words or more, not single words:
+# Claude Code sends a dictated prompt of several words by itself, one word waits for Enter.
+STOP_PHRASES = {"beende die sprachausgabe", "stoppe die sprachausgabe", "stopp die sprachausgabe",
+                "beende die sprachansage", "stoppe die sprachansage", "stoppe jetzt die sprachansage",
+                "hör auf zu reden", "höre auf zu reden", "beende das vorlesen", "stoppe das vorlesen", "stopp das vorlesen",
+                "stop reading aloud", "stop the speech", "stop talking now"}
+OFF_PHRASES = {"schalte die sprachausgabe aus", "schalte das vorlesen aus", "sprachausgabe dauerhaft aus",
+               "turn speech off", "turn reading off", "switch speech off"}
+ON_PHRASES = {"schalte die sprachausgabe ein", "schalte die sprachausgabe an", "schalte das vorlesen ein",
+              "schalte das vorlesen an", "starte die sprachausgabe", "starte das vorlesen", "turn speech on",
+              "turn reading on", "switch speech on"}
+MAX_WAIT = float(os.environ.get("RB_SPEAK_MAX_WAIT", 120))   # seconds a text may wait for its turn; older is dropped unread
 CHUNK = 4096              # the audio goes to play in pieces of this size, through a pipe of this size: a pause is heard at once
 PULSE_LATENCY_MS = 200    # what PulseAudio buffers for play: it runs out while Claude Code starts its recorder after ptt's key
 TAIL_BYTES = 512 * 1024   # the newest note stands near the end of the transcript; the hook runs before every tool call
@@ -457,8 +479,11 @@ def feed(pipe, data):
 def wait_turn(ticket, mark):
     """Waits until no older ticket of a live player is in the queue (tickets of dead players go) and nobody records for
     /voice (a text that waited must not play into the microphone). False when a stop came after the start (speak-stopped
-    is no longer as it was then, mark): then the player does not read."""
+    is no longer as it was then, mark) or the text waited longer than MAX_WAIT: then the player does not read."""
     while stop_mark() == mark:
+        if time.time_ns() - int(ticket) > MAX_WAIT * 10**9:
+            log("Text verworfen: wartete länger als %g s" % MAX_WAIT)
+            return False
         try:
             names = os.listdir(QUEUE)
         except OSError:
@@ -604,14 +629,38 @@ def hook_input():
     return data
 
 
+def proc_start(pid):
+    """The start time of a process (field 22 of /proc/<pid>/stat, after the name in parentheses), or None."""
+    try:
+        with open(os.path.join(PROC, pid, "stat"), "rb") as fh:   # bytes: the name may be cut inside a UTF-8 character
+            return fh.read().rpartition(b") ")[2].split()[19].decode("ascii")
+    except (OSError, IndexError, UnicodeDecodeError):
+        return None
+
+
 def recording():
     """True while Claude Code records for /voice: its recorder is SoX `rec ... --buffer 1024 -t raw ...` (the same test as
-    rb_find_recorders in rootbridge-lib.sh). The microphone would take what is read into the prompt."""
+    rb_find_recorders in rootbridge-lib.sh). The microphone would take what is read into the prompt. A recorder in
+    rec-stale (left running, rb_fresh_recorders) does not count."""
     try:
         pids = [p for p in os.listdir(PROC) if p.isdigit()]
     except OSError:
         return False
+    stale = set()
+    try:   # a regular file only, not through a link, and not much of it (the bridge directory is shared)
+        fd = os.open(REC_STALE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            if stat.S_ISREG(os.fstat(fd).st_mode):
+                stale = {tuple(w.decode("ascii") for w in line.split()) for line in os.read(fd, 4096).split(b"\n")
+                         if len(line.split()) == 2 and line.replace(b" ", b"").isdigit()}
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+    stale_pids = {pid for pid, _ in stale}
     for pid in pids:
+        if pid in stale_pids and (pid, proc_start(pid)) in stale:   # only the listed pids: their stat, nobody else's
+            continue
         try:
             with open(os.path.join(PROC, pid, "cmdline"), "rb") as fh:
                 args = fh.read().split(b"\0")
@@ -627,6 +676,54 @@ def speak_answer(message):
     if os.path.exists(FIRST):
         text = summary(text)
     start(text)   # the hooks stay silent towards Claude Code: a failure is in the log
+
+
+def clear_prompt(prompt):
+    """Ask Termux to empty the input line: Claude Code puts a blocked prompt back there. Termux (rb_prompt_clear) empties
+    it only while it still holds just this prompt."""
+    tmp = "%s.%d" % (PROMPT_CLEAR, os.getpid())
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(prompt.strip())
+        os.replace(tmp, PROMPT_CLEAR)
+    except OSError as e:
+        log("%s: %s" % (PROMPT_CLEAR, e))
+
+
+def command():
+    """A prompt that is one of our sentences: stop at once (never through the queue), switch reading off or on, and keep
+    it from Claude. Also when reading is off (the sentence to switch it on must work then)."""
+    try:
+        data = json.load(sys.stdin)
+    except ValueError:
+        return
+    prompt = isinstance(data, dict) and data.get("prompt")
+    if not isinstance(prompt, str):
+        return
+    sentence = " ".join(re.sub(r"[\W_]+", " ", prompt.lower()).split())
+    halt = True                                   # this sentence also ends what is being read
+    try:
+        if sentence in STOP_PHRASES:
+            reason = "Vorlesen gestoppt."
+        elif sentence in OFF_PHRASES:
+            os.close(os.open(OFF, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600))   # the switch, as `rootbridge voice speak off`
+            reason = "Vorlesen ausgeschaltet (wieder an: „Schalte die Sprachausgabe ein“)."
+        elif sentence in ON_PHRASES:
+            halt = False
+            if os.path.lexists(OFF):
+                os.remove(OFF)
+            reason = "Vorlesen eingeschaltet."
+        else:
+            return
+    except OSError as e:
+        log("Schalter %s: %s" % (OFF, e))
+        halt, reason = False, "Vorlesen ließ sich nicht umschalten: %s" % e
+    clear_prompt(prompt)
+    if halt:
+        mark_stopped()
+        stop()
+    print(json.dumps({"decision": "block", "reason": reason}))
 
 
 def hook():
@@ -692,8 +789,19 @@ def progress():
     tool_use_id = data and data.get("tool_use_id")
     tail = isinstance(path, str) and transcript_tail(path, tool_use_id if isinstance(tool_use_id, str) else None)
     note = tail and newest_note(tail)
-    if not note:
-        return
+    if note:
+        read_note(note, begun)
+    # a plan (ExitPlanMode) is read whole after the note, also with speak-first: the user decides on all of it
+    plan = data and data.get("tool_name") == "ExitPlanMode" and (data.get("tool_input") or {}).get("plan")
+    if isinstance(plan, str) and not os.path.exists(OFF) and not stopped_since(begun):
+        start(speakable(plan))
+        if os.path.exists(OFF) or stopped_since(begun):
+            mark_stopped()
+            stop()
+
+
+def read_note(note, begun):
+    """Read the note (uuid, text) unless it was read already."""
     # parallel tool calls run their hooks at the same time: the lock makes one of them claim the note and start the player
     try:
         with open_progress() as fh:
@@ -723,6 +831,8 @@ def main(argv):
     elif argv[:1] == ["--stop"]:
         mark_stopped()
         stop()
+    elif argv[:1] == ["--command"]:
+        command()
     elif argv[:1] == [RUN_ARG] and len(argv) == 4 and argv[1].isdigit() and argv[3] == PAUSES_ARG:
         run(argv[1], argv[2])
     elif argv[:1] == ["--record"]:
