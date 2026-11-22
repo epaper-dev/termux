@@ -364,7 +364,7 @@ solo evento, el primero empieza a hablar y el siguiente lo detiene):
   * Repetir el texto entero: «Wiederhole den Text nochmal», «Wiederhole den Text noch mal», «Lies das nochmal vor», «Lies das noch mal vor», «Wiederhole die letzte Ausgabe», «Repeat the last text»
   * Desactivar: «Schalte die Sprachausgabe aus», «Schalte das Vorlesen aus», «Sprachausgabe dauerhaft aus», «Turn speech off», «Turn reading off», «Switch speech off»
   * Activar de nuevo: «Schalte die Sprachausgabe ein», «Schalte die Sprachausgabe an», «Schalte das Vorlesen ein», «Schalte das Vorlesen an», «Starte die Sprachausgabe», «Starte das Vorlesen», «Turn speech on», «Turn reading on», «Switch speech on»
-  * Mostrar esta lista: «Welche Sprachbefehle gibt es», «Zeige die Sprachbefehle», «Zeig mir die Sprachbefehle», «Show the speech commands»
+  * Mostrar esta lista: «Welche Sprachbefehle gibt es», «Zeige die Sprachbefehle», «Zeig mir die Sprachbefehle», «Zeige mir die Sprachbefehle», «Show the speech commands»
 * **Pulsación larga de Inicio**: Ajustes, Apps, Apps predeterminadas, Asistente digital, «Termux push to talk». Algunos teléfonos no muestran esa
   opción (el Hisense A9 no); la app es un asistente válido de todos modos, y con root lo configuras tú mismo:
   `rootbridge voice assistant on` (se deshace con `off`, se comprueba con `status`). «Forzar detención» de Termux en la información de la

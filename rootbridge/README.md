@@ -356,7 +356,7 @@ event, the first starts talking, the next stops):
   * Repeat the whole text: "Wiederhole den Text nochmal", "Wiederhole den Text noch mal", "Lies das nochmal vor", "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text"
   * Off for good: "Schalte die Sprachausgabe aus", "Schalte das Vorlesen aus", "Sprachausgabe dauerhaft aus", "Turn speech off", "Turn reading off", "Switch speech off"
   * On again: "Schalte die Sprachausgabe ein", "Schalte die Sprachausgabe an", "Schalte das Vorlesen ein", "Schalte das Vorlesen an", "Starte die Sprachausgabe", "Starte das Vorlesen", "Turn speech on", "Turn reading on", "Switch speech on"
-  * Show this list: "Welche Sprachbefehle gibt es", "Zeige die Sprachbefehle", "Zeig mir die Sprachbefehle", "Show the speech commands"
+  * Show this list: "Welche Sprachbefehle gibt es", "Zeige die Sprachbefehle", "Zeig mir die Sprachbefehle", "Zeige mir die Sprachbefehle", "Show the speech commands"
 * **Long press on Home**: Settings, Apps, Default apps, Digital assistant app, "Termux push to talk". Some phones do not show that choice (the
   Hisense A9 does not); the app is a valid assistant all the same, and with root you set it yourself:
   `rootbridge voice assistant on` (undo with `off`, check with `status`). "Force stop" of Termux in the app info drops the role, and the

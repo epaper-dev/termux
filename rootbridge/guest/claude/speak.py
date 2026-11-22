@@ -116,7 +116,7 @@ REPEAT_TEXT_SENTENCES = ("Wiederhole den Text nochmal", "Wiederhole den Text noc
                          "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text")
 # shows all these sentences in Claude Code
 HELP_SENTENCES = ("Welche Sprachbefehle gibt es", "Zeige die Sprachbefehle", "Zeig mir die Sprachbefehle",
-                  "Show the speech commands")
+                  "Zeige mir die Sprachbefehle", "Show the speech commands")
 STOP_PHRASES, OFF_PHRASES, ON_PHRASES, RESUME_PHRASES, REPEAT_SENTENCE_PHRASES, REPEAT_TEXT_PHRASES, HELP_PHRASES = (
     {said(sentence) for sentence in sentences}
     for sentences in (STOP_SENTENCES, OFF_SENTENCES, ON_SENTENCES, RESUME_SENTENCES, REPEAT_SENTENCE_SENTENCES,

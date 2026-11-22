@@ -273,7 +273,8 @@ RB_SPEAK_SENTENCES=(
     "wiederhole den letzten satz" "lies den letzten satz nochmal" "lies den letzten satz noch mal" "repeat the last sentence"
     "wiederhole den text nochmal" "wiederhole den text noch mal" "lies das nochmal vor" "lies das noch mal vor"
     "wiederhole die letzte ausgabe" "repeat the last text"
-    "welche sprachbefehle gibt es" "zeige die sprachbefehle" "zeig mir die sprachbefehle" "show the speech commands"
+    "welche sprachbefehle gibt es" "zeige die sprachbefehle" "zeig mir die sprachbefehle" "zeige mir die sprachbefehle"
+    "show the speech commands"
 )
 
 # rb_prompt_clear: called by the daemon every round. Claude Code puts a prompt that a hook blocked back into its input line,
