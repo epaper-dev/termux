@@ -138,6 +138,8 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **The installer asks for the device name only once.** A valid name in the Termux config (`REMOTE_NAME`) counts, like
+  the keys for push to talk; `--remote-name NAME` changes it. Tests: `tests/test_remote_name.sh`.
 * **The volume keys change the volume while Termux is in front.** The block of the installer in `~/.termux/termux.properties` (with
   the extra keys) sets `volume-keys = volume`; by default Termux takes them as CTRL and FN. Tests: `tests/test_extra_keys.sh`.
 * **`rootbridge voice speak first` reads a short version instead of one sentence.** The first paragraph of an answer, at most three

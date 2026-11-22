@@ -214,9 +214,10 @@ check "Namensabfrage: ungültiger Name wird abgewiesen" 1 "$(grep -c 'Ungültige
 check "Namensabfrage: gültiger Name gespeichert" 'REMOTE_NAME=boox-max-lumi' "$(grep '^REMOTE_NAME=' "$CFG")"
 check "Namensabfrage: Name erreicht den Gast" 'CLAUDE_ARGS="--remote-control boox-max-lumi --continue"' "$(gline2)"
 before="$(cksum < "$CFG")"
-rinstall_tty $'\n'
-check "Namensabfrage: gespeicherter Name als Vorschlag" 1 "$(grep -c 'Gerätename \[boox-max-lumi\]' "$T/prompt.log")"
-check "Namensabfrage: Enter behält die Konfiguration" "$before" "$(cksum < "$CFG")"
+rinstall_tty ''
+check "Gespeicherter Name: keine zweite Abfrage" 0 "$(grep -c 'Gerätename \[' "$T/prompt.log")"
+check "Gespeicherter Name: wird genannt" 1 "$(grep -c 'Remote-Control-Name: boox-max-lumi (aus der Konfig' "$T/prompt.log")"
+check "Gespeicherter Name: Konfiguration unverändert" "$before" "$(cksum < "$CFG")"
 rinstall_tty '' --remote-name boox-lumi
 check "Expliziter Name: keine Abfrage am Terminal" 0 "$(grep -c 'Gerätename \[' "$T/prompt.log")"
 check "Expliziter Name: neuer Name gespeichert" 'REMOTE_NAME=boox-lumi' "$(grep '^REMOTE_NAME=' "$CFG")"
