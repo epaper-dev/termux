@@ -20,6 +20,7 @@
 #   setup-guest.sh [--claude yes|no] [--codex yes|no] [--voice yes|no] [--speak yes|no]       (all default to yes)
 #     --voice: sox with the PulseAudio plugin (apt-get), which Claude Code's /voice records through; only with Claude Code
 #     --speak: reading aloud (default: as --voice): sox (it plays), Piper (step 4) and Articulino (step 5)
+#     --language de|en: the Piper voice (de_DE-kerstin-medium or en_US-lessac-medium; default de)
 #
 #   CLAUDE_INSTALL_URL        installer script of Claude Code (default https://claude.ai/install.sh)
 #   CODEX_INSTALL_URL         installer script of Codex (default https://chatgpt.com/codex/install.sh)
@@ -35,11 +36,11 @@ CA_BUNDLE="${ROOTBRIDGE_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 INSTALL_URL="${CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CODEX_URL="${CODEX_INSTALL_URL:-https://chatgpt.com/codex/install.sh}"
 PIPER_DIR="${PIPER_DIR:-/opt/piper}"
-PIPER_VOICE_NAME=de_DE-kerstin-medium   # speak.py reads this voice
+PIPER_VOICE_NAME=de_DE-kerstin-medium   # speak.py reads this voice (German; --language en: en_US-lessac-medium)
 ARTICULINO_DIR="${ARTICULINO_DIR:-/opt/articulino}"
 ARTICULINO_REPO=eigenhand/Articulino-DE-EN-Realtime-Stream-TTS-ONNX
 ARTICULINO_REV=a760ce8d513534111c7679751869fa4c45ef0e54   # 2026-10-15; a new one: check its SHA256SUMS and listen first
-CLAUDE_ON=yes; CODEX_ON=yes; VOICE_ON=yes; SPEAK_ON=""
+CLAUDE_ON=yes; CODEX_ON=yes; VOICE_ON=yes; SPEAK_ON=""; LANGUAGE=de
 
 say() { printf '%s\n' "$*"; }
 die() { echo "setup-guest.sh: $*" >&2; exit 1; }
@@ -50,6 +51,7 @@ while [ $# -gt 0 ]; do
         --codex)  [ $# -ge 2 ] || die "--codex braucht yes oder no";  CODEX_ON="$2";  shift 2 ;;
         --voice)  [ $# -ge 2 ] || die "--voice braucht yes oder no";  VOICE_ON="$2";  shift 2 ;;
         --speak)  [ $# -ge 2 ] || die "--speak braucht yes oder no";  SPEAK_ON="$2";  shift 2 ;;
+        --language) [ $# -ge 2 ] || die "--language braucht de oder en"; LANGUAGE="$2"; shift 2 ;;
         *) echo "setup-guest.sh: unbekannte Option: $1" >&2; exit 2 ;;
     esac
 done
@@ -60,6 +62,7 @@ esac
 case "$VOICE_ON" in yes|no) ;; *) die "--voice: erlaubt ist yes oder no" ;; esac
 SPEAK_ON="${SPEAK_ON:-$VOICE_ON}"
 case "$SPEAK_ON" in yes|no) ;; *) die "--speak: erlaubt ist yes oder no" ;; esac
+case "$LANGUAGE" in de) ;; en) PIPER_VOICE_NAME=en_US-lessac-medium ;; *) die "--language: erlaubt ist de oder en" ;; esac
 
 TMPDIR_SETUP="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_SETUP"' EXIT

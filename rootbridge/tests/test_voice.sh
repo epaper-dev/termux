@@ -892,7 +892,7 @@ ainst() {   # ainst <answers> [args]: like sinst, with the answers on stdin; onl
     printf '%s' "$answers" | env HOME="$SH" PREFIX="$SP" PATH="$T/sbindir:$T/sstubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 \
         BRIDGE_DIR="$SH/.rootbridge" STUB_LOG="$ILOG" STUB_STATE="$T/state" RB_SU="$T/sstubs/su" \
         ROOTBRIDGE_FORCE_INTERACTIVE=1 bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot \
-        --claude --codex --speak --voice ${phantom:+"$phantom"} "$@" > "$T/install.log" 2>&1
+        --claude --codex --speak --voice --language de ${phantom:+"$phantom"} "$@" > "$T/install.log" 2>&1
     IRC=$?
 }
 SCFG="$SH/.config/termux-rootbridge/config"
@@ -958,6 +958,16 @@ check "Gast nur Vorlesen: die Marke ersetzt einen Link, die Datei dahinter bleib
       "$(cat "$T/fremd") $(ls -l "$GS/usr/local/lib/termux-rootbridge/no-microphone" | cut -c1)"
 check "Gast nur Vorlesen: keine Tastenbelegung, kein voice, Cookie in .bashrc" "nein null 1" \
       "$(has "$GS/root/.claude/keybindings.json") $(sv "$GS") $(count "$GS/root/.bashrc" 'export PULSE_COOKIE=')"
+# the language: Claude Code's setting (written when chosen in this run, else only where none is set), the texts, speak.py
+GL="$T/gl"; rm -rf "$GL"; mkdir -p "$GL"
+gi "$GL" --claude yes --codex no --voice yes --speak yes --language en --set-language
+check "Gast Englisch: language english, Text englisch, speak.py liest Englisch" "0 \"english\" 1 0 en" \
+      "$GRC $(python3 -I -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("language")))' "$GL/root/.claude/settings.json") $(count "$GL/root/.claude/CLAUDE.md" '^## Answers read aloud') $(count "$GL/root/.claude/CLAUDE.md" '^## Antworten werden vorgelesen') $(cat "$GL/usr/local/lib/termux-rootbridge/language")"
+gi "$GL" --claude yes --codex no --voice yes --speak yes
+check "Gast ohne --language: die eingestellte Sprache bleibt" en "$(cat "$GL/usr/local/lib/termux-rootbridge/language")"
+gi "$GL" --claude yes --codex no --voice yes --speak yes --language de
+check "Gast Deutsch ohne neue Wahl: die Einstellung english bleibt, Text und Vorlesen deutsch" "\"english\" 1 de" \
+      "$(python3 -I -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("language")))' "$GL/root/.claude/settings.json") $(count "$GL/root/.claude/CLAUDE.md" '^## Antworten werden vorgelesen') $(cat "$GL/usr/local/lib/termux-rootbridge/language")"
 GV="$T/gv"; rm -rf "$GV"; mkdir -p "$GV"
 gi "$GV" --claude yes --codex no --voice yes --speak no
 check "Gast nur Spracheingabe: Tastenbelegung und voice" "0 ja 1" "$GRC $(has "$GV/root/.claude/keybindings.json") $(sv "$GV" | grep -c tap)"

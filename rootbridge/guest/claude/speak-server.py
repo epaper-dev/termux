@@ -58,7 +58,12 @@ def serve(path, model, voice, lock_fd=None):
                 if mtime != voice_mtime:
                     tts.set_voice(voice)
                     voice_mtime = mtime
-                for wav in tts.stream(text.decode("utf-8", "replace"), seed=SEED):
+                language = "de"   # speak.py sends another language first: \x01<language>\n
+                if text.startswith(b"\x01"):
+                    head, _, text = text[1:].partition(b"\n")
+                    if head in (b"de", b"en"):
+                        language = head.decode()
+                for wav in tts.stream(text.decode("utf-8", "replace"), language=language, seed=SEED):
                     conn.sendall((wav.clip(-1.0, 1.0) * 32767).astype("<i2").tobytes())
             except OSError as e:   # the client is gone (stopped), or the voice cannot be read
                 if not isinstance(e, (BrokenPipeError, ConnectionResetError)):

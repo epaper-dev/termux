@@ -125,7 +125,8 @@ Termux-Zusatztastenleiste hinzufügt, siehe unten).
 **Fragen am Anfang.** Alle Fragen stellt der Installer gleich zu Beginn, bevor er etwas installiert; danach läuft er
 ohne Rückfrage durch. Jede Frage kommt in einer interaktiven Termux-Shell nur einmal, die Antwort steht danach in der
 Termux-Konfiguration, und die passende Option ändert sie später: Claude Code (`--claude`/`--no-claude`), Codex
-(`--codex`/`--no-codex`; sind beide installiert, prüft Codex jeden Commit von Claude Code), der Gerätename
+(`--codex`/`--no-codex`; sind beide installiert, prüft Codex jeden Commit von Claude Code), die **Sprache**
+(`--language de|en`: Sprache von Claude Code, die Texte in seiner CLAUDE.md und die Stimme zum Vorlesen), der Gerätename
 (`--remote-name NAME`), **Vorlesen** (`--speak`/`--no-speak`) und **Spracheingabe** (`--voice`/`--no-voice`) getrennt,
 die Tasten für Push to Talk (nur mit Spracheingabe) und der **Phantom Process Killer** von Android
 (`--phantom-killer-off`/`--phantom-killer-on`, braucht Root). Dieser beendet die Kindprozesse einer App über 32

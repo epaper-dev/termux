@@ -128,7 +128,8 @@ the installer adds to the Termux extra keys row, see below).
 **Questions first.** The installer asks all its questions at the start, before it installs anything; then it runs
 through without asking. In an interactive Termux shell each question comes only once: the answer is stored in the Termux
 config, and its option changes it later: Claude Code (`--claude`/`--no-claude`), Codex (`--codex`/`--no-codex`; with both
-installed, Codex checks every commit of Claude Code), the device name (`--remote-name NAME`), **reading aloud** (`--speak`/`--no-speak`) and **voice
+installed, Codex checks every commit of Claude Code), the **language** (`--language de|en`: the language of Claude Code,
+the texts in its CLAUDE.md and the voice that reads aloud), the device name (`--remote-name NAME`), **reading aloud** (`--speak`/`--no-speak`) and **voice
 dictation** (`--voice`/`--no-voice`) apart, the keys for push to talk (only with dictation) and Android's **phantom process
 killer** (`--phantom-killer-off`/`--phantom-killer-on`, needs root). It ends the child
 processes of an app beyond 32 ("Trimming phantom processes"), tmux with the sessions among them. Switched off, the

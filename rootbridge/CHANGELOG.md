@@ -5,6 +5,12 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **The language, German or English.** The installer asks once (`--language de|en`, stored as `LANGUAGE`; default
+  German) and sets it in one go: Claude Code's `language` (written when you choose in that run, else only where none is
+  set), the texts in its CLAUDE.md (German or English templates), and the voice that reads aloud: Piper
+  `de_DE-kerstin-medium` or `en_US-lessac-medium`, Articulino in that language (`speak-server.py` takes it from
+  `speak.py`); the list of English words for a German voice is left out in English. Tests: `tests/test_remote_name.sh`,
+  `tests/test_voice.sh`, `tests/test_speak.py`.
 * **`rootbridge phantom-killer off|on|status`.** Android's phantom process killer ends tmux with the sessions when an app
   has more than 32 child processes. `off` switches it off as root (as the developer option "Disable child process
   restrictions", and keeps `device_config` from setting it back: Android then loads no system settings from remote, for

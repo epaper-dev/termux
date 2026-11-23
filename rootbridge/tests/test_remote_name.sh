@@ -185,7 +185,7 @@ if pid == 0:
     env = os.environ.copy()
     env.update(HOME=home, PREFIX=prefix, PATH=path, ROOTBRIDGE_ALLOW_GUEST="1", BRIDGE_DIR=home+"/.rootbridge")
     os.execvpe("bash", ["bash", installer, "--no-boot", "--no-migrate", "--no-deps-check", "--no-extra-keys", "--no-setup", "--autonomous", "no",
-               "--no-sidekey", "--no-home-key", "--no-headset", *(options or ["--claude", "--codex", "--phantom-killer-on", "--speak", "--voice"])],
+               "--no-sidekey", "--no-home-key", "--no-headset", *(options or ["--claude", "--codex", "--phantom-killer-on", "--language", "de", "--speak", "--voice"])],
               env)   # the key questions: test_voice.sh; the other questions: below, with options of their own
 if answers:
     os.write(master, answers.encode())
@@ -232,19 +232,23 @@ check "Codex allein: keine Claude-Namensabfrage" 0 "$(grep -c 'Gerätename \[' "
 # the question block: all questions before anything is installed, each answer stored, asked only once
 H="$T/questions-home"; mkdir -p "$H"
 CFG="$H/.config/termux-rootbridge/config"
-rinstall_tty $'\nn\nn\n\nn\nlumi\n' --no-sidekey   # Claude Enter, Codex n, Phantom n, Vorlesen Enter, Spracheingabe n
+rinstall_tty $'\nn\nn\ne\n\nn\nlumi\n' --no-sidekey   # Claude Enter, Codex n, Phantom n, Englisch, Vorlesen Enter, Spracheingabe n
 check "Fragen: Installer erfolgreich" 0 "$?"
 check "Fragen: Claude Code, Codex, Phantom Killer gespeichert" "on off on" \
     "$(for k in TOOL_CLAUDE TOOL_CODEX PHANTOM_KILLER; do sed -n "s/^$k=//p" "$CFG"; done | tr '\n' ' ' | sed 's/ $//')"
 check "Fragen: Gerätename gespeichert" 'REMOTE_NAME=lumi' "$(grep '^REMOTE_NAME=' "$CFG")"
 check "Fragen: Vorlesen an, Spracheingabe aus" "on off" "$(for k in SPEAK VOICE; do sed -n "s/^$k=//p" "$CFG"; done | tr '\n' ' ' | sed 's/ $//')"
 check "Fragen: Vorlesen ohne Spracheingabe an den Gast" 1 "$(grep -c -- '--voice no --speak yes' "$STUB_LOG")"
+check "Fragen: Englisch gespeichert, an den Gast, als Wahl dieses Laufs" "LANGUAGE=en 1" \
+      "$(grep '^LANGUAGE=' "$CFG") $(grep 'install-guest.sh' "$STUB_LOG" | grep -- '--language en' | grep -c -- '--set-language')"
 q_line="$(grep -n 'Codex installieren' "$T/prompt.log" | head -1 | cut -d: -f1)"
 p_line="$(grep -n '== 1/5 Programme' "$T/prompt.log" | head -1 | cut -d: -f1)"
 check "Fragen: kommen vor der Installation" ja "$([ -n "$q_line" ] && [ -n "$p_line" ] && [ "$q_line" -lt "$p_line" ] && echo ja || echo nein)"
 check "Fragen: Codex abgewählt, nicht an den Gast" 1 "$(grep -c -- '--codex no' "$STUB_LOG")"
 rinstall_tty '' --no-sidekey
-check "Fragen: zweiter Lauf fragt nichts" 0 "$(grep -c 'installieren?\|Phantom Process Killer von Android abschalten\|Gerätename \[\|Vorlesen: Claudes Antworten vorlesen lassen\|Spracheingabe: Claude' "$T/prompt.log")"
+check "Fragen: zweiter Lauf fragt nichts" 0 "$(grep -c 'installieren?\|Phantom Process Killer von Android abschalten\|Gerätename \[\|Vorlesen: Claudes Antworten vorlesen lassen\|Spracheingabe: Claude\|Deutsch oder Englisch' "$T/prompt.log")"
+check "Fragen: zweiter Lauf, Sprache aus der Konfig, ohne neue Wahl" "1 0" \
+      "$(grep 'install-guest.sh' "$STUB_LOG" | tail -n 1 | grep -c -- '--language en') $(grep 'install-guest.sh' "$STUB_LOG" | tail -n 1 | grep -c -- '--set-language')"
 check "Fragen: zweiter Lauf behält Codex abgewählt" 'TOOL_CODEX=off' "$(grep '^TOOL_CODEX=' "$CFG")"
 
 echo

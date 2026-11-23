@@ -33,6 +33,8 @@
 #                     UserPromptSubmit ends it when the prompt is a stop sentence like "Beende die Sprachausgabe"), and a
 #                     text in our block of ~/.claude/CLAUDE.md (templates/speech.claude.md: summary first, questions last, for
 #                     the short version read aloud). no removes the command, the hooks and that text again.
+#   --language de|en  the language: Claude Code's "language" in settings.json (with --set-language, chosen in this run,
+#                     always; otherwise only where none is set yet), the texts in CLAUDE.md, the voice that reads aloud
 #   --speak yes|no    reading aloud on its own (default: as --voice): the speech output above (rootbridge-speak, the three
 #                     hooks, the text in CLAUDE.md) goes with --speak, --voice keeps the dictation (keybindings, "voice").
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
@@ -74,6 +76,7 @@ APT_MODE=""; APT_MODE_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
 CLAUDE_ON=""; CODEX_ON=""; VOICE_ON=yes; SPEAK_ON=""; BYPASS_ON=""; GUIDE_ON=""
+LANGUAGE=""; LANGUAGE_SET=0   # de | en: Claude Code's "language", the texts in CLAUDE.md, the voice that reads aloud
 UNINSTALL=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -116,6 +119,10 @@ while [ $# -gt 0 ]; do
         --speak)
             [ $# -ge 2 ] || { echo "--speak braucht yes oder no" >&2; exit 2; }
             SPEAK_ON="$2"; shift 2 ;;
+        --language)
+            [ $# -ge 2 ] || { echo "--language braucht de oder en" >&2; exit 2; }
+            LANGUAGE="$2"; shift 2 ;;
+        --set-language) LANGUAGE_SET=1; shift ;;
         --uninstall) UNINSTALL=1; shift ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
@@ -164,6 +171,7 @@ for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON" "codex-bypass:$BYPASS_ON" "gui
 done
 
 SPEAK_ON="${SPEAK_ON:-$VOICE_ON}"   # reading aloud: without --speak as voice dictation (an older install.sh knows only --voice)
+case "$LANGUAGE" in ""|de|en) ;; *) echo "--language: ungültiger Wert '$LANGUAGE' (erlaubt: de, en)" >&2; exit 2 ;; esac
 
 STAMP="$(date +%Y%m%d%H%M%S)"
 LIBDIR=/usr/local/lib/termux-rootbridge
@@ -483,6 +491,19 @@ if [ "$SPEAK_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
     put "$SRC/claude/speak-english.txt" "$LIBDIR/speak-english.txt"
     put "$SRC/claude/speak-server.py" "$LIBDIR/speak-server.py"
     put "$SRC/bin/rootbridge-speak"  "$BINDIR/rootbridge-speak"
+    # the language speak.py reads in (its Piper voice, Articulino's language): from the installer; without --language the
+    # one installed before stays, and a fresh installation reads German
+    lang="$LANGUAGE"
+    if [ -z "$lang" ]; then
+        lang="$(head -c 8 "$ROOT$LIBDIR/language" 2>/dev/null | tr -d '[:space:]')" || true
+        case "$lang" in de|en) ;; *) lang=de ;; esac
+    fi
+    if ! { t="$(mktemp "$ROOT$LIBDIR/.language.XXXXXX")" && printf '%s\n' "$lang" > "$t" && chmod 644 "$t" \
+            && mv -fT "$t" "$ROOT$LIBDIR/language"; }; then
+        rm -f "${t:-}"
+        echo "install-guest.sh: $LIBDIR/language ließ sich nicht schreiben (die Sprache zum Vorlesen)" >&2
+        exit 1
+    fi
     # without dictation PulseAudio has no microphone: speak.py then neither offers nor makes a recording of your voice
     # (made in a temporary file and moved into place: mv -T replaces a link instead of writing through it)
     if [ "$VOICE_ON" = yes ]; then
@@ -492,7 +513,7 @@ if [ "$SPEAK_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
     fi
 else
     rm -f "$ROOT$LIBDIR/speak.py" "$ROOT$LIBDIR/speak-english.txt" "$ROOT$LIBDIR/speak-server.py" "$ROOT$BINDIR/rootbridge-speak" \
-          "$ROOT$LIBDIR/no-microphone"
+          "$ROOT$LIBDIR/no-microphone" "$ROOT$LIBDIR/language"
 fi
 # rootbridge-hook.py hands the refusals of the Termux daemon to the agent that asked (Claude Code and Codex)
 put "$SRC/claude/rootbridge-hook.py" "$LIBDIR/rootbridge-hook.py"
@@ -780,6 +801,11 @@ fi
 # voice dictation (/voice): on, in "tap" mode: one press starts, the next stops and sends. It fits both triggers: the side key
 # (press = start, release = send) and the long press on Home (Android gives no release: once to start, once more to send). In
 # "hold" the side key broke off (ptt's repeats start 1.2 s late). A value you set yourself stays.
+# the language Claude Code answers in: chosen in this run (--set-language) it is written, else only where none is set yet
+if [ -n "$LANGUAGE" ] && [ "$CLAUDE_ON" = yes ]; then
+    if [ "$LANGUAGE" = en ]; then v='"english"'; else v='"german"'; fi
+    if [ "$LANGUAGE_SET" = 1 ]; then settings_queue language "$v"; else settings_queue language "$v" missing; fi
+fi
 if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
     settings_queue voice.enabled true missing
     settings_queue voice.mode '"tap"' missing
@@ -952,6 +978,7 @@ if [ "$CLAUDE_ON" = yes ]; then
     lang="$(python3 -I -c 'import json, sys; print(str(json.load(open(sys.argv[1], encoding="utf-8")).get("language", "")).lower())' \
         "$ROOT$HOME_DIR/.claude/settings.json" 2>/dev/null)" || lang=""
     de=""; case "$lang" in german|deutsch|de|de[-_]*) de=.de ;; esac
+    case "$LANGUAGE" in de) de=.de ;; en) de="" ;; esac   # the language chosen in the installer counts
     [ "$GUIDE_ON" = yes ] && claude_texts+=("code-quality$de.claude.md")
     [ "$SPEAK_ON" = yes ] && claude_texts+=("speech$de.claude.md")
 fi

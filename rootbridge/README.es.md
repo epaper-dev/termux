@@ -121,7 +121,8 @@ teléfono, con la tecla **S-TAB** que el instalador añade a la fila de teclas e
 **Preguntas al principio.** El instalador hace todas sus preguntas al empezar, antes de instalar nada; después sigue
 sin preguntar. En una shell interactiva de Termux cada pregunta aparece una sola vez: la respuesta queda en la
 configuración de Termux y su opción la cambia después: Claude Code (`--claude`/`--no-claude`), Codex
-(`--codex`/`--no-codex`; con los dos instalados, Codex revisa cada commit de Claude Code), el nombre del dispositivo
+(`--codex`/`--no-codex`; con los dos instalados, Codex revisa cada commit de Claude Code), el **idioma**
+(`--language de|en`: el idioma de Claude Code, los textos de su CLAUDE.md y la voz que lee), el nombre del dispositivo
 (`--remote-name NAME`), la **lectura en voz alta** (`--speak`/`--no-speak`) y el **dictado** (`--voice`/`--no-voice`)
 por separado, las teclas de push to talk (solo con dictado) y el **phantom process killer** de Android
 (`--phantom-killer-off`/`--phantom-killer-on`, necesita root). Este termina los procesos hijos de una app por encima de

@@ -10,10 +10,11 @@
 #                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update] [--codex-bypass | --no-codex-bypass]
 #                   [--guidelines | --no-guidelines]
 #                   [--voice | --no-voice] [--speak | --no-speak] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
-#                   [--headset | --no-headset] [--phantom-killer-off | --phantom-killer-on]
+#                   [--headset | --no-headset] [--phantom-killer-off | --phantom-killer-on] [--language de|en]
 #
 # Questions: all of them come first, before anything is installed; then the installation runs through. On a terminal each
-# one is asked once (Claude Code, Codex, the device name for Claude Remote Control, the keys for push to talk, Android's
+# one is asked once (Claude Code, Codex, the language, reading aloud, dictation, the device name for Claude Remote Control,
+# the keys for push to talk, Android's
 # phantom process killer); the answer is stored in the Termux config, and its option changes it later (--remote-name NAME,
 # --claude/--no-claude, ...). Enter takes the suggestion. Without a terminal nothing is asked.
 # Missing components are installed automatically: the Termux packages
@@ -75,6 +76,10 @@
 # --headset / --no-headset: a long press on the key of a wired headset starts and stops push to talk: installs headset-ptt,
 #   which reads the key as root. Stored as HEADSET.
 # Keys nobody decided yet (no option, nothing in the config) are asked on a terminal, one question each; the answer is stored.
+# --language de|en: the language of Claude Code ("language" in its settings.json), of the texts in its CLAUDE.md and of the
+#   voice that reads aloud (Piper de_DE-kerstin-medium or en_US-lessac-medium; Articulino reads both). Asked once on a
+#   terminal (suggested: the language of the phone, English or else German; also the one without a terminal), stored as
+#   LANGUAGE; Claude Code's own setting changes only when you choose in that run.
 # --phantom-killer-off / --phantom-killer-on: Android ends child processes of an app beyond 32 ("Trimming phantom processes"),
 #   tmux with the sessions among them. Off switches that off as root (`rootbridge phantom-killer off`, on every run on a
 #   terminal: an Android update may set it back); on gives Android's defaults back. Asked once (default off), stored as
@@ -131,6 +136,7 @@ CODEX_UPD_MODE=""; CODEX_UPD_SET=0
 USE_CLAUDE=yes; USE_CLAUDE_SET=0; USE_CODEX=yes; USE_CODEX_SET=0   # which tools: yes | no
 USE_VOICE=yes; USE_VOICE_SET=0; USE_SIDEKEY=no; USE_SIDEKEY_SET=0   # voice dictation / side key as push to talk
 USE_SPEAK=yes; USE_SPEAK_SET=0     # reading Claude's answers aloud
+LANGUAGE=""; LANGUAGE_SET=0        # de | en: Claude Code's language, the texts in CLAUDE.md, the voice that reads aloud
 USE_HOMEKEY=no; USE_HOMEKEY_SET=0; USE_HEADSET=no; USE_HEADSET_SET=0   # long press on Home / on the headset key as push to talk
 HOMEKEY_OFF_OPT=0   # --no-home-key given: the assistant role is taken back in any case
 USE_BYPASS=yes; USE_BYPASS_SET=0   # Codex without its own sandbox
@@ -175,6 +181,10 @@ while [ $# -gt 0 ]; do
         --no-codex-bypass) USE_BYPASS=no; USE_BYPASS_SET=1 ;;
         --voice) USE_VOICE=yes; USE_VOICE_SET=1 ;;
         --no-voice) USE_VOICE=no; USE_VOICE_SET=1 ;;
+        --language)
+            [ $# -ge 2 ] || { echo "--language braucht de oder en" >&2; exit 2; }
+            case "$2" in de|en) ;; *) echo "--language: ungültiger Wert '$2' (erlaubt: de, en)" >&2; exit 2 ;; esac
+            LANGUAGE="$2"; LANGUAGE_SET=1; shift ;;
         --speak) USE_SPEAK=yes; USE_SPEAK_SET=1 ;;
         --no-speak) USE_SPEAK=no; USE_SPEAK_SET=1 ;;
         --sidekey) USE_SIDEKEY=yes; USE_SIDEKEY_SET=1 ;;
@@ -313,6 +323,7 @@ AUTOSTART_DELAY=3
 # GUIDELINES=on         # on | off: code quality block in the guest's CLAUDE.md / AGENTS.md; set with install.sh --guidelines / --no-guidelines
 # CODEX_BYPASS=on       # on | off: Codex without its own sandbox (CODEX_ARGS in the guest config); set with install.sh --codex-bypass / --no-codex-bypass
 # VOICE=on              # on | off: voice dictation for Claude Code (PulseAudio, microphone); set with install.sh --voice / --no-voice
+# LANGUAGE=de           # de | en: Claude Code's language, the texts in CLAUDE.md, the voice that reads aloud; install.sh --language
 # SPEAK=on              # on | off: reading Claude's answers aloud (Piper, Articulino); set with install.sh --speak / --no-speak
 # SPEAK_SHORT=set       # set by install.sh the first time it installs voice, after it switched reading aloud to the short version
 # SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
@@ -436,6 +447,32 @@ fi
 if [ "$USE_SIDEKEY_SET" != 1 ] && [ "$(cfg_get SIDEKEY)" = on ]; then
     USE_SIDEKEY=yes; say "  Seitentaste: an (aus der Konfig; aus mit --no-sidekey)"
 fi
+# the language (Claude Code only): an option wins, else the stored one, else asked once on a terminal. The suggestion (and the
+# language without a terminal) is the one of the phone: English when Android's language is English, else German.
+sys_lang=de
+case "$( (getprop persist.sys.locale; getprop ro.product.locale) 2>/dev/null | grep -m1 . || echo "${LANG:-}")" in
+    en*) sys_lang=en ;;
+esac
+if [ "$USE_CLAUDE" = yes ] && [ "$LANGUAGE_SET" != 1 ]; then
+    v="$(cfg_get LANGUAGE)"
+    if [ "$v" = de ] || [ "$v" = en ]; then
+        LANGUAGE="$v"
+    elif [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; then
+        if [ "$sys_lang" = en ]; then hint="[d/E]"; else hint="[D/e]"; fi
+        printf '%s ' "Sprache für Claude Code und das Vorlesen: Deutsch oder Englisch (wie das Telefon: $sys_lang)? $hint"
+        if IFS= read -r answer; then
+            case "$answer" in
+                e|E|en|EN|englisch|Englisch|english|English) LANGUAGE=en ;;
+                d|D|de|DE|deutsch|Deutsch|german|German) LANGUAGE=de ;;
+                *) LANGUAGE="$sys_lang" ;;
+            esac
+            LANGUAGE_SET=1
+        else
+            echo
+        fi
+    fi
+fi
+LANGUAGE="${LANGUAGE:-$sys_lang}"   # stored at the end, once the guest has it (a run that fails before asks again)
 # reading aloud and voice dictation: asked apart, once (with Claude Code only: there is nothing else to talk to)
 if [ "$USE_SPEAK_SET" != 1 ] && [ "$(cfg_get SPEAK)" = off ]; then
     USE_SPEAK=no; say "  Vorlesen: abgewählt (aus der Konfig; wieder an mit --speak)"
@@ -1013,8 +1050,9 @@ if [ "$DO_GUEST" = 1 ]; then
         fi
         if [ "$SPEAK_ON" = yes ]; then
             [ -e "$GROOT/opt/piper/bin/piper" ] || return 1   # Piper reads the answers aloud
-            [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx" ] || return 1
-            [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx.json" ] || return 1
+            local voice=de_DE-kerstin-medium; [ "$LANGUAGE" = en ] && voice=en_US-lessac-medium
+            [ -s "$GROOT/opt/piper/voices/$voice.onnx" ] || return 1
+            [ -s "$GROOT/opt/piper/voices/$voice.onnx.json" ] || return 1
             # Articulino (your own voice): its model comes last, so it stands for the whole step; a failed download is
             # tried again with the next installation
             [ -s "$GROOT/opt/articulino/model/int8/voice.onnx" ] || return 1
@@ -1027,12 +1065,13 @@ if [ "$DO_GUEST" = 1 ]; then
     if [ "$DO_SETUP" = 1 ] && ! guest_ready; then
         say "  Gast: Voraussetzungen, Claude Code und Codex einrichten (Claude Code: $USE_CLAUDE, Codex: $USE_CODEX)"
         proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/setup-guest.sh \
-            --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --speak "$SPEAK_ON" \
+            --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --speak "$SPEAK_ON" --language "$LANGUAGE" \
             || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh"
         SETUP_DID=1
     fi
-    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --speak "$SPEAK_ON" --codex-bypass "$USE_BYPASS" --guidelines "$USE_GUIDE")
+    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --speak "$SPEAK_ON" --language "$LANGUAGE" --codex-bypass "$USE_BYPASS" --guidelines "$USE_GUIDE")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
+    if [ "$LANGUAGE_SET" = 1 ]; then GUEST_ARGS+=(--set-language); fi   # chosen in this run: Claude Code's setting follows
     if [ "$MODEL_SET" = 1 ]; then GUEST_ARGS+=(--model "$MODEL"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
     if [ -n "$APT_MODE" ]; then GUEST_ARGS+=(--apt-upgrade "$APT_MODE"); fi
@@ -1044,6 +1083,15 @@ else
     say "  übersprungen (--no-guest)"
 fi
 
+# the language, now that the guest has it: Claude Code's setting, the texts, the voice (whose model may be missing with
+# --no-setup: then a note, and speak.py reads with the German voice)
+if [ "$LANGUAGE_SET" = 1 ]; then
+    cfg_set LANGUAGE "$LANGUAGE" "Sprache: $LANGUAGE"
+fi
+if [ "$DO_GUEST" = 1 ] && [ "$SPEAK_ON" = yes ] && [ "$LANGUAGE" = en ] && [ -n "${GROOT:-}" ] \
+        && ! [ -s "$GROOT/opt/piper/voices/en_US-lessac-medium.onnx" ]; then
+    say "Hinweis: die englische Piper-Stimme fehlt im Gast (Piper liest bis dahin deutsch). Laden mit:  bash install.sh"
+fi
 # the choice of the tools, now that they are installed (see the questions)
 if [ "$USE_CLAUDE_SET" = 1 ]; then
     cfg_set TOOL_CLAUDE "$(onoff "$USE_CLAUDE")" "Claude Code: $USE_CLAUDE"
