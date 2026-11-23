@@ -251,5 +251,24 @@ check "Fragen: zweiter Lauf, Sprache aus der Konfig, ohne neue Wahl" "1 0" \
       "$(grep 'install-guest.sh' "$STUB_LOG" | tail -n 1 | grep -c -- '--language en') $(grep 'install-guest.sh' "$STUB_LOG" | tail -n 1 | grep -c -- '--set-language')"
 check "Fragen: zweiter Lauf behält Codex abgewählt" 'TOOL_CODEX=off' "$(grep '^TOOL_CODEX=' "$CFG")"
 
+# a backup on a fresh installation (no guest yet): asked with the other questions, restored at the end by rootbridge restore
+# (nothing from the backup folder runs; this fake one is incomplete, so restore says so and the installer goes on)
+mkdir -p "$T/backup"; : > "$T/backup/a.tgz"
+printf '#!/bin/sh\necho planted >> "%s/planted.log"\n' "$T" > "$T/backup/restore"
+H="$T/restore-home"; mkdir -p "$H"
+export RB_BACKUP_DIR="$T/backup"
+rinstall_tty $'\n' --claude --codex --phantom-killer-on --language de --speak --voice --remote-name x --no-sidekey
+check "Sicherung: Frage am Anfang, Enter stellt am Ende mit rootbridge restore wieder her" "1 1" \
+      "$(grep -c 'Sicherung gefunden' "$T/prompt.log") $(grep -c '== Sicherung wiederherstellen' "$T/prompt.log")"
+check "Sicherung: nichts aus dem Ordner ausgeführt"     nein "$([ -e "$T/planted.log" ] && echo ja || echo nein)"
+q_line="$(grep -n 'Sicherung gefunden' "$T/prompt.log" | head -1 | cut -d: -f1)"
+r_line="$(grep -n '== Sicherung wiederherstellen' "$T/prompt.log" | head -1 | cut -d: -f1)"
+g_line="$(grep -n '== 5/5 Gast' "$T/prompt.log" | head -1 | cut -d: -f1)"
+check "Sicherung: gefragt vor, wiederhergestellt nach dem Gast" ja \
+      "$([ -n "$q_line" ] && [ -n "$r_line" ] && [ "$q_line" -lt "$g_line" ] && [ "$g_line" -lt "$r_line" ] && echo ja || echo nein)"
+rinstall_tty $'n\n' --claude --codex --phantom-killer-on --language de --speak --voice --remote-name x --no-sidekey
+check "Sicherung: n stellt nichts wieder her"            0 "$(grep -c '== Sicherung wiederherstellen' "$T/prompt.log")"
+unset RB_BACKUP_DIR
+
 echo
 finish

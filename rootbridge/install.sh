@@ -17,6 +17,9 @@
 # the keys for push to talk, Android's
 # phantom process killer); the answer is stored in the Termux config, and its option changes it later (--remote-name NAME,
 # --claude/--no-claude, ...). Enter takes the suggestion. Without a terminal nothing is asked.
+# Phone storage: without access to /sdcard the installer runs termux-setup-storage first (Android asks). A backup in
+# /sdcard/backup/termux (rootbridge backup) on a fresh installation is offered with the questions and restored at the end
+# by rootbridge restore.
 # Missing components are installed automatically: the Termux packages
 #   (pkg install), the Ubuntu guest (proot-distro install, a download of a few hundred MB),
 #   python3/curl/certificates in the guest and Claude Code (official installer). A device that has it
@@ -302,6 +305,20 @@ own_extra_keys() {
 # All questions come here, before anything is installed; the installation then runs through without asking. Each one is
 # asked once on a terminal: the answer is stored in the Termux config, an option changes it later.
 say "== Fragen und Einstellungen"
+# Android's shared storage (/sdcard) for Termux: the backup lives there, and the guest gets it as /sdcard. Android asks
+# itself (termux-setup-storage), once; only with --setup and on a terminal, where you can answer its dialog.
+STORAGE="${RB_STORAGE_CHECK:-/sdcard}"
+if [ "$DO_SETUP" = 1 ] && ! ls "$STORAGE" >/dev/null 2>&1; then
+    if { [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; } && command -v termux-setup-storage >/dev/null 2>&1; then
+        say "Zugriff auf den Telefonspeicher ($STORAGE): Android fragt gleich, bitte erlauben."
+        termux-setup-storage || true
+        for _ in $(seq 30); do ls "$STORAGE" >/dev/null 2>&1 && break; sleep 1; done
+        ls "$STORAGE" >/dev/null 2>&1 && say "  Telefonspeicher: ok" \
+            || say "  Hinweis: noch kein Zugriff auf $STORAGE (später: termux-setup-storage)"
+    else
+        say "  Hinweis: kein Zugriff auf $STORAGE; einmal in Termux:  termux-setup-storage"
+    fi
+fi
 CFG="$HOME/.config/termux-rootbridge/config"
 mkdir -p "$(dirname "$CFG")" "$BRIDGE_DIR"
 chmod 700 "$BRIDGE_DIR"
@@ -544,6 +561,26 @@ fi
 if [ "$USE_HEADSET_SET" = 1 ]; then
     cfg_set HEADSET "$(onoff "$USE_HEADSET")" "Headset-Taste: $USE_HEADSET"
 fi
+# a backup of an earlier installation (rootbridge backup into /sdcard/backup/termux) on a fresh one (no guest yet): asked
+# now, restored at the end by rootbridge restore, after the guest is there. Nothing from that folder runs: other apps can
+# write there (rootbridge restore reads it as data). Not stored: a later run has the guest.
+BACKUP_DIR="${RB_BACKUP_DIR:-/sdcard/backup/termux}"
+DO_RESTORE=no
+d="$(cfg_get DISTRO)"; d="${d:-ubuntu}"
+if [ -f "$BACKUP_DIR/a.tgz" ] && [ "$DO_GUEST" = 1 ] \
+        && ! [ -d "$PREFIX/var/lib/proot-distro/containers/$d/rootfs/root" ] \
+        && ! [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root" ]; then
+    if [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; then
+        printf '%s ' "Sicherung gefunden ($BACKUP_DIR): am Ende Einstellungen und Zugangsdaten wiederherstellen (fragt ihr Passwort)? [J/n]"
+        if IFS= read -r answer; then
+            case "$answer" in n|N|nein|Nein|NEIN|no) ;; *) DO_RESTORE=yes ;; esac
+        else
+            echo
+        fi
+    else
+        say "  Sicherung gefunden: nach der Installation in Termux:  rootbridge restore $BACKUP_DIR"
+    fi
+fi
 if [ "$CODEX_UPD_SET" = 1 ]; then
     cfg_set CODEX_UPDATE "$CODEX_UPD_MODE" "codex-update-Modus gespeichert: $CODEX_UPD_MODE"
 else
@@ -560,12 +597,14 @@ pkg_for() {
         termux-open-url|termux-dialog) echo termux-api ;;
         sha256sum|stat|timeout) echo coreutils ;;
         setsid) echo util-linux ;;
+        openssl) echo openssl-tool ;;
         *) echo "$1" ;;
     esac
 }
 if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; then
     need_pkgs=""
-    for c in tmux proot-distro python3 sha256sum stat timeout setsid termux-open-url termux-dialog; do
+    # openssl: the backup in /sdcard/backup/termux encrypts its secrets with it
+    for c in tmux proot-distro python3 sha256sum stat timeout setsid termux-open-url termux-dialog openssl; do
         command -v "$c" >/dev/null 2>&1 && continue
         p="$(pkg_for "$c")"
         case " $need_pkgs " in *" $p "*) ;; *) need_pkgs="$need_pkgs $p" ;; esac
@@ -604,6 +643,8 @@ inst "$REPO/termux/bin/rootbridge-daemon" "$PREFIX/bin/rootbridge-daemon"
 inst "$REPO/termux/bin/ptt"               "$PREFIX/bin/ptt"
 inst "$REPO/termux/lib/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh"
 inst "$REPO/termux/lib/keyreader.py"      "$PREFIX/lib/termux-rootbridge/keyreader.py"
+inst "$REPO/termux/lib/rootbridge-backup.py" "$PREFIX/lib/termux-rootbridge/rootbridge-backup.py" python3
+put_data "$REPO/termux/lib/backup.list"   "$PREFIX/lib/termux-rootbridge/backup.list" 644 || true
 chmod 644 "$PREFIX/lib/termux-rootbridge/rootbridge-lib.sh" "$PREFIX/lib/termux-rootbridge/keyreader.py"
 # A running daemon keeps its old code in memory (an old one wants tickets that nothing issues any more): stop it. The new
 # one starts at the end of the installation.
@@ -643,26 +684,30 @@ colors-light.properties:ddf723e84243925a9e09b468fb87bbcbca9b13a2aef1467835b46f6d
 else
     say "  Farben und Theme übersprungen (--no-colors)"
 fi
-if [ "$DO_EXTRAKEYS" = 1 ]; then
-    # S-TAB (a phone keyboard has no Shift+Tab, Claude Code switches its permission mode with it) and
-    # KEYBOARD (show/hide the soft keyboard) in the Termux extra keys row; volume-keys = volume in the same block
-    TP="$HOME/.termux/termux.properties"
-    mkdir -p "$HOME/.termux"
-    if own_extra_keys "$TP"; then
-        say "  Zusatztasten: $TP enthält eine eigene extra-keys-Zeile, sie bleibt unverändert."
-        say "    Für Shift+Tab die Taste {macro: \"SHIFT TAB\", display: \"S-TAB\"} selbst ergänzen,"
-        say "    oder die Zeile löschen und install.sh erneut starten (Vorlage: termux/extra-keys.snippet)."
-    else
-        before="$(cksum < "$TP" 2>/dev/null || true)"
-        set_block "$TP" "$REPO/termux/extra-keys.snippet"
-        chmod 600 "$TP"
-        if [ "$before" != "$(cksum < "$TP")" ]; then
-            command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
+# extra_keys: our block in termux.properties (also run again after a restore, whose termux.properties replaces the file)
+extra_keys() {
+    if [ "$DO_EXTRAKEYS" = 1 ]; then
+        # S-TAB (a phone keyboard has no Shift+Tab, Claude Code switches its permission mode with it) and
+        # KEYBOARD (show/hide the soft keyboard) in the Termux extra keys row; volume-keys = volume in the same block
+        TP="$HOME/.termux/termux.properties"
+        mkdir -p "$HOME/.termux"
+        if own_extra_keys "$TP"; then
+            say "  Zusatztasten: $TP enthält eine eigene extra-keys-Zeile, sie bleibt unverändert."
+            say "    Für Shift+Tab die Taste {macro: \"SHIFT TAB\", display: \"S-TAB\"} selbst ergänzen,"
+            say "    oder die Zeile löschen und install.sh erneut starten (Vorlage: termux/extra-keys.snippet)."
+        else
+            before="$(cksum < "$TP" 2>/dev/null || true)"
+            set_block "$TP" "$REPO/termux/extra-keys.snippet"
+            chmod 600 "$TP"
+            if [ "$before" != "$(cksum < "$TP")" ]; then
+                command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
+            fi
         fi
+    else
+        say "  Zusatztasten übersprungen (--no-extra-keys)"
     fi
-else
-    say "  Zusatztasten übersprungen (--no-extra-keys)"
-fi
+}
+extra_keys
 TMP_RC="$(mktemp)"
 cat > "$TMP_RC" <<'EOF'
 alias ubuntu='rootbridge shell'
@@ -1077,6 +1122,96 @@ if [ "$DO_GUEST" = 1 ]; then
     if [ -n "$APT_MODE" ]; then GUEST_ARGS+=(--apt-upgrade "$APT_MODE"); fi
     if [ -n "$CLAUDE_UPD_MODE" ]; then GUEST_ARGS+=(--claude-update "$CLAUDE_UPD_MODE"); fi
     if [ -n "$CODEX_UPD_MODE" ]; then GUEST_ARGS+=(--codex-update "$CODEX_UPD_MODE"); fi
+    # rb_config_line_ok LINE: may this KEY=VALUE line of a restored config be taken over? Keys that rb_load_config knows: only
+    # when that parser accepts the value (SU_ARGS=-mm -c, CLAUDE_ARGS, ...); keys only the installer reads: plain values.
+    rb_config_line_ok() {
+        local line="$1" key val probe rc
+        key="${line%%=*}"; val="${line#*=}"
+        val="${val%\"}"; val="${val#\"}"; val="${val%\'}"; val="${val#\'}"
+        case "$key" in
+            APT_UPGRADE|CLAUDE_UPDATE|CODEX_UPDATE|CODEX_BYPASS|GUIDELINES|LANGUAGE|PHANTOM_KILLER|REMOTE_NAME|SPEAK_SHORT)
+                [[ "$val" =~ ^[A-Za-z0-9_.:@,+-]*$ ]] ;;
+            *)
+                probe="$(mktemp "$STAGE_DIR/probe.XXXXXX")"   # in the private folder, not in TMPDIR
+                printf '%s\n' "$line" > "$probe"
+                ( ROOTBRIDGE_CONFIG="$probe"
+                  # shellcheck source=termux/lib/rootbridge-lib.sh
+                  . "$REPO/termux/lib/rootbridge-lib.sh"
+                  printf -v "$key" '%s' "__rb_unset__"
+                  rb_load_config
+                  [ "${!key}" != "__rb_unset__" ] ) >/dev/null 2>&1
+                rc=$?
+                rm -f "$probe"
+                return $rc ;;
+        esac
+    }
+    # the backup, when it was chosen above (it asks the password of its secrets itself): after the guest is set up and
+    # before install-guest.sh, which then lays this run's choices over what came back (guest config, CODEX_ARGS, settings)
+    if [ "$DO_RESTORE" = yes ]; then
+        say "== Sicherung wiederherstellen ($BACKUP_DIR)"
+        # the backup brings its Termux config back; what this run installed by (tools, voice, language, ...) stays: every
+        # key set now wins over the restored one, the backup only adds the keys missing here
+        # snapshots in the private staging folder, which no backup takes (beside the config a settings rule could)
+        STAGE_DIR="$HOME/.cache/rootbridge-backup"
+        mkdir -p "$HOME/.cache"
+        mkdir -p "$STAGE_DIR" && chmod 700 "$STAGE_DIR"
+        # a link anywhere on the way (~/.cache pointing to shared storage) would take the snapshots out of the private home
+        if [ -L "$HOME/.cache" ] || [ -L "$STAGE_DIR" ] || [ ! -d "$STAGE_DIR" ]; then
+            die "$STAGE_DIR ist kein eigener Ordner (Link): die Wiederherstellung wird nicht gestartet"
+        fi
+        THIS_RUN="$STAGE_DIR/config.this-run.$$"
+        cp "$CFG" "$THIS_RUN"
+        ROOTBRIDGE_CONFIG="$CFG" "$PREFIX/bin/rootbridge" restore "$BACKUP_DIR" \
+            || say "Hinweis: die Wiederherstellung ist nicht durchgelaufen. Später:  rootbridge restore $BACKUP_DIR  (eine ältere Sicherung ohne Siegel: mit --legacy)"
+        if ! cmp -s "$CFG" "$THIS_RUN"; then
+            # this run's file, plus the keys only the backup had; every line is data: no sed program is built from it, and
+            # only plain values are taken over (the config is read as shell)
+            merged="$STAGE_DIR/config.merge.$$"
+            cp "$THIS_RUN" "$merged"
+            while IFS= read -r line; do
+                case "$line" in
+                    [A-Z]*=*) ;;
+                    *) continue ;;
+                esac
+                key="${line%%=*}"
+                if ! printf '%s' "$key" | grep -Eq '^[A-Z][A-Z0-9_]*$'; then continue; fi
+                if grep -q "^$key=" "$THIS_RUN"; then continue; fi
+                # the config is parsed key by key (rb_load_config), never run as shell; a line is taken over only when that
+                # parser would accept it, so the restored file cannot hold anything the daemon would not read either
+                if rb_config_line_ok "$line"; then
+                    printf '%s\n' "$line" >> "$merged"
+                else
+                    say "  aus der Sicherung nicht übernommen (kein gültiger Wert): $key"
+                fi
+            done < "$CFG"
+            if cat "$merged" > "$CFG.new.$$" && mv -f "$CFG.new.$$" "$CFG"; then
+                rm -f "$merged" "$THIS_RUN"
+            else
+                # the merged config could not be put in place: this run's own copy goes back, the snapshots stay
+                rm -f "$CFG.new.$$"
+                cp "$THIS_RUN" "$CFG" || true
+                die "Die Konfig konnte nach der Wiederherstellung nicht zusammengeführt werden. Kopien: $THIS_RUN, $merged"
+            fi
+        else
+            rm -f "$THIS_RUN"
+        fi
+        extra_keys   # the restored termux.properties may lack our keys block
+        # the Codex sandbox as the restored config has it, unless an option of this run said otherwise (the guest
+        # argument was built before the restore)
+        # (the Termux or the restored guest config says CODEX_BYPASS=off, or the guest config has CODEX_ARGS without the bypass flag)
+        gconf="$(find_guest_root "$DISTRO" || true)/etc/termux-rootbridge.conf"
+        if [ "$USE_BYPASS_SET" != 1 ] && { [ "$(cfg_get CODEX_BYPASS)" = off ] \
+                || { [ -f "$gconf" ] && [ "$(sed -n 's/^CODEX_BYPASS=//p' "$gconf" | tail -n 1 | tr -d "\"'")" = off ]; } \
+                || { [ -f "$gconf" ] && grep -q '^CODEX_ARGS=' "$gconf" \
+                     && ! grep '^CODEX_ARGS=' "$gconf" | grep -q 'dangerously-bypass'; }; }; then
+            USE_BYPASS=no
+            cfg_set CODEX_BYPASS off "Codex-Sandbox bleibt an: gespeichert (CODEX_BYPASS=off)"   # also for the next run
+            for i in "${!GUEST_ARGS[@]}"; do
+                if [ "${GUEST_ARGS[$i]}" = --codex-bypass ]; then GUEST_ARGS[i+1]=no; fi
+            done
+            say "  Codex-Sandbox: bleibt an (aus der Sicherung)"
+        fi
+    fi
     proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/install-guest.sh "${GUEST_ARGS[@]}"
     rm -rf "$STAGE"
 else

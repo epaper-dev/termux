@@ -15,6 +15,7 @@
 #   rootbridge voice start|stop|status|grant   microphone for /voice: PulseAudio, source, Android permission
 #   rootbridge voice assistant [on|off|status]   Termux push to talk as Android's digital assistant (long press on Home; root)
 #   rootbridge phantom-killer [off|on|status]   Android's phantom process killer (it ends tmux and the sessions; root)
+#   rootbridge backup|restore [DIR]   settings and secrets of Termux and the guest into /sdcard/backup/termux, and back
 #   rootbridge voice speak [on|off|toggle|stop|first|all|status]   reading Claude's answers aloud (off also ends what is being
 #                        read; first = a short version: the first paragraph, at most 3 sentences, and the last
 #                        question, all = the whole answer)
@@ -697,9 +698,10 @@ case "${1:-}" in
     theme)        shift; cmd_theme "$@" ;;
     voice)        shift; cmd_voice "$@" ;;
     phantom-killer) shift; cmd_phantom_killer "$@" ;;
+    backup|restore) exec python3 -I "${lib%/*}/rootbridge-backup.py" "$@" ;;
     daemon-start) daemon_start; echo "Daemon läuft." ;;
     daemon-stop)  daemon_stop; echo "Daemon gestoppt." ;;
     version|--version) echo "rootbridge $VERSION" ;;
-    ""|help|-h|--help) sed -n '2,18p' "$self" | sed 's/^# \{0,1\}//' ;;
+    ""|help|-h|--help) sed -n '2,19p' "$self" | sed 's/^# \{0,1\}//' ;;
     *) die "unbekannter Befehl: $1 (rootbridge help)" ;;
 esac

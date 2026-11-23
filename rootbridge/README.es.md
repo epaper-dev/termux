@@ -118,6 +118,18 @@ Termux:Boot la sesión se crea en segundo plano tras un reinicio (`rootbridge st
 **arrancando en modo plan** (según tu `settings.json`); pulsa **Shift+Tab** para cambiar a *bypass permissions* (en un
 teléfono, con la tecla **S-TAB** que el instalador añade a la fila de teclas extra de Termux, ver abajo).
 
+**Almacenamiento, copia de seguridad y restauración.** Si Termux no tiene acceso a `/sdcard`, el instalador ejecuta
+`termux-setup-storage` al empezar (Android pregunta); `openssl` (paquete `openssl-tool`) se instala si falta.
+`rootbridge backup` guarda los ajustes y accesos de Termux y del invitado en `/sdcard/backup/termux`: `a.tgz` (ajustes),
+`k.enc` (accesos, las configuraciones de rootbridge y los ajustes de git, Claude Code y Codex, cifrados con tu contraseña), `h` (sumas de verificación) y `m` (un
+sello hecho con tu contraseña); la copia anterior queda en `previous/`. Qué se guarda está en una lista base
+(rootbridge, git, Claude Code, Codex); tus propias líneas van en `~/.config/termux-rootbridge/backup.list` (viaja cifrada dentro de la copia: una restauración en una
+instalación nueva la lee primero, así vuelve todo lo que nombra)
+(`settings|secret termux|guest RUTA`, `exclude termux|guest RUTA`). `rootbridge restore` comprueba las sumas y el sello
+con tu contraseña (otras apps pueden escribir en el almacenamiento compartido; una copia sin sello solo tras escribir
+"ja"; un sello ausente, vacío o ilegible se rechaza; una copia antigua sin sello solo con `--legacy`), muestra qué va dónde, pregunta y luego copia, nunca a través de un enlace; no se ejecuta nada de la carpeta. En una instalación nueva con copia, el instalador pregunta junto
+con las demás preguntas si debe restaurarla al final.
+
 **Preguntas al principio.** El instalador hace todas sus preguntas al empezar, antes de instalar nada; después sigue
 sin preguntar. En una shell interactiva de Termux cada pregunta aparece una sola vez: la respuesta queda en la
 configuración de Termux y su opción la cambia después: Claude Code (`--claude`/`--no-claude`), Codex

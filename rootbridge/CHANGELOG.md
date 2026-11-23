@@ -5,6 +5,22 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **`rootbridge backup` and `rootbridge restore`.** Settings and logins of Termux and the guest into
+  `/sdcard/backup/termux` (`a.tgz`, `k.enc` encrypted with your password by openssl (also the settings of git, Claude Code and Codex), `h` checksums, `m` a seal: HMAC
+  over the checksums with a key from your password; the earlier backup script's backups stay readable) and back; the
+  previous backup stays in `previous/` until the new one is complete (one your password cannot check moves to
+  `kept-<time>/`); links are not followed (skipped and named). The base list also takes plans, scripts, commands, agents, `.codex/AGENTS.md`, `.bashrc` (token) and the adb keys. Your own list travels inside `k.enc`: a restore on a
+  new installation reads it first, so everything it names comes back, and it is put back for the next backup. What is saved: a base list (`termux/lib/backup.list`) and your
+  lines in `~/.config/termux-rootbridge/backup.list`. restore runs nothing from that folder (other apps can write there):
+  it reads each file once, checks the checksums and the seal (a missing, empty or unreadable one is refused; an older backup without one only with `--legacy` and a typed "ja"), honours `exclude` lines, shows what goes
+  where and asks, unpacks only the files and folders the lists name (no links) with tarfile's `data` filter, checks every target first and then
+  copies into the Termux home and the guest only, never through a link. The settings of git, Claude Code and Codex and the configs of Termux and the guest go into `k.enc`: they can hold tokens. All files are written beside their targets first and then replaced together; a failure puts the originals back. Tests:
+  `tests/test_backup.py`.
+* **Phone storage, openssl and the backup in the installer.** Without access to `/sdcard` the installer runs
+  `termux-setup-storage` at the start (on a terminal, with `--setup`); `openssl` (`openssl-tool`) is installed when
+  missing. A backup in `/sdcard/backup/termux` on a fresh installation (no guest yet) is offered with the other
+  questions and restored by `rootbridge restore` once the guest is set up, before its configuration: the choices of
+  this run (tools, voice, language, Codex sandbox) stay, the restored configs only add what is missing. Tests: `tests/test_remote_name.sh`.
 * **The language, German or English.** The installer asks once (`--language de|en`, stored as `LANGUAGE`; default
   German) and sets it in one go: Claude Code's `language` (written when you choose in that run, else only where none is
   set), the texts in its CLAUDE.md (German or English templates), and the voice that reads aloud: Piper

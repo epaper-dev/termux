@@ -125,6 +125,19 @@ session is created in the background after a reboot (`rootbridge start --no-atta
 mode** (with `--autonomous no`: in the mode of your `settings.json`); press **Shift+Tab** to switch modes (on a phone use the **S-TAB** key
 the installer adds to the Termux extra keys row, see below).
 
+**Phone storage, backup and restore.** When Termux has no access to `/sdcard`, the installer runs
+`termux-setup-storage` at the start (Android asks); `openssl` (package `openssl-tool`) comes along when missing.
+`rootbridge backup` saves the settings and logins of Termux and the guest into `/sdcard/backup/termux`: `a.tgz`
+(settings), `k.enc` (logins, the rootbridge configs and the settings of git, Claude Code and Codex, encrypted with your password), `h` (checksums) and
+`m` (a seal made with your password); the previous backup stays in `previous/`. What is saved is a base list (rootbridge,
+git, Claude Code, Codex); your own lines go into `~/.config/termux-rootbridge/backup.list` (it travels, encrypted, inside the backup: a restore on a
+new installation reads it first, so everything it names comes back) (`settings|secret
+termux|guest PATH`, `exclude termux|guest PATH`). `rootbridge restore` checks the checksums and the seal with your password
+(other apps can write to the shared storage; a missing, empty or unreadable seal is refused, an older backup without
+one only with `--legacy` and after you typed "ja"; `exclude` lines hold for restore too), shows what goes where,
+asks, then copies, never through a link; nothing from the folder runs. On a new installation with a backup the installer asks with the other questions whether to restore it at
+the end.
+
 **Questions first.** The installer asks all its questions at the start, before it installs anything; then it runs
 through without asking. In an interactive Termux shell each question comes only once: the answer is stored in the Termux
 config, and its option changes it later: Claude Code (`--claude`/`--no-claude`), Codex (`--codex`/`--no-codex`; with both

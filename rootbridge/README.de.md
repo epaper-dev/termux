@@ -122,6 +122,20 @@ nichts startet von selbst. Mit Termux:Boot wird die Sitzung nach einem Neustart 
 `settings.json`); mit **Umschalt+Tab** wechselst du den Modus (am Handy mit der Taste **S-TAB**, die der Installer der
 Termux-Zusatztastenleiste hinzufügt, siehe unten).
 
+**Telefonspeicher, Sicherung und Wiederherstellung.** Fehlt Termux der Zugriff auf `/sdcard`, ruft der Installer gleich
+zu Beginn `termux-setup-storage` auf (Android fragt); `openssl` (Paket `openssl-tool`) kommt bei Bedarf dazu.
+`rootbridge backup` sichert die Einstellungen und Zugangsdaten von Termux und dem Gast nach `/sdcard/backup/termux`:
+`a.tgz` (Einstellungen), `k.enc` (Zugangsdaten, die Konfigurationen von rootbridge und die Einstellungen von Git, Claude Code und Codex, mit deinem Passwort
+verschlüsselt), `h` (Prüfsummen) und `m` (ein Siegel mit deinem Passwort); die vorige Sicherung bleibt in `previous/`. Was gesichert wird,
+steht in einer Grundliste (rootbridge, Git, Claude Code, Codex); eigene Zeilen kommen in
+`~/.config/termux-rootbridge/backup.list` (sie reist verschlüsselt in der Sicherung mit: eine Wiederherstellung auf einer neuen
+Installation liest sie zuerst ein, damit alles zurückkommt, was sie nennt) (`settings|secret termux|guest PFAD`, `exclude termux|guest PFAD`).
+`rootbridge restore` prüft die Prüfsummen und das Siegel mit deinem Passwort (andere Apps können in den Telefonspeicher
+schreiben; ein fehlendes, leeres oder unlesbares Siegel wird abgewiesen, eine ältere Sicherung ohne Siegel nur mit
+`--legacy` und einem getippten „ja“; `exclude`-Zeilen gelten auch beim Zurückspielen), zeigt, was wohin kommt, fragt nach und spielt dann
+zurück, nie durch einen Link hindurch; aus dem Ordner wird nichts ausgeführt. Bei einer neuen Installation mit Sicherung fragt der Installer mit den anderen Fragen, ob er sie am Ende
+wiederherstellen soll.
+
 **Fragen am Anfang.** Alle Fragen stellt der Installer gleich zu Beginn, bevor er etwas installiert; danach läuft er
 ohne Rückfrage durch. Jede Frage kommt in einer interaktiven Termux-Shell nur einmal, die Antwort steht danach in der
 Termux-Konfiguration, und die passende Option ändert sie später: Claude Code (`--claude`/`--no-claude`), Codex
