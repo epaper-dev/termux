@@ -151,6 +151,15 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **Reading aloud and voice dictation apart.** The installer asks for each once and installs only what was chosen:
+  `--speak` / `--no-speak` (SPEAK: Piper, Articulino, the hooks that read aloud, the voice commands, the widgets
+  "Vorlesen" and "Stopp", the speech block in CLAUDE.md) and `--voice` / `--no-voice` (VOICE: the microphone permission,
+  keybindings and `voice` in Claude Code, the keys for push to talk). PulseAudio and sox come with either. A config from
+  before it reads aloud as it dictates. `install-guest.sh` and `setup-guest.sh` take `--speak yes|no` (default: as
+  `--voice`). With reading aloud only PulseAudio opens no microphone and the guest cannot load one (module loading is
+  shut, the guest gets the cookie only from a server started that way); it can still listen to what Termux programs play
+  through PulseAudio (accepted: in practice only the reading aloud). Tests: `tests/test_remote_name.sh`,
+  `tests/test_voice.sh`.
 * **The installer asks all its questions first.** Before anything is installed, on a terminal and each only once (the
   answer is stored, its option changes it): Claude Code and Codex (`TOOL_CLAUDE`, `TOOL_CODEX`; a stored `off` now counts
   for Codex too), the device name, the keys for push to talk, and Android's phantom process killer. Then it runs through.

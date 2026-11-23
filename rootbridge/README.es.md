@@ -122,14 +122,17 @@ teléfono, con la tecla **S-TAB** que el instalador añade a la fila de teclas e
 sin preguntar. En una shell interactiva de Termux cada pregunta aparece una sola vez: la respuesta queda en la
 configuración de Termux y su opción la cambia después: Claude Code (`--claude`/`--no-claude`), Codex
 (`--codex`/`--no-codex`; con los dos instalados, Codex revisa cada commit de Claude Code), el nombre del dispositivo
-(`--remote-name NAME`), las teclas de push to talk y el **phantom process killer** de Android
+(`--remote-name NAME`), la **lectura en voz alta** (`--speak`/`--no-speak`) y el **dictado** (`--voice`/`--no-voice`)
+por separado, las teclas de push to talk (solo con dictado) y el **phantom process killer** de Android
 (`--phantom-killer-off`/`--phantom-killer-on`, necesita root). Este termina los procesos hijos de una app por encima de
 32 («Trimming phantom processes»), entre ellos tmux con las sesiones. Desactivado, el instalador ejecuta
 `rootbridge phantom-killer off` como root en cada ejecución (una actualización de Android puede revertirlo). Para que
 Android no lo revierta solo, deja además de cargar ajustes del sistema a distancia (`device_config`), en todo el
 teléfono; `on` lo deshace;
 `rootbridge phantom-killer on|status` también funcionan a mano. Sin root: Opciones de desarrollador, «Inhabilitar
-restricciones de procesos secundarios». Cada pregunta dice si necesita root.
+restricciones de procesos secundarios». Cada pregunta dice si necesita root. Con **solo lectura en voz alta** PulseAudio no abre ningún micrófono y el
+invitado no puede cargar ninguno (no se pueden cargar módulos). Sí puede escuchar lo que los programas de Termux reproducen
+por PulseAudio, en la práctica solo la propia lectura; las apps de Android, como los reproductores de música, no pasan por él.
 
 Opciones: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`,
 `--remote-name NAME`, `--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`,

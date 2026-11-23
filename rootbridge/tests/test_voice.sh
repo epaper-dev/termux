@@ -80,9 +80,11 @@ cat > "$T/vstubs/pulseaudio" <<'EOF'
 echo "pulseaudio $*" >> "$STUB_LOG"
 case "$1" in
     --check) [ -s "$STUB_STATE/pa.running" ] && kill -0 "$(cat "$STUB_STATE/pa.running")" 2>/dev/null ;;
-    --start) "$STUB_FAKEPA" 600 > /dev/null 2>&1 &
+    --start) [ -z "${STUB_PA_START_FAIL:-}" ] || exit 1
+             "$STUB_FAKEPA" 600 > /dev/null 2>&1 &
              echo $! >> "$STUB_STATE/pa.servers"; echo $! > "$STUB_STATE/pa.running"
-             [ -e "$STUB_STATE/perm" ] && touch "$STUB_STATE/source"; exit 0 ;;
+             # our default.pa for reading aloud only has no source: a server started that way has none
+             [ -e "$STUB_STATE/perm" ] && [ "$*" = "${*/--disallow-module-loading/}" ] && touch "$STUB_STATE/source"; exit 0 ;;
     --kill) [ -s "$STUB_STATE/pa.running" ] || exit 1
             kill "$(cat "$STUB_STATE/pa.running")" 2>/dev/null; rm -f "$STUB_STATE/pa.running" "$STUB_STATE/source"; exit 0 ;;
 esac
@@ -92,7 +94,7 @@ cat > "$T/vstubs/pactl" <<'EOF'
 #!/bin/bash
 echo "pactl $*" >> "$STUB_LOG"
 case "$1 $2" in
-    "list short") [ -e "$STUB_STATE/source" ] && printf '1\tOpenSL_ES_source\tmodule-sles-source.c\ts16le 2ch 44100Hz\tIDLE\n'; exit 0 ;;
+    "list short") [ -z "${STUB_LIST_FAIL:-}" ] || exit 1; [ -e "$STUB_STATE/source" ] && printf '1\tOpenSL_ES_source\tmodule-sles-source.c\ts16le 2ch 44100Hz\tIDLE\n'; exit 0 ;;
     "load-module module-sles-source") [ -e "$STUB_STATE/perm" ] || { echo "Failure: Module initialization failed" >&2; exit 1; }; touch "$STUB_STATE/source"; exit 0 ;;
 esac
 exit 0
@@ -182,6 +184,32 @@ rb bash "$T/bin/rootbridge" voice status
 check "voice status danach: PulseAudio läuft, Mikrofon ok" "1 1" "$(count "$T/out.txt" 'PulseAudio: *läuft') $(count "$T/out.txt" 'Mikrofon: *ok')"
 rb bash "$T/bin/rootbridge" voice start
 check "voice start mit Quelle: lädt nichts nach"          0 "$(calls '^pactl load-module')"
+printf 'VOICE=off\nSPEAK=on\n' > "$RBC"
+rb bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen: der Server mit Mikrofon startet neu, ohne Nachladen von Modulen" "1 1 0" \
+      "$(calls '^pulseaudio --kill$') $(calls '^pulseaudio --start --exit-idle-time=-1 --disallow-module-loading$') $(has "$T/state/source" | grep -c ja)"
+check "nur Vorlesen: der Server steht in der Datei, die nur Termux sieht" 1 "$(grep -c . "$T/home/.cache/rootbridge-pulse-playback-only")"
+rb bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen: zweiter Start lässt diesen Server"   0 "$(calls '^pulseaudio --start')"
+touch "$T/state/source"; mkdir -p "$T/home/.config/pulse"
+printf '# my own\nload-module module-sles-source\n' > "$T/home/.config/pulse/default.pa"
+rb bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen, eigene default.pa mit Mikrofon: Hinweis" 1 "$(count "$T/out.txt" 'eigene PulseAudio-Konfiguration lädt das Mikrofon')"
+printf '# termux-rootbridge voice: ours\n' > "$T/home/.config/pulse/default.pa"
+rb bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen, unsere default.pa und doch ein Mikrofon: Server beendet, Fehler" "1 1 1" \
+      "$RC $(count "$T/out.txt" 'obwohl nur vorgelesen wird; beendet') $(calls '^pulseaudio --kill$')"
+rb env STUB_LIST_FAIL=1 bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen: Abfrage scheitert, Hinweis"          1 "$(count "$T/out.txt" 'ließ sich nicht prüfen')"
+rm -f "$T/home/.config/pulse/default.pa" "$T/state/source"
+: > "$RBC"
+rb bash "$T/bin/rootbridge" voice start
+rb bash "$T/bin/rootbridge" voice stop
+rb env STUB_PA_START_FAIL=1 bash "$T/bin/rootbridge" voice start
+check "voice start: PulseAudio startet nicht, Fehler und Meldung" "1 1" "$RC $(count "$T/out.txt" 'PulseAudio startet nicht')"
+rb bash "$T/bin/rootbridge" voice start
+check "Spracheingabe wieder an: neuer Server mit Nachladen, die Datei weg" "1 nein" \
+      "$(calls '^pulseaudio --start --exit-idle-time=-1$') $(has "$T/home/.cache/rootbridge-pulse-playback-only")"
 
 rb bash "$T/bin/rootbridge" voice stop
 check "voice stop: pulseaudio --kill"                     1 "$(calls '^pulseaudio --kill$')"
@@ -194,7 +222,7 @@ reset_pa; echo 999999999 > "$T/state/pa.stubborn"
 rb bash "$T/bin/rootbridge" voice stop
 check "voice stop: ein Server bleibt, Fehler mit Meldung"  "1 1" "$RC $(count "$T/out.txt" 'PulseAudio läuft noch.*999999999')"
 rb bash "$T/bin/rootbridge" voice start
-check "voice start: ein Server bleibt, Hinweis, Sitzung startet trotzdem (Exit 0)" "0 1" "$RC $(count "$T/out.txt" 'lassen sich nicht beenden')"
+check "voice start: ein Server bleibt, Hinweis, Fehler (Exit 1)" "1 1" "$RC $(count "$T/out.txt" 'lassen sich nicht beenden')"
 check "voice start: neben dem hartnäckigen Server startet kein weiterer" 0 "$(calls '^pulseaudio --start')"
 # the status of a server cannot be read: stop does not claim success; a pid gone meanwhile (no /proc entry) is skipped
 reset_pa; spawn_pa; P1=$LAST_PA
@@ -552,7 +580,7 @@ rm -f "$T/keys.fail" "$BRIDGE_DIR/prompt-clear"
 rb bash "$T/bin/rootbridge" help
 check "help nennt voice start|stop|status|grant"          1 "$(count "$T/out.txt" 'rootbridge voice start|stop|status|grant')"
 rb bash "$T/bin/rootbridge" status
-check "status (VOICE on): zeigt den Abschnitt Sprache"    1 "$(count "$T/out.txt" '^Sprache (/voice):')"
+check "status (VOICE on): zeigt den Abschnitt Sprache"    1 "$(count "$T/out.txt" '^Sprache (/voice, Vorlesen):')"
 printf 'VOICE=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" status
 check "status (VOICE off): nennt --no-voice"              1 "$(count "$T/out.txt" '--no-voice')"
@@ -608,6 +636,9 @@ exit 1
 EOF
 printf '#!/bin/bash\necho "setsid $*" >> "$STUB_LOG"\n[ "${STUB_READER_DIES:-0}" = 1 ] || : > "$STUB_LOG.reader"\nexit 0\n' > "$T/istubs/setsid"
 printf '#!/bin/bash\ncase "$*" in *-ptt*) [ -e "$STUB_LOG.reader" ] ;; *) exit 1 ;; esac\n' > "$T/istubs/pgrep"
+# PulseAudio: the installer may end or start it (rootbridge voice stop|start); never the real one of the device
+printf '#!/bin/bash\necho "pulseaudio $*" >> "$STUB_LOG"\n[ "$1" = --check ] && exit 1\nexit 0\n' > "$T/istubs/pulseaudio"
+printf '#!/bin/bash\necho "pactl $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs/pactl"
 chmod +x "$T/istubs"/*
 export STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$T/iguest"
 ILOG="$T/i.log"
@@ -654,6 +685,7 @@ printf '#!/bin/sh\necho mine\n' > "$H/.shortcuts/tasks/Stopp"
 irun --no-voice
 check "install.sh --no-voice: ein eigenes Widget Stopp bleibt" ja "$(has "$H/.shortcuts/tasks/Stopp")"
 rm -f "$H/.shortcuts/tasks/Stopp"
+rm -f "$H/.config/pulse"/default.pa.bak-*   # --no-voice above: neither, our default.pa went with a backup
 irun --voice
 check "install.sh --voice: Widgets wieder da"              "ja ja" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
 check "install.sh: keine Backup-Datei bei der ersten Installation" 0 "$(baks "$H/.config/pulse/*bak*")"
@@ -679,14 +711,58 @@ check "--no-voice: läuft, VOICE=off gespeichert"           "0 off" "$IRC $(iget
 check "--no-voice: keine default.pa"                       nein "$(has "$PA")"
 check "--no-voice: gibt --voice no an den Gast"            1 "$(guestargs | grep -c -- '--voice no')"
 check "--no-voice: Gast ohne Tastenbelegung"               nein "$(has "$T/iguest/root/.claude/keybindings.json")"
-check "--no-voice: Meldung"                                1 "$(count "$T/install.log" 'übersprungen (--no-voice)')"
+check "--no-voice: Meldung"                                1 "$(count "$T/install.log" 'übersprungen (--no-voice, --no-speak)')"
+check "--no-voice ohne Vorlese-Wahl: Vorlesen folgt, an den Gast" 1 "$(guestargs | grep -c -- '--voice no --speak no')"
 irun
 check "ohne Option nach --no-voice: bleibt aus (Konfig)"   "0 nein" "$IRC $(has "$PA")"
 check "ohne Option nach --no-voice: Meldung aus der Konfig" 1 "$(count "$T/install.log" 'Sprache: abgewählt')"
+# reading aloud without dictation, and dictation without reading aloud
+irun --no-voice --speak
+check "nur Vorlesen: PulseAudio-Konfig, Widgets, an den Gast" "0 on ja ja 1" "$IRC $(iget SPEAK) $(has "$PA") $(has "$H/.shortcuts/tasks/Vorlesen") $(guestargs | grep -c -- '--voice no --speak yes')"
+check "nur Vorlesen: keine Mikrofon-Berechtigung"          0 "$(count "$T/install.log" 'Mikrofon-Berechtigung')"
+check "nur Vorlesen: default.pa ohne Mikrofonquelle, mit Marke" "0 1" "$(count "$PA" '^load-module module-sles-source\|OpenSL_ES_source') $(count "$PA" 'termux-rootbridge voice')"
+check "nur Vorlesen: Quellen aus Termux' default.pa entladen, vor dem Zugang für den Gast" "ja" \
+      "$(awk '/^unload-module module-sles-source$/ { u = NR } /^load-module module-native-protocol-tcp/ { l = NR } END { print (u && u < l) ? "ja" : "nein" }' "$PA")"
+check "nur Vorlesen: daemon.conf sperrt das Nachladen von Modulen" 1 "$(count "$H/.config/pulse/daemon.conf" '^allow-module-loading = no$')"
+irun --voice --no-speak
+check "nur Spracheingabe: default.pa wieder mit Mikrofonquelle" 1 "$(count "$PA" '^load-module module-sles-source$')"
+check "nur Spracheingabe: unsere daemon.conf weg, der Neustart meldet keinen Fehler" "nein 1 0" \
+      "$(has "$H/.config/pulse/daemon.conf") $(count "$T/install.log" 'entfernt: .*daemon.conf') $(count "$T/install.log" 'nicht neu starten')"
+irun --no-voice --speak
+echo 'flat-volumes = no' >> "$H/.config/pulse/daemon.conf"
+irun --no-voice --speak
+check "nur Vorlesen zweimal: deine Zeile in unserer daemon.conf bleibt" "1 1" \
+      "$(count "$H/.config/pulse/daemon.conf" '^flat-volumes = no$') $(count "$H/.config/pulse/daemon.conf" '^allow-module-loading = no$')"
+irun --voice --no-speak
+check "dann Spracheingabe: nur unsere Zeilen gehen, deine bleibt" "flat-volumes = no 0" \
+      "$(cat "$H/.config/pulse/daemon.conf") $(count "$H/.config/pulse/daemon.conf" 'termux-rootbridge\|allow-module-loading')"
+rm -f "$H/.config/pulse/daemon.conf" "$H/.config/pulse"/daemon.conf.bak-*
+printf 'flat-volumes = no\n' > "$H/.config/pulse/daemon.conf"
+irun --no-voice --speak
+check "nur Vorlesen, eigene daemon.conf: deine Zeile bleibt, unsere Sperre kommt dazu" "1 1 1" \
+      "$(count "$H/.config/pulse/daemon.conf" '^flat-volumes = no$') $(count "$H/.config/pulse/daemon.conf" '^allow-module-loading = no$') $(count "$H/.config/pulse/daemon.conf" 'termux-rootbridge voice')"
+printf 'allow-module-loading = no\n' > "$H/.config/pulse/daemon.conf"   # yours already
+irun --no-voice --speak
+check "nur Vorlesen, eigene Sperre schon da: nichts dazu" "allow-module-loading = no" "$(cat "$H/.config/pulse/daemon.conf")"
+irun --voice --no-speak
+check "dann Spracheingabe: deine eigene Sperre bleibt"    "allow-module-loading = no" "$(cat "$H/.config/pulse/daemon.conf")"
+rm -f "$H/.config/pulse/daemon.conf" "$H/.config/pulse"/daemon.conf.bak-*
+irun --voice --no-speak
+check "nur Spracheingabe: Widgets weg, an den Gast"        "0 off nein 1" "$IRC $(iget SPEAK) $(has "$H/.shortcuts/tasks/Vorlesen") $(guestargs | grep -c -- '--voice yes --speak no')"
+check "nur Spracheingabe: Gast mit Tastenbelegung"          ja "$(has "$T/iguest/root/.claude/keybindings.json")"
+irun --speak
 irun --voice
 check "--voice: wieder an, VOICE=on gespeichert"           "0 on ja" "$IRC $(iget VOICE) $(has "$PA")"
 irun
 check "ohne Option nach --voice: bleibt an"                ja "$(has "$PA")"
+
+# neither reading aloud nor dictation: our default.pa goes, with a backup (you may have changed it)
+rm -f "$H/.config/pulse"/default.pa.bak-*
+printf '# termux-rootbridge voice: ours\n# changed by me\n' > "$PA"
+irun --no-voice --no-speak
+check "weder noch: unsere default.pa weg, mit Sicherung"   "nein 1" "$(has "$PA") $(grep -l 'changed by me' "$H/.config/pulse"/default.pa.bak-* 2>/dev/null | wc -l | tr -d ' ')"
+rm -f "$H/.config/pulse"/default.pa.bak-*
+irun --voice --speak
 
 # without Claude Code there is no /voice
 rm -f "$PA"
@@ -795,7 +871,7 @@ check "Setup: pulseaudio ohne empfohlene Pakete"          1 "$(count "$ILOG" '^p
 check "Setup am Terminal: Mikrofon fehlt, su -c pm grant"  1 "$(count "$ILOG" '^su -c pm grant com.termux.api android.permission.RECORD_AUDIO$')"
 check "Setup am Terminal: Quelle ist danach da"            ja "$(has "$T/state/source")"
 sinst bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot --no-voice
-check "Setup --no-voice: kein pulseaudio-Paket, kein su"   "0 0" "$(count "$ILOG" 'pulseaudio') $(count "$ILOG" '^su ')"
+check "Setup --no-voice: kein pulseaudio-Paket, kein su"   "0 0" "$(count "$ILOG" '^pkg install.*pulseaudio') $(count "$ILOG" '^su ')"
 # the permission is there already (the source exists after the start): no root command
 reset_pa; touch "$T/state/perm"
 : > "$ILOG"; rm -f "$SP/bin/pulseaudio"
@@ -816,7 +892,7 @@ ainst() {   # ainst <answers> [args]: like sinst, with the answers on stdin; onl
     printf '%s' "$answers" | env HOME="$SH" PREFIX="$SP" PATH="$T/sbindir:$T/sstubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 \
         BRIDGE_DIR="$SH/.rootbridge" STUB_LOG="$ILOG" STUB_STATE="$T/state" RB_SU="$T/sstubs/su" \
         ROOTBRIDGE_FORCE_INTERACTIVE=1 bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot \
-        --claude --codex ${phantom:+"$phantom"} "$@" > "$T/install.log" 2>&1
+        --claude --codex --speak --voice ${phantom:+"$phantom"} "$@" > "$T/install.log" 2>&1
     IRC=$?
 }
 SCFG="$SH/.config/termux-rootbridge/config"
@@ -869,6 +945,26 @@ check "Gast frisch: speak.py und rootbridge-speak"         "ja ja" "$(has "$GA/u
 check "Gast frisch: rootbridge-speak mit dem Python des Gasts" 1 "$(count "$GA/usr/local/bin/rootbridge-speak" '^exec /usr/bin/python3 -I .*/usr/local/lib/termux-rootbridge/speak.py')"
 check "Gast frisch: CLAUDE.md, ein Block mit Code Quality und dem Text fürs Vorlesen" "1 1 1" \
       "$(count "$GA/root/.claude/CLAUDE.md" '^<!-- >>> termux-rootbridge >>> -->$') $(count "$GA/root/.claude/CLAUDE.md" '^## Code quality requirements') $(count "$GA/root/.claude/CLAUDE.md" '^## Answers read aloud')"
+# reading aloud and dictation apart
+GS="$T/gs"; rm -rf "$GS"; mkdir -p "$GS"
+gi "$GS" --claude yes --codex no --voice no --speak yes
+check "Gast nur Vorlesen: speak.py, Stop-Hook, Text in CLAUDE.md" "0 ja 1 1" \
+      "$GRC $(has "$GS/usr/local/lib/termux-rootbridge/speak.py") $(hookcmd "$GS/etc/claude-code/managed-settings.json" Stop | grep -c speak.py) $(count "$GS/root/.claude/CLAUDE.md" '^## Answers read aloud')"
+check "Gast nur Vorlesen: Marke no-microphone (keine Aufnahme der Stimme)" ja "$(has "$GS/usr/local/lib/termux-rootbridge/no-microphone")"
+rm -f "$GS/usr/local/lib/termux-rootbridge/no-microphone"; echo fremd > "$T/fremd"
+ln -s "$T/fremd" "$GS/usr/local/lib/termux-rootbridge/no-microphone"
+gi "$GS" --claude yes --codex no --voice no --speak yes
+check "Gast nur Vorlesen: die Marke ersetzt einen Link, die Datei dahinter bleibt" "fremd -" \
+      "$(cat "$T/fremd") $(ls -l "$GS/usr/local/lib/termux-rootbridge/no-microphone" | cut -c1)"
+check "Gast nur Vorlesen: keine Tastenbelegung, kein voice, Cookie in .bashrc" "nein null 1" \
+      "$(has "$GS/root/.claude/keybindings.json") $(sv "$GS") $(count "$GS/root/.bashrc" 'export PULSE_COOKIE=')"
+GV="$T/gv"; rm -rf "$GV"; mkdir -p "$GV"
+gi "$GV" --claude yes --codex no --voice yes --speak no
+check "Gast nur Spracheingabe: Tastenbelegung und voice" "0 ja 1" "$GRC $(has "$GV/root/.claude/keybindings.json") $(sv "$GV" | grep -c tap)"
+gi "$GS" --claude yes --codex no --voice yes --speak yes
+check "Gast Vorlesen und Spracheingabe: Marke no-microphone weg" nein "$(has "$GS/usr/local/lib/termux-rootbridge/no-microphone")"
+check "Gast nur Spracheingabe: kein speak.py, kein Stop-Hook, kein Text fürs Vorlesen" "nein 0 0" \
+      "$(has "$GV/usr/local/lib/termux-rootbridge/speak.py") $(hookcmd "$GV/etc/claude-code/managed-settings.json" Stop | grep -c speak.py) $(count "$GV/root/.claude/CLAUDE.md" '^## Answers read aloud')"
 KBSUM="$(cksum < "$GA/root/.claude/keybindings.json")"; SSUM="$(cksum < "$GA/root/.claude/settings.json")"
 gi "$GA" --claude yes --codex no
 check "Gast zweimal: keybindings.json unverändert"         "$KBSUM" "$(cksum < "$GA/root/.claude/keybindings.json")"
@@ -1051,16 +1147,23 @@ H2="$T/uh"; P2="$T/up"; mkdir -p "$H2/.config/pulse" "$P2/bin"
 printf '#!/bin/sh\n# sidekey-ptt\n' > "$P2/bin/sidekey-ptt"
 printf '#!/bin/sh\n# headset-ptt\n' > "$P2/bin/headset-ptt"
 printf '# termux-rootbridge voice: x\n' > "$H2/.config/pulse/default.pa"
+printf '# termux-rootbridge voice: x\nallow-module-loading = no\nflat-volumes = no\n' > "$H2/.config/pulse/daemon.conf"
 run_un() { : > "$ILOG"; STUB_LOG="$ILOG" HOME="$H2" PREFIX="$P2" PATH="$T/istubs:$PATH" bash "$UNINSTALL" --no-guest > "$T/uninstall.log" 2>&1; }
 mkdir -p "$H2/.shortcuts/tasks"
 cp "$ROOT/termux/shortcuts/speak" "$H2/.shortcuts/tasks/Vorlesen"; cp "$ROOT/termux/shortcuts/speak-stop" "$H2/.shortcuts/tasks/Stopp"
+printf '#!/bin/bash\necho "rootbridge $*" >> "$STUB_LOG"\nexit 0\n' > "$P2/bin/rootbridge"; chmod +x "$P2/bin/rootbridge"
 run_un
+check "uninstall: unser PulseAudio beendet, solange rootbridge noch da ist" 1 "$(count "$ILOG" '^rootbridge voice stop$')"
 check "uninstall: beide Leser weg und beendet"            "nein nein 1 1" "$(has "$P2/bin/sidekey-ptt") $(has "$P2/bin/headset-ptt") $(count "$ILOG" '^pkill -f sidekey-ptt') $(count "$ILOG" '^pkill -f headset-ptt')"
 check "uninstall: Widgets Vorlesen und Stopp weg"          "nein nein" "$(has "$H2/.shortcuts/tasks/Vorlesen") $(has "$H2/.shortcuts/tasks/Stopp")"
 printf '#!/bin/sh\necho mine\n' > "$H2/.shortcuts/tasks/Stopp"
 run_un
 check "uninstall: ein eigenes Widget Stopp bleibt"         ja "$(has "$H2/.shortcuts/tasks/Stopp")"
-check "uninstall: unsere default.pa weg"                   nein "$(has "$H2/.config/pulse/default.pa")"
+check "uninstall: unsere default.pa weg, aus daemon.conf nur unsere Zeilen" "nein flat-volumes = no" \
+      "$(has "$H2/.config/pulse/default.pa") $(cat "$H2/.config/pulse/daemon.conf")"
+printf '# termux-rootbridge voice: x\nallow-module-loading = no\n' > "$H2/.config/pulse/daemon.conf"
+run_un
+check "uninstall: unsere daemon.conf ohne eigene Zeilen geht ganz" nein "$(has "$H2/.config/pulse/daemon.conf")"
 printf '# my own\n' > "$H2/.config/pulse/default.pa"
 printf '#!/bin/sh\necho mine\n' > "$P2/bin/sidekey-ptt"
 run_un

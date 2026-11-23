@@ -537,6 +537,20 @@ check "Gemeinsamer Speicher: /sdcard und /storage/emulated/0 sind da" 1 "$(calls
 printf 'VOICE=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
 check "Voice aus: kein Cookie im Gast"                     1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- ')"
+printf 'VOICE=off\nSPEAK=on\n' > "$RBC"
+rb bash "$T/bin/rootbridge" attach
+check "Nur Vorlesen, Server ohne Sperre nicht bestätigt: kein Cookie" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- ')"
+# a PulseAudio server of Termux with pid 4711 (pgrep and its status in a fake /proc), noted as started for reading aloud only
+mkdir -p "$T/home/.cache" "$T/pstubs" "$T/fproc/4711"; printf 'TracerPid:\t0\n' > "$T/fproc/4711/status"
+printf '#!/bin/bash\n[ "$*" = "-x pulseaudio" ] && { echo 4711; exit 0; }\nexit 1\n' > "$T/pstubs/pgrep"
+printf '#!/bin/bash\n[ "$1" = --check ]\n' > "$T/pstubs/pulseaudio"; chmod +x "$T/pstubs"/*
+echo 4711 > "$T/home/.cache/rootbridge-pulse-playback-only"
+rb env PATH="$T/pstubs:$T/stubs:$PATH" RB_PROC_DIR="$T/fproc" bash "$T/bin/rootbridge" attach
+check "Nur Vorlesen, der Server mit Sperre läuft: das Cookie kommt dazu" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' --bind '"$COOKIE:$COOKIE"' -- ')"
+echo 4712 > "$T/home/.cache/rootbridge-pulse-playback-only"
+rb env PATH="$T/pstubs:$T/stubs:$PATH" RB_PROC_DIR="$T/fproc" bash "$T/bin/rootbridge" attach
+check "Nur Vorlesen, ein anderer Server läuft: kein Cookie" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- ')"
+rm -f "$T/home/.cache/rootbridge-pulse-playback-only"
 printf 'GUEST_ISOLATE=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
 check "GUEST_ISOLATE=off: Gast wie bisher, ohne Optionen"  1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu  -- /usr/local/bin/rootbridge-claude$')"
@@ -597,6 +611,10 @@ mkdir -p "$H" "$P/bin" "$GROOT/var/tmp" "$T/istubs"
 cp "$ROOT/tests/stubs/proot-distro-guest-scripts" "$T/istubs/proot-distro"
 printf '#!/bin/bash\nexit 0\n' > "$T/istubs/termux-reload-settings"
 printf '#!/bin/bash\necho "rootbridge $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs/rootbridge"
+# PulseAudio: the installer may end or start it (rootbridge voice stop|start); never the real one of the device
+printf '#!/bin/bash\n[ "$1" = --check ] && exit 1\nexit 0\n' > "$T/istubs/pulseaudio"
+printf '#!/bin/bash\nexit 1\n' > "$T/istubs/pactl"
+printf '#!/bin/bash\ncase "$*" in *pulseaudio*) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v pgrep || echo false)" > "$T/istubs/pgrep"
 chmod +x "$T/istubs"/*
 export STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$T/iguest"
 ILOG="$T/i.log"

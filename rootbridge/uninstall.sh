@@ -44,9 +44,39 @@ for reader in sidekey-ptt headset-ptt; do
         rm -f "$PREFIX/bin/$reader"
     fi
 done
+# our PulseAudio (the listener for the guest, maybe with module loading shut for reading aloud only) ends first, while
+# rootbridge is still there; a PulseAudio started later has none of it
+if grep -qs 'termux-rootbridge voice' "$HOME/.config/pulse/default.pa" "$HOME/.config/pulse/daemon.conf"; then
+    if [ -x "$PREFIX/bin/rootbridge" ] && ! "$PREFIX/bin/rootbridge" voice stop >/dev/null 2>&1; then
+        say "Hinweis: PulseAudio läuft noch; beenden mit:  pulseaudio --kill"
+    fi
+fi
+rm -f "$HOME/.cache/rootbridge-pulse-playback-only"
 if grep -qs 'termux-rootbridge voice' "$HOME/.config/pulse/default.pa"; then
     rm -f "$HOME/.config/pulse/default.pa"
     say "PulseAudio-Konfiguration entfernt: ~/.config/pulse/default.pa"
+fi
+# daemon.conf: our pair goes (the marker and the allow-module-loading = no right after it); lines of your own stay, with a backup
+dc="$HOME/.config/pulse/daemon.conf"
+if grep -qs 'termux-rootbridge voice' "$dc"; then
+    rc=0
+    # our pair only: the marker and the setting right after it (a setting of your own stays)
+    rest="$(awk '/^# termux-rootbridge voice/ { ours = 1; next } ours && $0 == "allow-module-loading = no" { ours = 0; next }
+                 { ours = 0; print }' "$dc")" || rc=2
+    if [ "$rc" -gt 1 ]; then   # it could not be read: the file stays as it is
+        say "Hinweis: ~/.config/pulse/daemon.conf ließ sich nicht lesen und bleibt (darin: allow-module-loading = no)"
+    elif grep -q '[^[:space:]]' <<< "$rest"; then
+        # with a backup, and written atomically: a failure leaves the file as it was
+        if cp -p "$dc" "$dc.bak-$(date +%Y%m%d%H%M%S)" && printf '%s\n' "$rest" > "$dc.new.$$" && mv -f "$dc.new.$$" "$dc"; then
+            say "PulseAudio: die Sperre für nur Vorlesen aus ~/.config/pulse/daemon.conf entfernt, deine Zeilen bleiben"
+        else
+            rm -f "$dc.new.$$"
+            say "Hinweis: ~/.config/pulse/daemon.conf ließ sich nicht ändern und bleibt (darin: allow-module-loading = no)"
+        fi
+    else
+        rm -f "$dc"
+        say "PulseAudio-Konfiguration entfernt: ~/.config/pulse/daemon.conf"
+    fi
 fi
 # the long press on Home: Termux gives the assistant role back before ptt goes, or Home calls a missing command. Asked
 # whenever the installer ever handled the key (HOMEKEY in the config, on or off: an earlier removal may have failed); on a

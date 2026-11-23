@@ -128,14 +128,17 @@ the installer adds to the Termux extra keys row, see below).
 **Questions first.** The installer asks all its questions at the start, before it installs anything; then it runs
 through without asking. In an interactive Termux shell each question comes only once: the answer is stored in the Termux
 config, and its option changes it later: Claude Code (`--claude`/`--no-claude`), Codex (`--codex`/`--no-codex`; with both
-installed, Codex checks every commit of Claude Code), the device name (`--remote-name NAME`), the keys for push to talk
-and Android's **phantom process killer** (`--phantom-killer-off`/`--phantom-killer-on`, needs root). It ends the child
+installed, Codex checks every commit of Claude Code), the device name (`--remote-name NAME`), **reading aloud** (`--speak`/`--no-speak`) and **voice
+dictation** (`--voice`/`--no-voice`) apart, the keys for push to talk (only with dictation) and Android's **phantom process
+killer** (`--phantom-killer-off`/`--phantom-killer-on`, needs root). It ends the child
 processes of an app beyond 32 ("Trimming phantom processes"), tmux with the sessions among them. Switched off, the
 installer runs `rootbridge phantom-killer off` as root on every run (an Android update may set it back). So that Android does not turn
 it back by itself, it also stops loading system settings from remote (`device_config`), for the whole phone; `on` lifts
 that again;
 `rootbridge phantom-killer on|status` work by hand too. Without root: Developer options, "Disable child process
-restrictions". A question says when it needs root.
+restrictions". A question says when it needs root. With **reading aloud only** PulseAudio opens no microphone and the
+guest cannot load one (module loading is shut). It can still listen to what Termux programs play through PulseAudio, in
+practice only the reading aloud itself; Android apps such as music players do not play through it.
 
 Options: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--model NAME|none`, `--remote-name NAME`,
 `--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`, `--no-claude-update`, `--codex-update 6h|<N>h|daily|always|off`, `--no-codex-update`, `--no-claude`, `--no-codex`, `--no-codex-bypass` (`--codex-bypass` turns Codex' sandbox-less mode back on), `--no-guidelines` (the code quality blocks in the guest's `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` are on by default; your own text in those files stays, `--guidelines` turns them on again; stored as `GUIDELINES`; `--claude` / `--codex` turn a tool on again, see [Codex next to Claude Code](#codex-next-to-claude-code)). The installer is idempotent, backs up what it changes, and

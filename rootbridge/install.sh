@@ -9,7 +9,7 @@
 #                   [--model NAME|none] [--claude | --no-claude] [--codex | --no-codex]
 #                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update] [--codex-bypass | --no-codex-bypass]
 #                   [--guidelines | --no-guidelines]
-#                   [--voice | --no-voice] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
+#                   [--voice | --no-voice] [--speak | --no-speak] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
 #                   [--headset | --no-headset] [--phantom-killer-off | --phantom-killer-on]
 #
 # Questions: all of them come first, before anything is installed; then the installation runs through. On a terminal each
@@ -59,10 +59,13 @@
 #   the guest's ~/.claude/keybindings.json (meta+k = voice:pushToTalk) and "voice": {"enabled": true, "mode": "tap"} in
 #   ~/.claude/settings.json (both only where you have not decided yet), and `ptt` (start / stop). Android's microphone
 #   permission for Termux needs root: on a terminal the installer asks for it (the root manager prompts), otherwise run
-#   `rootbridge voice grant` once. Reading aloud belongs to it: Piper with the voice de_DE-kerstin-medium in the guest
-#   (/opt/piper) and Articulino for your own voice (/opt/articulino; record it in the guest: rootbridge-speak --record), a Stop hook that reads Claude's answers (without code, tables and URLs) one after another, ends with your next
-#   prompt and pauses while you speak (`ptt start`, /voice), `rootbridge voice speak on|off|toggle|stop` and the widgets "Vorlesen" (on/off) and "Stopp" in
-#   ~/.shortcuts/tasks. Reading aloud is on after the installation. The choice is stored in the Termux config (VOICE).
+#   `rootbridge voice grant` once. The choice is stored in the Termux config (VOICE).
+# --speak / --no-speak: reading Claude's answers aloud, on by default (needs Claude Code), asked apart from --voice: PulseAudio
+#   in Termux and sox in the guest (it plays), Piper with the voice de_DE-kerstin-medium in the guest (/opt/piper) and
+#   Articulino for your own voice (/opt/articulino; record it in the guest: rootbridge-speak --record), a Stop hook that reads
+#   Claude's answers (without code, tables and URLs) one after another and pauses while you speak (`ptt start`, /voice), the
+#   voice commands ("Welche Sprachbefehle gibt es"), `rootbridge voice speak on|off|toggle|stop` and the widgets "Vorlesen"
+#   (on/off) and "Stopp" in ~/.shortcuts/tasks. Stored as SPEAK; a config from before it follows VOICE.
 # --sidekey / --no-sidekey: the side key of the Hisense A9 as push to talk (hold = record, release = stop): installs sidekey-ptt,
 #   which keeps a root `cat` on /dev/input/event2 running, and starts it with the session. Off by default, stored as SIDEKEY.
 #   Set the long press of the E-Ink app to "Nothing". A bridge until the E-Ink app does it itself.
@@ -127,6 +130,7 @@ CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
 USE_CLAUDE=yes; USE_CLAUDE_SET=0; USE_CODEX=yes; USE_CODEX_SET=0   # which tools: yes | no
 USE_VOICE=yes; USE_VOICE_SET=0; USE_SIDEKEY=no; USE_SIDEKEY_SET=0   # voice dictation / side key as push to talk
+USE_SPEAK=yes; USE_SPEAK_SET=0     # reading Claude's answers aloud
 USE_HOMEKEY=no; USE_HOMEKEY_SET=0; USE_HEADSET=no; USE_HEADSET_SET=0   # long press on Home / on the headset key as push to talk
 HOMEKEY_OFF_OPT=0   # --no-home-key given: the assistant role is taken back in any case
 USE_BYPASS=yes; USE_BYPASS_SET=0   # Codex without its own sandbox
@@ -171,6 +175,8 @@ while [ $# -gt 0 ]; do
         --no-codex-bypass) USE_BYPASS=no; USE_BYPASS_SET=1 ;;
         --voice) USE_VOICE=yes; USE_VOICE_SET=1 ;;
         --no-voice) USE_VOICE=no; USE_VOICE_SET=1 ;;
+        --speak) USE_SPEAK=yes; USE_SPEAK_SET=1 ;;
+        --no-speak) USE_SPEAK=no; USE_SPEAK_SET=1 ;;
         --sidekey) USE_SIDEKEY=yes; USE_SIDEKEY_SET=1 ;;
         --no-sidekey) USE_SIDEKEY=no; USE_SIDEKEY_SET=1 ;;
         --home-key) USE_HOMEKEY=yes; USE_HOMEKEY_SET=1 ;;
@@ -256,15 +262,14 @@ inst() {
 }
 
 # put_data <src> <dest> <mode>: copy a data file as it is (no shebang rewrite); back up only on
-# change. Returns 0 if the file was written, 1 if it was already identical.
+# change. Returns 0 if the file was written, 1 if it was already identical, 2 if it could not be written.
 put_data() {
     local tmp="$2.new.$$"
-    mkdir -p "$(dirname "$2")"
-    cp "$1" "$tmp"
-    chmod "$3" "$tmp"
+    # every step checked: a caller in a condition (put_data ... && ...) runs without set -e
+    { mkdir -p "$(dirname "$2")" && cp "$1" "$tmp" && chmod "$3" "$tmp"; } || { rm -f "$tmp"; say "  FEHLER: $2 nicht geschrieben"; return 2; }
     if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 1; fi
     backup "$2"
-    mv -f "$tmp" "$2"
+    mv -f "$tmp" "$2" || { rm -f "$tmp"; say "  FEHLER: $2 nicht geschrieben"; return 2; }
     say "  installiert: $2"
 }
 
@@ -308,6 +313,7 @@ AUTOSTART_DELAY=3
 # GUIDELINES=on         # on | off: code quality block in the guest's CLAUDE.md / AGENTS.md; set with install.sh --guidelines / --no-guidelines
 # CODEX_BYPASS=on       # on | off: Codex without its own sandbox (CODEX_ARGS in the guest config); set with install.sh --codex-bypass / --no-codex-bypass
 # VOICE=on              # on | off: voice dictation for Claude Code (PulseAudio, microphone); set with install.sh --voice / --no-voice
+# SPEAK=on              # on | off: reading Claude's answers aloud (Piper, Articulino); set with install.sh --speak / --no-speak
 # SPEAK_SHORT=set       # set by install.sh the first time it installs voice, after it switched reading aloud to the short version
 # SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
 # HOMEKEY=off           # on | off: long press on Home as push to talk (Termux is the assistant); install.sh --home-key / --no-home-key
@@ -429,6 +435,19 @@ if [ "$USE_VOICE_SET" != 1 ] && [ "$(cfg_get VOICE)" = off ]; then
 fi
 if [ "$USE_SIDEKEY_SET" != 1 ] && [ "$(cfg_get SIDEKEY)" = on ]; then
     USE_SIDEKEY=yes; say "  Seitentaste: an (aus der Konfig; aus mit --no-sidekey)"
+fi
+# reading aloud and voice dictation: asked apart, once (with Claude Code only: there is nothing else to talk to)
+if [ "$USE_SPEAK_SET" != 1 ] && [ "$(cfg_get SPEAK)" = off ]; then
+    USE_SPEAK=no; say "  Vorlesen: abgewählt (aus der Konfig; wieder an mit --speak)"
+fi
+if [ "$USE_CLAUDE" = yes ]; then
+    ask_key USE_SPEAK USE_SPEAK_SET SPEAK yes "Vorlesen: Claudes Antworten vorlesen lassen (Piper, auf Wunsch mit deiner eigenen Stimme)?"
+    ask_key USE_VOICE USE_VOICE_SET VOICE yes "Spracheingabe: Claude Code per Mikrofon diktieren (/voice, Push to Talk)?"
+fi
+# reading aloud undecided (a config from before it, no terminal): as voice dictation, which it was part of
+if [ "$USE_SPEAK_SET" != 1 ] && [ -z "$(cfg_get SPEAK)" ]; then USE_SPEAK="$USE_VOICE"; fi
+if [ "$USE_SPEAK_SET" = 1 ]; then
+    cfg_set SPEAK "$(onoff "$USE_SPEAK")" "Vorlesen: $USE_SPEAK"
 fi
 OLD_VOICE="$(cfg_get VOICE)"   # off before this run, or on (also empty): switching voice off gives the Home key role back
 if [ "$USE_VOICE_SET" = 1 ]; then
@@ -620,11 +639,12 @@ fi
 EOF
 set_block "$HOME/.bashrc" "$TMP_RC"; rm -f "$TMP_RC"
 # Voice dictation (/voice of Claude Code) and reading aloud work only with Claude Code: without it there is nothing to talk to.
-VOICE_ON=no
+VOICE_ON=no; SPEAK_ON=no
 if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then VOICE_ON=yes; fi
+if [ "$USE_SPEAK" = yes ] && [ "$USE_CLAUDE" = yes ]; then SPEAK_ON=yes; fi
 # Reading aloud reads the short version (speak-first: the summary paragraph and the last question; the guest's CLAUDE.md asks
 # Claude to write them). Set once: SPEAK_SHORT=set remembers it, so `rootbridge voice speak all` stays your choice.
-if [ "$VOICE_ON" = yes ] && [ -z "$(cfg_get SPEAK_SHORT)" ]; then
+if [ "$SPEAK_ON" = yes ] && [ -z "$(cfg_get SPEAK_SHORT)" ]; then
     # mktemp + mv replaces a link instead of writing through it; only a switch that is in place is remembered
     if mkdir -p "$BRIDGE_DIR" && tmp="$(mktemp "$BRIDGE_DIR/.speak-first.XXXXXX")" && mv -fT "$tmp" "$BRIDGE_DIR/speak-first"; then
         cfg_set SPEAK_SHORT set "Vorlesen: nur die Kurzfassung (die ganze Antwort: rootbridge voice speak all)"
@@ -684,14 +704,14 @@ if [ "$DO_WIDGETS" = 1 ]; then
             say "  Icon: $icon"
         fi
     done
-    # reading aloud (voice): two widgets in tasks/, which Termux:Widget runs in the background (no terminal opens)
+    # reading aloud: two widgets in tasks/, which Termux:Widget runs in the background (no terminal opens)
     for pair in "speak:Vorlesen" "speak-stop:Stopp"; do
         src="${pair%%:*}"; name="${pair#*:}"
-        if [ "$VOICE_ON" = yes ]; then
+        if [ "$SPEAK_ON" = yes ]; then
             inst "$REPO/termux/shortcuts/$src" "$SC/tasks/$name"
         elif [ -f "$SC/tasks/$name" ] && grep -q 'rootbridge voice speak' "$SC/tasks/$name" 2>/dev/null; then
             rm -f "$SC/tasks/$name"
-            say "  Widget entfernt: tasks/$name (Sprache abgewählt)"
+            say "  Widget entfernt: tasks/$name (Vorlesen abgewählt)"
         fi
     done
 else
@@ -701,9 +721,52 @@ if [ "$DO_BOOT" = 1 ] && [ -d "$HOME/.termux/boot" ]; then
     inst "$REPO/termux/boot/10-rootbridge.sh" "$HOME/.termux/boot/10-rootbridge.sh"
 fi
 
-say "== Sprache (/voice) und Seitentaste"
-if [ "$VOICE_ON" = yes ]; then
-    # PulseAudio in Termux: the guest records from it (sox in the guest, PULSE_SERVER=127.0.0.1)
+# pa_daemon_conf: reading aloud only: ~/.config/pulse/daemon.conf with allow-module-loading = no, so also a PulseAudio that
+# starts by itself (autospawn of a client) gives the guest, which has the cookie, no way to load the microphone source.
+# Only when the setting is missing it is added, right after our marker (also to a daemon.conf of your own; with a backup).
+# Otherwise just that pair goes again (a setting of your own stays); lines of your own stay (with a backup), and the file
+# goes only when nothing else is left.
+PA_MARK="# termux-rootbridge voice: reading aloud only, no microphone (installed by install.sh)"
+pa_daemon_conf() {
+    local dc="$HOME/.config/pulse/daemon.conf" tmp
+    if [ "$VOICE_ON" != yes ] && [ "$SPEAK_ON" = yes ]; then
+        tmp="$(mktemp)" || die "keine temporäre Datei für $dc"
+        if [ -e "$dc" ]; then cp "$dc" "$tmp" || die "$dc ließ sich nicht lesen"; fi
+        grep -qx 'allow-module-loading = no' "$tmp" || printf '%s\n' "$PA_MARK" 'allow-module-loading = no' >> "$tmp"
+        local rc=0
+        put_data "$tmp" "$dc" 644 || rc=$?
+        rm -f "$tmp"
+        # without the restriction a server a client starts by itself would let the guest load the microphone
+        [ "$rc" != 2 ] || die "$dc ließ sich nicht schreiben; ohne die Sperre hätte der Gast das Mikrofon. Erneut: bash install.sh"
+    elif grep -qs 'termux-rootbridge voice' "$dc"; then
+        local rc=0
+        tmp="$(mktemp)" || { say "  Hinweis: $dc bleibt (keine temporäre Datei)"; return 0; }
+        # our pair only: the marker and the setting right after it
+        awk '/^# termux-rootbridge voice/ { ours = 1; next } ours && $0 == "allow-module-loading = no" { ours = 0; next }
+             { ours = 0; print }' "$dc" > "$tmp" || rc=2
+        if [ "$rc" -gt 1 ]; then   # an error (a full disk): the file stays as it is
+            rm -f "$tmp"
+            say "  Hinweis: $dc ließ sich nicht lesen oder abschreiben und bleibt (die Sperre für nur Vorlesen darin)"
+            return 0
+        fi
+        if grep -q '[^[:space:]]' "$tmp"; then
+            put_data "$tmp" "$dc" 644 || true   # with a backup
+            say "  $dc: die Sperre für nur Vorlesen entfernt, deine Zeilen bleiben"
+        else
+            rm -f "$dc"
+            say "  entfernt: $dc (die Sperre für nur Vorlesen)"
+        fi
+        rm -f "$tmp"
+        # a server running with that restriction (also one a client started by itself) cannot load the microphone: anew
+        if [ "$VOICE_ON" = yes ]; then
+            { "$PREFIX/bin/rootbridge" voice stop && "$PREFIX/bin/rootbridge" voice start; } >/dev/null \
+                || say "  Hinweis: PulseAudio ließ sich nicht neu starten (rootbridge voice stop, dann voice start)"
+        fi
+    fi
+}
+say "== Sprache (/voice), Vorlesen und Tasten"
+if [ "$VOICE_ON" = yes ] || [ "$SPEAK_ON" = yes ]; then
+    # PulseAudio in Termux: the guest records from it and plays through it (sox in the guest, PULSE_SERVER=127.0.0.1)
     if [ ! -x "$PREFIX/bin/pulseaudio" ]; then
         if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; then
             say "  pkg install -y pulseaudio"
@@ -717,15 +780,72 @@ if [ "$VOICE_ON" = yes ]; then
         fi
     fi
     # PulseAudio configuration: Termux' own default.pa plus the microphone and the local socket. A default.pa of your own stays.
+    # the restriction for reading aloud only first: a server that starts meanwhile (a restart below, or one a client starts by
+    # itself) already has it
+    pa_daemon_conf
     PA_FILE="$HOME/.config/pulse/default.pa"
     if [ -e "$PA_FILE" ] && ! grep -q 'termux-rootbridge voice' "$PA_FILE" 2>/dev/null; then
         say "  $PA_FILE ist deine eigene Datei und bleibt unverändert (ohne die Zeilen aus termux/pulse/default.pa kein Mikrofon)"
     else
         TMP_PA="$(mktemp)"
         sed "s|@PREFIX@|$PREFIX|g" "$REPO/termux/pulse/default.pa" > "$TMP_PA"
-        put_data "$TMP_PA" "$PA_FILE" 644 || true
+        # reading aloud only: no microphone source (it would record whenever Termux has the permission). Also one that
+        # Termux' own default.pa may load goes, right after it and before the listener for the guest opens.
+        if [ "$VOICE_ON" != yes ]; then
+            sed -i -e '/module-sles-source\|OpenSL_ES_source/d' \
+                -e 's|^\.nofail$|.nofail\n# reading aloud only: no source for recording, also none of the include above\nunload-module module-sles-source\nunload-module module-aaudio-source|' "$TMP_PA"
+        fi
+        pa_rc=0
+        put_data "$TMP_PA" "$PA_FILE" 644 || pa_rc=$?   # 0 written, 1 unchanged, 2 failed (then no restart)
         rm -f "$TMP_PA"
+        # reading aloud only must not go on with an older default.pa that loads the microphone
+        if [ "$pa_rc" = 2 ] && [ "$VOICE_ON" != yes ]; then
+            die "$PA_FILE ließ sich nicht schreiben; ohne sie hätte der Gast das Mikrofon. Nichts umgestellt, erneut: bash install.sh"
+        fi
+        # a server that runs already keeps the setup it started with (the listener for the guest, the microphone): anew
+        if [ "$pa_rc" = 0 ] && "$PREFIX/bin/rootbridge" voice status 2>/dev/null | grep -q 'PulseAudio: *läuft'; then
+            { "$PREFIX/bin/rootbridge" voice stop && "$PREFIX/bin/rootbridge" voice start; } >/dev/null \
+                || say "  Hinweis: PulseAudio ließ sich nicht neu starten (rootbridge voice stop, dann voice start)"
+        fi
     fi
+    # reading aloud only: a running PulseAudio may still have the microphone of before. voice_start finds every server of
+    # Termux (also one whose pid file is gone), keeps exactly one and starts it anew without a source for recording. With our
+    # default.pa a source for recording still there (any source but the monitors of the outputs) ends the installation:
+    # the guest would have the microphone; with one of your own it is a note.
+    if [ "$VOICE_ON" != yes ] && [ -x "$PREFIX/bin/pulseaudio" ]; then
+        "$PREFIX/bin/rootbridge" voice start >/dev/null || say "  Hinweis: PulseAudio startet nicht (rootbridge voice start)"
+        if ! sources="$(pactl list short sources 2>/dev/null)"; then
+            say "  Hinweis: ob PulseAudio das Mikrofon noch geladen hat, ließ sich nicht prüfen (pactl). Sicher aus:  rootbridge voice stop"
+        elif cut -f2 <<< "$sources" | grep -qv '\.monitor$'; then
+            if grep -qs 'termux-rootbridge voice' "$PA_FILE"; then
+                # the guest must not keep that server
+                if "$PREFIX/bin/rootbridge" voice stop >/dev/null 2>&1; then
+                    die "PulseAudio hatte trotz nur Vorlesen eine Quelle zum Aufnehmen geladen und ist beendet (rootbridge voice status)"
+                fi
+                die "PulseAudio hat trotz nur Vorlesen eine Quelle zum Aufnehmen geladen und ließ sich NICHT beenden; der Gast könnte noch aufnehmen: pulseaudio --kill"
+            fi
+            say "  Hinweis: deine eigene $PA_FILE lädt eine Quelle zum Aufnehmen (nur Vorlesen)"
+        else
+            say "  Mikrofon: aus (nur Vorlesen)"
+        fi
+    fi
+else
+    say "  übersprungen ($([ "$USE_CLAUDE" = yes ] && echo '--no-voice, --no-speak' || echo 'ohne Claude Code gibt es kein /voice'))"
+    # neither: our PulseAudio setup goes (the listener for the guest first, and the server that has it), then the restriction
+    pa="$HOME/.config/pulse/default.pa"
+    if grep -qs 'termux-rootbridge voice' "$pa"; then
+        if cp -p "$pa" "$pa.bak-$STAMP"; then   # also yours, should you have changed ours: removed only with its backup
+            "$PREFIX/bin/rootbridge" voice stop >/dev/null 2>&1 \
+                || say "  Hinweis: PulseAudio ließ sich nicht beenden (rootbridge voice stop)"
+            rm -f "$pa"
+            say "  entfernt: $pa (weder Vorlesen noch Spracheingabe; Sicherung: $pa.bak-$STAMP)"
+        else
+            say "  Hinweis: $pa ließ sich nicht sichern und bleibt (von Hand entfernen)"
+        fi
+    fi
+    pa_daemon_conf
+fi
+if [ "$VOICE_ON" = yes ]; then
     # Android's microphone permission for Termux (root). Only on a terminal, where the root manager can ask you; a pipe or a
     # script run never starts a root command by itself.
     if [ "$DO_SETUP" = 1 ] && { [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; }; then
@@ -740,8 +860,6 @@ if [ "$VOICE_ON" = yes ]; then
     else
         say "  Mikrofon-Berechtigung: einmal von Hand   rootbridge voice grant   (braucht Root; PulseAudio startet mit der Sitzung)"
     fi
-else
-    say "  übersprungen ($([ "$USE_CLAUDE" = yes ] && echo '--no-voice' || echo 'ohne Claude Code gibt es kein /voice'))"
 fi
 # Home key: Termux as the digital assistant (root), on every run: "Force stop" in the app info takes the role away. Taken back
 # when the key was on before this run, or always with --no-home-key (also without voice, also a role set by hand), and when
@@ -890,8 +1008,10 @@ if [ "$DO_GUEST" = 1 ]; then
             [ -e "$GROOT/usr/bin/git" ] || return 1
             [ -e "$GROOT/usr/bin/bwrap" ] || return 1
         fi
-        if [ "$VOICE_ON" = yes ]; then
-            [ -e "$GROOT/usr/bin/rec" ] || return 1      # sox: Claude Code records through it
+        if [ "$VOICE_ON" = yes ] || [ "$SPEAK_ON" = yes ]; then
+            [ -e "$GROOT/usr/bin/rec" ] || return 1      # sox: Claude Code records through it, the guest plays through it
+        fi
+        if [ "$SPEAK_ON" = yes ]; then
             [ -e "$GROOT/opt/piper/bin/piper" ] || return 1   # Piper reads the answers aloud
             [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx" ] || return 1
             [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx.json" ] || return 1
@@ -907,11 +1027,11 @@ if [ "$DO_GUEST" = 1 ]; then
     if [ "$DO_SETUP" = 1 ] && ! guest_ready; then
         say "  Gast: Voraussetzungen, Claude Code und Codex einrichten (Claude Code: $USE_CLAUDE, Codex: $USE_CODEX)"
         proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/setup-guest.sh \
-            --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" \
+            --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --speak "$SPEAK_ON" \
             || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh"
         SETUP_DID=1
     fi
-    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --codex-bypass "$USE_BYPASS" --guidelines "$USE_GUIDE")
+    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --speak "$SPEAK_ON" --codex-bypass "$USE_BYPASS" --guidelines "$USE_GUIDE")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
     if [ "$MODEL_SET" = 1 ]; then GUEST_ARGS+=(--model "$MODEL"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
@@ -979,9 +1099,11 @@ fi
 if [ "$USE_CODEX" = yes ] && [ "$USE_BYPASS" = yes ]; then
     say "Codex läuft ohne eigene Sandbox (unter proot scheitert sie; aus mit --no-codex-bypass). Android-Root bekommt es nur, wenn du die Rückfrage in Termux bestätigst."
 fi
+if [ "$SPEAK_ON" = yes ]; then
+    say "Vorlesen: Claudes Antworten liest Piper vor, mit deiner eigenen Stimme nach 'rootbridge-speak --record' im Gast; aus/an mit dem Widget 'Vorlesen' oder 'rootbridge voice speak off|on', sofort still mit 'Stopp'; beim Sprechen (ptt, /voice) pausiert es. Sprachbefehle: 'Welche Sprachbefehle gibt es'."
+fi
 if [ "$VOICE_ON" = yes ]; then
     say "Sprache: /voice in Claude Code (Alt+K; ptt folgt dem Modus hold oder tap); 'ptt start' / 'ptt stop' bedienen die Taste für dich (rootbridge voice status prüft das Mikrofon)."
-    say "Vorlesen: Claudes Antworten liest Piper vor, mit deiner eigenen Stimme nach 'rootbridge-speak --record' im Gast; aus/an mit dem Widget 'Vorlesen' oder 'rootbridge voice speak off|on', sofort still mit 'Stopp'; beim Sprechen (ptt, /voice) pausiert es."
     if [ "$USE_SIDEKEY" = yes ]; then
         say "Seitentaste: Langdruck = aufnehmen, loslassen = stoppen. In den E-Ink-Einstellungen den Langdruck auf 'Nothing' stellen."
     fi

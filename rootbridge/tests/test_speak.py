@@ -573,6 +573,13 @@ class TestPlayer(unittest.TestCase):
         self.assertNotIn("Gespeichert", out)
         self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"]))
 
+    def test_without_a_microphone_no_recording_and_no_offer(self):
+        nomic = os.path.join(self.tmp.name, "no-microphone")
+        open(nomic, "w").close()
+        r = self.run_speak(["--record"], RB_SPEAK_NO_MICROPHONE=nomic, RB_SPEAK_REC=os.path.join(self.tmp.name, "gibt-es-nicht"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("bash install.sh --voice", r.stderr.decode())
+
     def test_offer_is_silent_with_a_voice_or_without_articulino(self):
         self.assertEqual(self.offer("j", voice=True)[1], "")
         self.assertEqual(self.offer("j", articulino=False)[1], "")

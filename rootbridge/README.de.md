@@ -126,14 +126,17 @@ Termux-Zusatztastenleiste hinzufügt, siehe unten).
 ohne Rückfrage durch. Jede Frage kommt in einer interaktiven Termux-Shell nur einmal, die Antwort steht danach in der
 Termux-Konfiguration, und die passende Option ändert sie später: Claude Code (`--claude`/`--no-claude`), Codex
 (`--codex`/`--no-codex`; sind beide installiert, prüft Codex jeden Commit von Claude Code), der Gerätename
-(`--remote-name NAME`), die Tasten für Push to Talk und der **Phantom Process Killer** von Android
+(`--remote-name NAME`), **Vorlesen** (`--speak`/`--no-speak`) und **Spracheingabe** (`--voice`/`--no-voice`) getrennt,
+die Tasten für Push to Talk (nur mit Spracheingabe) und der **Phantom Process Killer** von Android
 (`--phantom-killer-off`/`--phantom-killer-on`, braucht Root). Dieser beendet die Kindprozesse einer App über 32
 („Trimming phantom processes“), darunter tmux mit den Sitzungen. Abgeschaltet setzt der Installer bei jedem Lauf per Root
 `rootbridge phantom-killer off` (ein Android-Update kann es zurücksetzen). Damit Android das nicht von selbst zurückdreht,
 hält es dabei das Nachladen von Systemeinstellungen aus der Ferne an (`device_config`), für das ganze Telefon; `on` hebt
 das wieder auf; `rootbridge phantom-killer on|status` gibt es
 auch von Hand. Ohne Root: Entwickleroptionen, „Beschränkungen für untergeordnete Prozesse deaktivieren“. Was Root
-braucht, steht in der Frage dabei.
+braucht, steht in der Frage dabei. Bei **nur Vorlesen** öffnet PulseAudio kein Mikrofon, und der Gast kann keins laden
+(Module lassen sich nicht nachladen). Mithören kann er aber, was Termux-Programme über PulseAudio abspielen, also praktisch
+nur das eigene Vorlesen; Android-Apps wie Musik-Player spielen nicht darüber.
 
 Optionen: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`, `--no-widgets`, `--no-extra-keys`, `--autonomous yes|no|ask`, `--model NAME|none`, `--remote-name NAME`,
 `--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`, `--no-claude-update`, `--codex-update 6h|<N>h|daily|always|off`, `--no-codex-update`, `--no-claude`, `--no-codex` (`--claude` / `--codex` schalten ein Programm wieder an, siehe [Codex neben Claude Code](#codex-neben-claude-code)). Der Installer ist idempotent, sichert Geändertes und migriert die

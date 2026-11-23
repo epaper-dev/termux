@@ -166,6 +166,8 @@ RECORD_SECONDS = 12         # Articulino uses the first 8 s after the silence
 MIN_VOICE_SECONDS = 3
 PIPER_WORKER_ARG = "--piper-worker"   # speak.py with the Python of Piper: the voice loaded once, the audio sentence by sentence
 FRAME = struct.Struct(">I")          # what --piper-worker writes before the audio of a sentence: its length
+NO_MICROPHONE = os.environ.get("RB_SPEAK_NO_MICROPHONE",   # install-guest.sh puts it there for reading aloud only
+                               os.path.join(os.path.dirname(os.path.abspath(__file__)), "no-microphone"))
 RUN_ARG = "--run"   # the player process; Termux recognises it by "speak.py --run" in its command line
 PAUSES_ARG = "pauses"   # last on its command line: this player pauses itself for a recording (rb_speak_hold in Termux)
 
@@ -774,7 +776,12 @@ def run(ticket, mark):
 
 def record():
     """--record: your voice for Articulino, RECORD_SECONDS from the microphone; silence at both ends cut, the level
-    evened out. The old recording stays when the new one is shorter than MIN_VOICE_SECONDS."""
+    evened out. The old recording stays when the new one is shorter than MIN_VOICE_SECONDS. Without dictation (reading
+    aloud only) PulseAudio has no microphone: a note instead."""
+    if os.path.exists(NO_MICROPHONE):
+        print("Ohne Spracheingabe gibt es kein Mikrofon für die Aufnahme. In Termux einschalten: bash install.sh --voice",
+              file=sys.stderr)
+        return 1
     mark_stopped()   # the waiting texts too: none may play into the microphone
     stop()
     os.makedirs(os.path.dirname(VOICE_SAMPLE), exist_ok=True)
@@ -803,8 +810,9 @@ def record():
 
 def offer_record():
     """--offer-record: after a new installation Articulino is there but the voice is not; ask for it before Claude Code
-    starts. Silent without a terminal, with a voice, without Articulino, or after "nie"; never fails the start."""
-    if (os.path.exists(VOICE_SAMPLE) or os.path.exists(NEVER_RECORD)
+    starts. Silent without a terminal, with a voice, without Articulino or a microphone, or after "nie"; never fails the
+    start."""
+    if (os.path.exists(VOICE_SAMPLE) or os.path.exists(NEVER_RECORD) or os.path.exists(NO_MICROPHONE)
             or not os.path.isdir(os.path.join(ARTICULINO, "model")) or not sys.stdin.isatty()):
         return 0
     print("Articulino ist installiert, aber deine Stimme fehlt noch; bis dahin liest Piper vor.")

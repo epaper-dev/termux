@@ -33,6 +33,8 @@
 #                     UserPromptSubmit ends it when the prompt is a stop sentence like "Beende die Sprachausgabe"), and a
 #                     text in our block of ~/.claude/CLAUDE.md (templates/speech.claude.md: summary first, questions last, for
 #                     the short version read aloud). no removes the command, the hooks and that text again.
+#   --speak yes|no    reading aloud on its own (default: as --voice): the speech output above (rootbridge-speak, the three
+#                     hooks, the text in CLAUDE.md) goes with --speak, --voice keeps the dictation (keybindings, "voice").
 #   --autonomous      yes (default): write skipDangerousModePermissionPrompt into ~/.claude/settings.json
 #                     (no warning dialog for bypass mode) and, if settings.json has no default mode yet,
 #                     permissions.defaultMode = bypassPermissions (Claude Code starts in bypass mode; every
@@ -71,7 +73,7 @@ MODEL=opusplan; MODEL_SET=0
 APT_MODE=""; APT_MODE_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
-CLAUDE_ON=""; CODEX_ON=""; VOICE_ON=yes; BYPASS_ON=""; GUIDE_ON=""
+CLAUDE_ON=""; CODEX_ON=""; VOICE_ON=yes; SPEAK_ON=""; BYPASS_ON=""; GUIDE_ON=""
 UNINSTALL=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -111,6 +113,9 @@ while [ $# -gt 0 ]; do
         --voice)
             [ $# -ge 2 ] || { echo "--voice braucht yes oder no" >&2; exit 2; }
             VOICE_ON="$2"; shift 2 ;;
+        --speak)
+            [ $# -ge 2 ] || { echo "--speak braucht yes oder no" >&2; exit 2; }
+            SPEAK_ON="$2"; shift 2 ;;
         --uninstall) UNINSTALL=1; shift ;;
         *) echo "unbekannte Option: $1" >&2; exit 2 ;;
     esac
@@ -151,12 +156,14 @@ case "$AUTONOMOUS" in
     yes|no|ask) ;;
     *) echo "--autonomous: ungültiger Wert '$AUTONOMOUS' (erlaubt: yes, no, ask)" >&2; exit 2 ;;
 esac
-for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON" "codex-bypass:$BYPASS_ON" "guidelines:$GUIDE_ON" "voice:$VOICE_ON"; do
+for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON" "codex-bypass:$BYPASS_ON" "guidelines:$GUIDE_ON" "voice:$VOICE_ON" "speak:$SPEAK_ON"; do
     case "${pair#*:}" in
         ""|yes|no) ;;
         *) echo "--${pair%%:*}: ungültiger Wert '${pair#*:}' (erlaubt: yes, no)" >&2; exit 2 ;;
     esac
 done
+
+SPEAK_ON="${SPEAK_ON:-$VOICE_ON}"   # reading aloud: without --speak as voice dictation (an older install.sh knows only --voice)
 
 STAMP="$(date +%Y%m%d%H%M%S)"
 LIBDIR=/usr/local/lib/termux-rootbridge
@@ -469,15 +476,23 @@ if [ "$CODEX_ON" = yes ]; then
 else
     rm -f "$ROOT$BINDIR/rootbridge-codex"
 fi
-# speech output (part of voice, Claude Code only): reads Claude's answers aloud (Piper or Articulino with speak-server.py,
-# both installed by setup-guest.sh)
-if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
+# speech output (--speak, Claude Code only): reads Claude's answers aloud (Piper or Articulino with speak-server.py, both
+# installed by setup-guest.sh)
+if [ "$SPEAK_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
     put "$SRC/claude/speak.py"       "$LIBDIR/speak.py"
     put "$SRC/claude/speak-english.txt" "$LIBDIR/speak-english.txt"
     put "$SRC/claude/speak-server.py" "$LIBDIR/speak-server.py"
     put "$SRC/bin/rootbridge-speak"  "$BINDIR/rootbridge-speak"
+    # without dictation PulseAudio has no microphone: speak.py then neither offers nor makes a recording of your voice
+    # (made in a temporary file and moved into place: mv -T replaces a link instead of writing through it)
+    if [ "$VOICE_ON" = yes ]; then
+        rm -f "$ROOT$LIBDIR/no-microphone"
+    else
+        t="$(mktemp "$ROOT$LIBDIR/.no-microphone.XXXXXX")" && mv -fT "$t" "$ROOT$LIBDIR/no-microphone"
+    fi
 else
-    rm -f "$ROOT$LIBDIR/speak.py" "$ROOT$LIBDIR/speak-english.txt" "$ROOT$LIBDIR/speak-server.py" "$ROOT$BINDIR/rootbridge-speak"
+    rm -f "$ROOT$LIBDIR/speak.py" "$ROOT$LIBDIR/speak-english.txt" "$ROOT$LIBDIR/speak-server.py" "$ROOT$BINDIR/rootbridge-speak" \
+          "$ROOT$LIBDIR/no-microphone"
 fi
 # rootbridge-hook.py hands the refusals of the Termux daemon to the agent that asked (Claude Code and Codex)
 put "$SRC/claude/rootbridge-hook.py" "$LIBDIR/rootbridge-hook.py"
@@ -712,7 +727,7 @@ mkdir -p "$ROOT$BRIDGE_DIR" 2>/dev/null || say "  Hinweis: $BRIDGE_DIR nicht anl
 if [ "$CLAUDE_ON" = yes ]; then
     templates=("$SRC/claude/managed-settings.template.json")
     [ "$CODEX_ON" = yes ] && templates+=("$SRC/claude/managed-settings.codex.template.json")
-    [ "$VOICE_ON" = yes ] && templates+=("$SRC/claude/managed-settings.voice.template.json")
+    [ "$SPEAK_ON" = yes ] && templates+=("$SRC/claude/managed-settings.voice.template.json")
     mkdir -p "$ROOT$MANAGED_DIR"
     merge_managed "$ROOT$MANAGED" "$ROOT$MANAGED.new.$$" "$PYTHON" "$LIBDIR" "${templates[@]}"
     commit_file "$ROOT$MANAGED.new.$$" "$ROOT$MANAGED"
@@ -721,7 +736,7 @@ if [ "$CLAUDE_ON" = yes ]; then
         say "  Codex-Review vor dem Commit: Hook in den Managed Settings (Notausgang: rootbridge codex-off)"
         say "  Codex-Plugin: Claude Code lädt codex@openai-codex beim Start automatisch (Netz nötig)."
     fi
-    if [ "$VOICE_ON" = yes ]; then
+    if [ "$SPEAK_ON" = yes ]; then
         say "  Vorlesen: Hook in den Managed Settings (an/aus in Termux: rootbridge voice speak on|off)"
     fi
 else
@@ -895,8 +910,8 @@ cat >> "$B.new.$$" <<EOF
 codex() { BROWSER=$BINDIR/rootbridge-open command codex "\$@"; }
 EOF
 fi
-if [ "$VOICE_ON" = yes ] && [ "$CLAUDE_ON" = yes ]; then
-# Voice: PulseAudio in Termux lets a client in only with its cookie (private to Termux; the guest shares the Termux home)
+if { [ "$VOICE_ON" = yes ] || [ "$SPEAK_ON" = yes ]; } && [ "$CLAUDE_ON" = yes ]; then
+# Voice and reading aloud: PulseAudio in Termux lets a client in only with its cookie (private to Termux; the guest shares the Termux home)
 cat >> "$B.new.$$" <<'EOF'
 [ -r /data/data/com.termux/files/home/.config/pulse/cookie ] && export PULSE_COOKIE=/data/data/com.termux/files/home/.config/pulse/cookie
 EOF
@@ -938,7 +953,7 @@ if [ "$CLAUDE_ON" = yes ]; then
         "$ROOT$HOME_DIR/.claude/settings.json" 2>/dev/null)" || lang=""
     de=""; case "$lang" in german|deutsch|de|de[-_]*) de=.de ;; esac
     [ "$GUIDE_ON" = yes ] && claude_texts+=("code-quality$de.claude.md")
-    [ "$VOICE_ON" = yes ] && claude_texts+=("speech$de.claude.md")
+    [ "$SPEAK_ON" = yes ] && claude_texts+=("speech$de.claude.md")
 fi
 [ "$GUIDE_ON" = yes ] && [ "$CODEX_ON" = yes ] && codex_texts+=(code-quality.codex.md)
 guidelines .claude/CLAUDE.md "${claude_texts[@]}"

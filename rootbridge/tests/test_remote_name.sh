@@ -105,7 +105,11 @@ ln -s "$GROOT" "$P/var/lib/proot-distro/containers/ubuntu/rootfs"
 cp "$ROOT/tests/stubs/proot-distro-guest-installer" "$T/stubs/proot-distro"
 # install.sh reloads the Termux settings after writing colors.properties: never the real one
 printf '#!/bin/bash\nexit 0\n' > "$T/stubs/termux-reload-settings"
-chmod +x "$T/stubs/proot-distro" "$T/stubs/termux-reload-settings"
+# PulseAudio: the installer may end or start it (rootbridge voice stop|start); never the real one of the device
+printf '#!/bin/bash\n[ "$1" = --check ] && exit 1\nexit 0\n' > "$T/stubs/pulseaudio"
+printf '#!/bin/bash\nexit 1\n' > "$T/stubs/pactl"
+printf '#!/bin/bash\ncase "$*" in *pulseaudio*) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v pgrep || echo false)" > "$T/stubs/pgrep"
+chmod +x "$T/stubs/proot-distro" "$T/stubs/termux-reload-settings" "$T/stubs/pulseaudio" "$T/stubs/pactl" "$T/stubs/pgrep"
 export STUB_LOG="$T/proot.log" STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$GUEST_ROOT"
 : > "$STUB_LOG"
 [ -x "$T/stubs/proot-distro" ] && [ -d "$P/bin" ] || { echo "ABBRUCH: Testumgebung unvollständig" >&2; exit 1; }
@@ -181,7 +185,7 @@ if pid == 0:
     env = os.environ.copy()
     env.update(HOME=home, PREFIX=prefix, PATH=path, ROOTBRIDGE_ALLOW_GUEST="1", BRIDGE_DIR=home+"/.rootbridge")
     os.execvpe("bash", ["bash", installer, "--no-boot", "--no-migrate", "--no-deps-check", "--no-extra-keys", "--no-setup", "--autonomous", "no",
-               "--no-sidekey", "--no-home-key", "--no-headset", *(options or ["--claude", "--codex", "--phantom-killer-on"])],
+               "--no-sidekey", "--no-home-key", "--no-headset", *(options or ["--claude", "--codex", "--phantom-killer-on", "--speak", "--voice"])],
               env)   # the key questions: test_voice.sh; the other questions: below, with options of their own
 if answers:
     os.write(master, answers.encode())
@@ -228,17 +232,19 @@ check "Codex allein: keine Claude-Namensabfrage" 0 "$(grep -c 'Gerätename \[' "
 # the question block: all questions before anything is installed, each answer stored, asked only once
 H="$T/questions-home"; mkdir -p "$H"
 CFG="$H/.config/termux-rootbridge/config"
-rinstall_tty $'\nn\nn\nlumi\n' --no-sidekey
+rinstall_tty $'\nn\nn\n\nn\nlumi\n' --no-sidekey   # Claude Enter, Codex n, Phantom n, Vorlesen Enter, Spracheingabe n
 check "Fragen: Installer erfolgreich" 0 "$?"
 check "Fragen: Claude Code, Codex, Phantom Killer gespeichert" "on off on" \
     "$(for k in TOOL_CLAUDE TOOL_CODEX PHANTOM_KILLER; do sed -n "s/^$k=//p" "$CFG"; done | tr '\n' ' ' | sed 's/ $//')"
 check "Fragen: Gerätename gespeichert" 'REMOTE_NAME=lumi' "$(grep '^REMOTE_NAME=' "$CFG")"
+check "Fragen: Vorlesen an, Spracheingabe aus" "on off" "$(for k in SPEAK VOICE; do sed -n "s/^$k=//p" "$CFG"; done | tr '\n' ' ' | sed 's/ $//')"
+check "Fragen: Vorlesen ohne Spracheingabe an den Gast" 1 "$(grep -c -- '--voice no --speak yes' "$STUB_LOG")"
 q_line="$(grep -n 'Codex installieren' "$T/prompt.log" | head -1 | cut -d: -f1)"
 p_line="$(grep -n '== 1/5 Programme' "$T/prompt.log" | head -1 | cut -d: -f1)"
 check "Fragen: kommen vor der Installation" ja "$([ -n "$q_line" ] && [ -n "$p_line" ] && [ "$q_line" -lt "$p_line" ] && echo ja || echo nein)"
 check "Fragen: Codex abgewählt, nicht an den Gast" 1 "$(grep -c -- '--codex no' "$STUB_LOG")"
 rinstall_tty '' --no-sidekey
-check "Fragen: zweiter Lauf fragt nichts" 0 "$(grep -c 'installieren?\|Phantom Process Killer von Android abschalten\|Gerätename \[' "$T/prompt.log")"
+check "Fragen: zweiter Lauf fragt nichts" 0 "$(grep -c 'installieren?\|Phantom Process Killer von Android abschalten\|Gerätename \[\|Vorlesen: Claudes Antworten vorlesen lassen\|Spracheingabe: Claude' "$T/prompt.log")"
 check "Fragen: zweiter Lauf behält Codex abgewählt" 'TOOL_CODEX=off' "$(grep '^TOOL_CODEX=' "$CFG")"
 
 echo

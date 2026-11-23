@@ -227,6 +227,12 @@ status_codex() {
 VOICE_SOURCE="OpenSL_ES_source"
 voice_running() { pulseaudio --check >/dev/null 2>&1; }
 voice_source() { pactl list short sources 2>/dev/null | grep -q "$VOICE_SOURCE"; }
+voice_load_source() {
+    pactl load-module module-sles-source >/dev/null 2>&1 && pactl set-source-volume "$VOICE_SOURCE" 131072 >/dev/null 2>&1
+}
+# mic_state: 0 a source for recording is loaded (any source but the monitors of the outputs), 1 none, 2 PulseAudio could
+# not be asked
+mic_state() { local l; l="$(pactl list short sources 2>/dev/null)" || return 2; cut -f2 <<< "$l" | grep -qv '\.monitor$'; }
 # voice_pids: the PulseAudio servers of Termux itself, one pid per line. A process of that name in the guest runs under proot,
 # which traces it (TracerPid in /proc/<pid>/status): that one is not ours and stays. Fails when pgrep fails (1 is "none") or
 # the status of a process that still exists cannot be read (a pid that is gone meanwhile is skipped).
@@ -249,6 +255,7 @@ voice_pids() {
 # after 2 s and SIGKILL, or when they cannot be listed.
 voice_end_all() {
     local pids
+    rm -f "$HOME/.cache/rootbridge-pulse-playback-only"   # that server goes: its note for the guest's cookie too
     pids="$(voice_pids)" || return 1
     pulseaudio --kill >/dev/null 2>&1
     # shellcheck disable=SC2086   # a list of pids
@@ -270,21 +277,58 @@ voice_end_all() {
 # in default.pa) and keeps Android's microphone on (seen on the A9: three servers). So more than one server, or one that
 # --check does not know, means: end them all, then start one.
 voice_start() {
-    local pids n=0
+    local pids n=0 restart=no st=0 playback="$HOME/.cache/rootbridge-pulse-playback-only"
     command -v pulseaudio >/dev/null 2>&1 || return 0
     # when the servers cannot be listed, nothing is ended (as before: --check decides)
     if pids="$(voice_pids)"; then n="$(printf '%s' "$pids" | grep -c .)"; fi
-    if [ "$n" -gt 1 ] || { [ "$n" -gt 0 ] && ! voice_running; }; then
+    # Reading aloud only: the guest gets the cookie of PulseAudio, and with it could load the microphone source again. So the
+    # server runs with module loading shut (--disallow-module-loading); which server that is stays in a file only Termux sees.
+    # A server that is not that one (one from when dictation was on) starts anew; with dictation on again, one without it.
+    if [ "$n" -gt 0 ]; then
+        if [ "$VOICE" != on ] && [ "$pids" != "$(cat "$playback" 2>/dev/null)" ]; then restart=yes; fi
+        if [ "$VOICE" = on ] && [ -s "$playback" ]; then restart=yes; fi
+    fi
+    if [ "$n" -gt 1 ] || { [ "$n" -gt 0 ] && ! voice_running; } || [ "$restart" = yes ]; then
         if ! voice_end_all; then   # no further server next to it: the session starts without the microphone
             echo "rootbridge: PulseAudio-Server lassen sich nicht beenden ($(voice_pids | tr '\n' ' '))" >&2
-            return 0
+            rm -f "$playback"   # not verified for reading aloud only: the guest gets no cookie (rb_login_opts)
+            return 1
         fi
     fi
-    voice_running || pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 || return 0
-    # the source is missing when Android's microphone permission was not there at the first start
-    if command -v pactl >/dev/null 2>&1 && ! voice_source; then
-        pactl load-module module-sles-source >/dev/null 2>&1 \
-            && pactl set-source-volume "$VOICE_SOURCE" 131072 >/dev/null 2>&1
+    if [ "$VOICE" != on ]; then
+        if ! voice_running; then
+            pulseaudio --start --exit-idle-time=-1 --disallow-module-loading >/dev/null 2>&1 \
+                || { echo "rootbridge: PulseAudio startet nicht (nur Vorlesen; siehe pulseaudio -v)" >&2; return 1; }
+            mkdir -p "$(dirname "$playback")" && voice_pids > "$playback"
+        fi
+    else
+        rm -f "$playback"
+        voice_running || pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 \
+            || { echo "rootbridge: PulseAudio startet nicht (siehe pulseaudio -v)" >&2; return 1; }
+    fi
+    command -v pactl >/dev/null 2>&1 || return 0
+    if [ "$VOICE" != on ]; then
+        # the microphone source comes only from a default.pa: ours has none for reading aloud only; one of your own may
+        mic_state || st=$?
+        if [ "$st" = 2 ]; then
+            echo "rootbridge: ob PulseAudio das Mikrofon geladen hat, ließ sich nicht prüfen (nur Vorlesen)" >&2
+        elif [ "$st" = 0 ] && ! grep -qs 'termux-rootbridge voice' "$HOME/.config/pulse/default.pa"; then
+            echo "rootbridge: deine eigene PulseAudio-Konfiguration lädt das Mikrofon (nur Vorlesen)" >&2
+        elif [ "$st" = 0 ]; then
+            # with our default.pa it must not be: the guest would have the microphone; the server goes (no reading aloud)
+            rm -f "$playback"
+            if voice_end_all; then
+                echo "rootbridge: PulseAudio hatte das Mikrofon geladen, obwohl nur vorgelesen wird; beendet (bash install.sh)" >&2
+            else
+                echo "rootbridge: PulseAudio hat das Mikrofon geladen, obwohl nur vorgelesen wird, und ließ sich NICHT beenden: pulseaudio --kill" >&2
+            fi
+            return 1
+        fi
+    elif ! voice_source; then
+        # the source is missing when Android's microphone permission was not there at the first start (a server that cannot
+        # load modules, from reading aloud only, the installer restarts when it switches dictation on)
+        voice_load_source || true
+        voice_source || echo "rootbridge: PulseAudio hat kein Mikrofon (Berechtigung? rootbridge voice grant)" >&2
     fi
     return 0
 }
@@ -380,7 +424,7 @@ voice_speak() {
 
 cmd_voice() {
     case "${1:-}" in
-        start)  voice_start; voice_status ;;
+        start)  local rc=0; voice_start || rc=$?; voice_status; return "$rc" ;;
         stop)   voice_end_all || die "PulseAudio läuft noch oder pgrep schlug fehl: $(voice_pids | tr '\n' ' ')"; echo "PulseAudio gestoppt." ;;
         status) voice_status ;;
         grant)  voice_grant ;;
@@ -411,9 +455,9 @@ keys_start() {
     return 0
 }
 
-# what runs next to a session: the microphone (VOICE=on) and the key readers (SIDEKEY=on, HEADSET=on)
+# what runs next to a session: PulseAudio (VOICE=on or SPEAK=on) and the key readers (SIDEKEY=on, HEADSET=on)
 extras_start() {
-    if [ "$VOICE" = on ]; then voice_start; fi
+    if rb_audio; then voice_start || true; fi   # the session starts anyway (voice_start said why)
     keys_start
 }
 
@@ -450,13 +494,13 @@ cmd_status() {
     else
         echo "Gast ($DISTRO):    nicht gefunden"
     fi
-    if [ "$VOICE" = on ]; then
-        echo "Sprache (/voice):"
+    if rb_audio; then
+        echo "Sprache (/voice, Vorlesen):"
         voice_status | sed 's/^/  /'
         command -v ptt >/dev/null 2>&1 && echo "  ptt:           ok" || echo "  ptt:           FEHLT"
         voice_speak status | sed 's/^Vorlesen: /  Vorlesen:      /'
     else
-        echo "Sprache:      nicht Teil der Installation (--no-voice)"
+        echo "Sprache:      nicht Teil der Installation (--no-voice, --no-speak)"
     fi
     for reader in $(key_readers); do
         if pgrep -f "$reader" >/dev/null 2>&1; then echo "Tasten:       $reader läuft"; else echo "Tasten:       $reader gestoppt (rootbridge start)"; fi
