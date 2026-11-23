@@ -148,7 +148,30 @@ TAIL_BYTES = 512 * 1024   # the newest note stands near the end of the transcrip
 WAIT_SECONDS = 2          # how long --progress waits for its tool call (and the note before it) to reach the transcript
 PIPER_PYTHON = os.environ.get("RB_SPEAK_PIPER_PYTHON", "/opt/piper/bin/python3")   # the venv of Piper: --piper-worker
 PLAY = os.environ.get("RB_SPEAK_PLAY", "play")
-VOICE = os.environ.get("PIPER_VOICE", "/opt/piper/voices/de_DE-kerstin-medium.onnx")
+LANGUAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "language")   # install-guest.sh: de or en
+
+
+def language():
+    """The language to read in: RB_SPEAK_LANGUAGE, else the file install-guest.sh writes, else German."""
+    lang = os.environ.get("RB_SPEAK_LANGUAGE", "")
+    if not lang:
+        try:
+            with open(LANGUAGE_FILE, encoding="ascii") as fh:
+                lang = fh.read(8).strip()
+        except (OSError, ValueError):
+            pass
+    return lang if lang in ("de", "en") else "de"
+
+
+LANGUAGE = language()
+PIPER_VOICES = os.environ.get("RB_SPEAK_PIPER_VOICES", "/opt/piper/voices")
+GERMAN_VOICE = os.path.join(PIPER_VOICES, "de_DE-kerstin-medium.onnx")
+ENGLISH_VOICE = os.path.join(PIPER_VOICES, "en_US-lessac-medium.onnx")
+VOICE = os.environ.get("PIPER_VOICE", "")   # a voice of your own: as it is (a missing one is reported)
+if not VOICE:
+    VOICE = ENGLISH_VOICE if LANGUAGE == "en" else GERMAN_VOICE
+    if not os.path.exists(VOICE) and os.path.exists(GERMAN_VOICE):
+        VOICE = GERMAN_VOICE   # the English voice not loaded yet (install.sh --no-setup): the German one rather than none
 PULSE_COOKIE = "/data/data/com.termux/files/home/.config/pulse/cookie"
 LOG = os.environ.get("RB_SPEAK_LOG", os.path.expanduser("~/.cache/rootbridge-speak.log"))
 PROC = os.environ.get("RB_SPEAK_PROC", "/proc")
@@ -158,7 +181,9 @@ VOICE_SAMPLE = os.environ.get("RB_SPEAK_VOICE_SAMPLE", os.path.expanduser("~/.lo
 NEVER_RECORD = os.path.join(os.path.dirname(VOICE_SAMPLE), "voice-never")   # "nie" to --offer-record
 OFFER_SECONDS = float(os.environ.get("RB_SPEAK_OFFER_SECONDS", 60))   # --offer-record: no answer, Claude Code starts
 SERVER = os.environ.get("RB_SPEAK_SERVER", os.path.join(os.path.dirname(os.path.abspath(__file__)), "speak-server.py"))
-SOCKET = os.environ.get("RB_SPEAK_SOCKET", os.path.expanduser("~/.cache/rootbridge-speak.sock"))
+# -2: the protocol with the language first (\x01<language>\n); a server of before still running (it ends after half an hour
+# idle) is not asked, it would read that line as text
+SOCKET = os.environ.get("RB_SPEAK_SOCKET", os.path.expanduser("~/.cache/rootbridge-speak-2.sock"))
 REC = os.environ.get("RB_SPEAK_REC", "rec")
 SERVER_RATE = 24000         # what speak-server.py sends
 SERVER_START_SECONDS = float(os.environ.get("RB_SPEAK_SERVER_START", 30))   # loading takes about 5 s on the A9
@@ -166,6 +191,8 @@ RECORD_SECONDS = 12         # Articulino uses the first 8 s after the silence
 MIN_VOICE_SECONDS = 3
 PIPER_WORKER_ARG = "--piper-worker"   # speak.py with the Python of Piper: the voice loaded once, the audio sentence by sentence
 FRAME = struct.Struct(">I")          # what --piper-worker writes before the audio of a sentence: its length
+NO_MICROPHONE = os.environ.get("RB_SPEAK_NO_MICROPHONE",   # install-guest.sh puts it there for reading aloud only
+                               os.path.join(os.path.dirname(os.path.abspath(__file__)), "no-microphone"))
 RUN_ARG = "--run"   # the player process; Termux recognises it by "speak.py --run" in its command line
 PAUSES_ARG = "pauses"   # last on its command line: this player pauses itself for a recording (rb_speak_hold in Termux)
 
@@ -230,7 +257,10 @@ def summary(text):
 def english(text, articulino=False):
     """text with the words of the list ENGLISH replaced by what Piper should read: phonemes in [[...]] or a German spelling.
     A line of the list: the word as written (case matters), a tab, the replacement; # starts a comment. No list, no change.
-    For Articulino a word with phonemes becomes [en]word[/en] (it reads letters, the English ones in English)."""
+    For Articulino a word with phonemes becomes [en]word[/en] (it reads letters, the English ones in English). Only for
+    German: an English voice reads English words as they are."""
+    if LANGUAGE != "de":
+        return text
     words = {}
     try:
         with open(ENGLISH, encoding="utf-8") as fh:
@@ -521,7 +551,9 @@ def read_all(conn):
 def articulino(conn, text):
     """The audio of one sentence from speak-server.py (b"" when none came)."""
     with conn:
-        conn.sendall(english(text, articulino=True).encode("utf-8"))
+        # a language other than German goes first, on a line of its own after \x01 (speak-server.py)
+        head = b"" if LANGUAGE == "de" else b"\x01" + LANGUAGE.encode() + b"\n"
+        conn.sendall(head + english(text, articulino=True).encode("utf-8"))
         conn.shutdown(socket.SHUT_WR)
         return read_all(conn)
 
@@ -774,7 +806,12 @@ def run(ticket, mark):
 
 def record():
     """--record: your voice for Articulino, RECORD_SECONDS from the microphone; silence at both ends cut, the level
-    evened out. The old recording stays when the new one is shorter than MIN_VOICE_SECONDS."""
+    evened out. The old recording stays when the new one is shorter than MIN_VOICE_SECONDS. Without dictation (reading
+    aloud only) PulseAudio has no microphone: a note instead."""
+    if os.path.exists(NO_MICROPHONE):
+        print("Ohne Spracheingabe gibt es kein Mikrofon für die Aufnahme. In Termux einschalten: bash install.sh --voice",
+              file=sys.stderr)
+        return 1
     mark_stopped()   # the waiting texts too: none may play into the microphone
     stop()
     os.makedirs(os.path.dirname(VOICE_SAMPLE), exist_ok=True)
@@ -803,8 +840,9 @@ def record():
 
 def offer_record():
     """--offer-record: after a new installation Articulino is there but the voice is not; ask for it before Claude Code
-    starts. Silent without a terminal, with a voice, without Articulino, or after "nie"; never fails the start."""
-    if (os.path.exists(VOICE_SAMPLE) or os.path.exists(NEVER_RECORD)
+    starts. Silent without a terminal, with a voice, without Articulino or a microphone, or after "nie"; never fails the
+    start."""
+    if (os.path.exists(VOICE_SAMPLE) or os.path.exists(NEVER_RECORD) or os.path.exists(NO_MICROPHONE)
             or not os.path.isdir(os.path.join(ARTICULINO, "model")) or not sys.stdin.isatty()):
         return 0
     print("Articulino ist installiert, aber deine Stimme fehlt noch; bis dahin liest Piper vor.")

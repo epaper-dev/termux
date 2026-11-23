@@ -17,9 +17,10 @@
 # session start; setup never invokes `claude plugin ...`.
 # Idempotent: with everything in place it changes nothing and does not touch the network.
 #
-#   setup-guest.sh [--claude yes|no] [--codex yes|no] [--voice yes|no]       (all default to yes)
-#     --voice: sox with the PulseAudio plugin (apt-get), which Claude Code's /voice records through, and Piper (step 4),
-#              which reads the answers aloud; only with Claude Code
+#   setup-guest.sh [--claude yes|no] [--codex yes|no] [--voice yes|no] [--speak yes|no]       (all default to yes)
+#     --voice: sox with the PulseAudio plugin (apt-get), which Claude Code's /voice records through; only with Claude Code
+#     --speak: reading aloud (default: as --voice): sox (it plays), Piper (step 4) and Articulino (step 5)
+#     --language de|en: the Piper voice (de_DE-kerstin-medium or en_US-lessac-medium; default de)
 #
 #   CLAUDE_INSTALL_URL        installer script of Claude Code (default https://claude.ai/install.sh)
 #   CODEX_INSTALL_URL         installer script of Codex (default https://chatgpt.com/codex/install.sh)
@@ -35,11 +36,11 @@ CA_BUNDLE="${ROOTBRIDGE_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 INSTALL_URL="${CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CODEX_URL="${CODEX_INSTALL_URL:-https://chatgpt.com/codex/install.sh}"
 PIPER_DIR="${PIPER_DIR:-/opt/piper}"
-PIPER_VOICE_NAME=de_DE-kerstin-medium   # speak.py reads this voice
+PIPER_VOICE_NAME=de_DE-kerstin-medium   # speak.py reads this voice (German; --language en: en_US-lessac-medium)
 ARTICULINO_DIR="${ARTICULINO_DIR:-/opt/articulino}"
 ARTICULINO_REPO=eigenhand/Articulino-DE-EN-Realtime-Stream-TTS-ONNX
 ARTICULINO_REV=a760ce8d513534111c7679751869fa4c45ef0e54   # 2026-10-15; a new one: check its SHA256SUMS and listen first
-CLAUDE_ON=yes; CODEX_ON=yes; VOICE_ON=yes
+CLAUDE_ON=yes; CODEX_ON=yes; VOICE_ON=yes; SPEAK_ON=""; LANGUAGE=de
 
 say() { printf '%s\n' "$*"; }
 die() { echo "setup-guest.sh: $*" >&2; exit 1; }
@@ -49,6 +50,8 @@ while [ $# -gt 0 ]; do
         --claude) [ $# -ge 2 ] || die "--claude braucht yes oder no"; CLAUDE_ON="$2"; shift 2 ;;
         --codex)  [ $# -ge 2 ] || die "--codex braucht yes oder no";  CODEX_ON="$2";  shift 2 ;;
         --voice)  [ $# -ge 2 ] || die "--voice braucht yes oder no";  VOICE_ON="$2";  shift 2 ;;
+        --speak)  [ $# -ge 2 ] || die "--speak braucht yes oder no";  SPEAK_ON="$2";  shift 2 ;;
+        --language) [ $# -ge 2 ] || die "--language braucht de oder en"; LANGUAGE="$2"; shift 2 ;;
         *) echo "setup-guest.sh: unbekannte Option: $1" >&2; exit 2 ;;
     esac
 done
@@ -57,6 +60,9 @@ case "$CLAUDE_ON$CODEX_ON" in
     *) die "--claude / --codex: erlaubt ist yes oder no, und mindestens eines von beiden muss yes sein" ;;
 esac
 case "$VOICE_ON" in yes|no) ;; *) die "--voice: erlaubt ist yes oder no" ;; esac
+SPEAK_ON="${SPEAK_ON:-$VOICE_ON}"
+case "$SPEAK_ON" in yes|no) ;; *) die "--speak: erlaubt ist yes oder no" ;; esac
+case "$LANGUAGE" in de) ;; en) PIPER_VOICE_NAME=en_US-lessac-medium ;; *) die "--language: erlaubt ist de oder en" ;; esac
 
 TMPDIR_SETUP="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_SETUP"' EXIT
@@ -82,8 +88,10 @@ fi
 if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
     guest_has node || pkgs="$pkgs nodejs"
 fi
-if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
-    guest_has rec || pkgs="$pkgs sox libsox-fmt-pulse"
+if [ "$CLAUDE_ON" = yes ] && { [ "$VOICE_ON" = yes ] || [ "$SPEAK_ON" = yes ]; }; then
+    guest_has rec || pkgs="$pkgs sox libsox-fmt-pulse"   # rec records for /voice, play reads aloud
+fi
+if [ "$CLAUDE_ON" = yes ] && [ "$SPEAK_ON" = yes ]; then
     # Piper goes into a venv; Ubuntu's python3 makes one only with python3-venv (ensurepip)
     if [ ! -x "$PIPER_DIR/bin/piper" ] && ! python3 -I -c 'import ensurepip' >/dev/null 2>&1; then
         pkgs="$pkgs python3-venv"
@@ -147,14 +155,14 @@ if [ "$CODEX_ON" = yes ]; then
 fi
 
 # ------------------------------------------------------------------ 4. Piper (speech output)
-if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
+if [ "$CLAUDE_ON" = yes ] && [ "$SPEAK_ON" = yes ]; then
     say "== Gast: Piper (Vorlesen)"
     if [ -x "$PIPER_DIR/bin/piper" ]; then
         say "  piper ist schon installiert"
     else
         say "  pip install piper-tts in $PIPER_DIR"
         { python3 -m venv "$PIPER_DIR" && "$PIPER_DIR/bin/pip" install -q piper-tts; } \
-            || die "Piper ließ sich nicht installieren (Netz?). Erneut starten: bash install.sh --setup (ohne Sprache: --no-voice)"
+            || die "Piper ließ sich nicht installieren (Netz?). Erneut starten: bash install.sh --setup (ohne Vorlesen: --no-speak)"
     fi
     voice="$PIPER_DIR/voices/$PIPER_VOICE_NAME"
     if [ -s "$voice.onnx" ] && [ -s "$voice.onnx.json" ]; then
@@ -177,7 +185,7 @@ if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
 fi
 
 # ------------------------------------------------------------------ 5. Articulino (speech output in your own voice)
-if [ "$CLAUDE_ON" = yes ] && [ "$VOICE_ON" = yes ]; then
+if [ "$CLAUDE_ON" = yes ] && [ "$SPEAK_ON" = yes ]; then
     say "== Gast: Articulino (Vorlesen mit deiner Stimme)"
     if [ -x "$ARTICULINO_DIR/bin/python3" ] && [ -s "$ARTICULINO_DIR/model/int8/voice.onnx" ]; then
         say "  Articulino ist schon installiert"

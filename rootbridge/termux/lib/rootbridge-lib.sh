@@ -19,6 +19,8 @@ CLAUDE_ARGS=""
 TOOL_CLAUDE="on"        # on | off: Claude Code is part of this installation (install.sh --no-claude sets off)
 TOOL_CODEX="on"         # on | off: Codex is part of this installation (install.sh --no-codex sets off)
 VOICE="on"              # on | off: voice dictation for Claude Code (sox, PulseAudio, microphone); install.sh --no-voice sets off
+SPEAK=""                # on | off: reading Claude's answers aloud (PulseAudio plays it); install.sh --no-speak sets off;
+                        # empty (a config from before it): follows VOICE, as it was part of it
 SIDEKEY="off"           # on | off: side key of the Hisense A9 as push to talk (sidekey-ptt); install.sh --sidekey sets on
 HEADSET=""              # on | off: long press on the key of a wired headset toggles push to talk (headset-ptt); install.sh --headset sets on;
                         # empty (not decided, a config from before it): follows SIDEKEY, as the reader always read both keys
@@ -80,7 +82,7 @@ rb_load_config() {
                 [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -le 1500 ] && PTT_WARMUP="$val" ;;
             PTT_MAX)
                 [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -ge 1 ] && PTT_MAX="$val" ;;
-            THEME_FOLLOW|THEME_RESTART|GUEST_ISOLATE|TOOL_CLAUDE|TOOL_CODEX|VOICE|SIDEKEY|HEADSET|HOMEKEY|PTT_BEEP)
+            THEME_FOLLOW|THEME_RESTART|GUEST_ISOLATE|TOOL_CLAUDE|TOOL_CODEX|VOICE|SPEAK|SIDEKEY|HEADSET|HOMEKEY|PTT_BEEP)
                 case "$val" in on|off) printf -v "$key" '%s' "$val" ;; esac ;;
             CLAUDE_ARGS)
                 [[ "$val" =~ ^[A-Za-z0-9._\ =:/,-]*$ ]] && CLAUDE_ARGS="$val" ;;
@@ -112,13 +114,30 @@ rb_write_atomic() {
 # the files Termux runs at its next start. --isolated takes all of that away; only the bridge directory (the requests
 # and refusals), the shared storage (/sdcard: your files, nothing of Termux) and, for voice, the PulseAudio cookie are
 # bound in. The installer logins do not use this.
+# rb_audio: PulseAudio is needed, for the microphone (VOICE) or for reading aloud (SPEAK, empty: as VOICE)
+rb_audio() { [ "$VOICE" = on ] || [ "${SPEAK:-$VOICE}" = on ]; }
+
+# rb_playback_verified: the PulseAudio server that runs is the one voice_start started for reading aloud only (voice_pids,
+# from the rootbridge command, against the note voice_start wrote)
+rb_playback_verified() {
+    local note="$HOME/.cache/rootbridge-pulse-playback-only" running
+    [ -s "$note" ] && declare -F voice_pids >/dev/null || return 1
+    running="$(voice_pids)" && [ -n "$running" ] && [ "$running" = "$(cat "$note" 2>/dev/null)" ]
+}
+
 rb_login_opts() {
     local opts cookie="$HOME/.config/pulse/cookie"
     [ "$GUEST_ISOLATE" = on ] || return 0
     mkdir -p "$BRIDGE_DIR"
     opts="--isolated --bind $BRIDGE_DIR:$BRIDGE_DIR"
     if [ -d "$RB_STORAGE_DIR" ]; then opts="$opts --bind $RB_STORAGE_DIR:/sdcard --bind $RB_STORAGE_DIR:/storage/emulated/0"; fi
-    if [ "$VOICE" = on ] && [ -r "$cookie" ]; then opts="$opts --bind $cookie:$cookie"; fi
+    # the cookie lets the guest into PulseAudio; for reading aloud only just while the server voice_start started with
+    # module loading shut runs (its pid in the note in ~/.cache is the one running), so the guest cannot load a microphone.
+    # Known and accepted (2026-11-23): with the cookie the guest can listen to the monitor of the output, i.e. to what
+    # Termux programs play through this PulseAudio (in practice our own reading aloud; Android apps do not play through it).
+    if rb_audio && [ -r "$cookie" ] && { [ "$VOICE" = on ] || rb_playback_verified; }; then
+        opts="$opts --bind $cookie:$cookie"
+    fi
     printf '%s' "$opts"
 }
 

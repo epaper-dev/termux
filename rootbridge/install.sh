@@ -9,11 +9,14 @@
 #                   [--model NAME|none] [--claude | --no-claude] [--codex | --no-codex]
 #                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update] [--codex-bypass | --no-codex-bypass]
 #                   [--guidelines | --no-guidelines]
-#                   [--voice | --no-voice] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
-#                   [--headset | --no-headset]
+#                   [--voice | --no-voice] [--speak | --no-speak] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
+#                   [--headset | --no-headset] [--phantom-killer-off | --phantom-killer-on] [--language de|en]
 #
-# Setup: an interactive Termux shell asks once for the device name used in Claude Remote Control
-# (Enter accepts the suggested name; --remote-name NAME skips the question and changes a stored name).
+# Questions: all of them come first, before anything is installed; then the installation runs through. On a terminal each
+# one is asked once (Claude Code, Codex, the language, reading aloud, dictation, the device name for Claude Remote Control,
+# the keys for push to talk, Android's
+# phantom process killer); the answer is stored in the Termux config, and its option changes it later (--remote-name NAME,
+# --claude/--no-claude, ...). Enter takes the suggestion. Without a terminal nothing is asked.
 # Missing components are installed automatically: the Termux packages
 #   (pkg install), the Ubuntu guest (proot-distro install, a download of a few hundred MB),
 #   python3/curl/certificates in the guest and Claude Code (official installer). A device that has it
@@ -37,9 +40,8 @@
 #   one starts with the update of the other (rootbridge-update), because the two review each other: the Codex plugin
 #   of Claude Code and a pre-commit review hook (Codex checks every `git commit` Claude Code makes; the strict loop,
 #   fail-closed, emergency switch `rootbridge codex-off`). Without Claude Code there is no plugin and no hook.
-#   The Claude choice is stored and reused by later installs; --claude turns it on again. Codex is included on
-#   every run unless --no-codex is given on that run, including after an earlier --no-codex. TOOL_CODEX records
-#   the current selection for the launchers. --codex-update sets how often `codex update` runs at the start of a
+#   Both choices are asked once on a terminal and stored (TOOL_CLAUDE, TOOL_CODEX); --claude / --codex turn one on
+#   again. --codex-update sets how often `codex update` runs at the start of a
 #   session (6h default, like --claude-update; stored as CODEX_UPDATE). Still manual: the Codex login,
 #   `rootbridge codex-login`.
 #
@@ -58,10 +60,13 @@
 #   the guest's ~/.claude/keybindings.json (meta+k = voice:pushToTalk) and "voice": {"enabled": true, "mode": "tap"} in
 #   ~/.claude/settings.json (both only where you have not decided yet), and `ptt` (start / stop). Android's microphone
 #   permission for Termux needs root: on a terminal the installer asks for it (the root manager prompts), otherwise run
-#   `rootbridge voice grant` once. Reading aloud belongs to it: Piper with the voice de_DE-kerstin-medium in the guest
-#   (/opt/piper) and Articulino for your own voice (/opt/articulino; record it in the guest: rootbridge-speak --record), a Stop hook that reads Claude's answers (without code, tables and URLs) one after another, ends with your next
-#   prompt and pauses while you speak (`ptt start`, /voice), `rootbridge voice speak on|off|toggle|stop` and the widgets "Vorlesen" (on/off) and "Stopp" in
-#   ~/.shortcuts/tasks. Reading aloud is on after the installation. The choice is stored in the Termux config (VOICE).
+#   `rootbridge voice grant` once. The choice is stored in the Termux config (VOICE).
+# --speak / --no-speak: reading Claude's answers aloud, on by default (needs Claude Code), asked apart from --voice: PulseAudio
+#   in Termux and sox in the guest (it plays), Piper with the voice de_DE-kerstin-medium in the guest (/opt/piper) and
+#   Articulino for your own voice (/opt/articulino; record it in the guest: rootbridge-speak --record), a Stop hook that reads
+#   Claude's answers (without code, tables and URLs) one after another and pauses while you speak (`ptt start`, /voice), the
+#   voice commands ("Welche Sprachbefehle gibt es"), `rootbridge voice speak on|off|toggle|stop` and the widgets "Vorlesen"
+#   (on/off) and "Stopp" in ~/.shortcuts/tasks. Stored as SPEAK; a config from before it follows VOICE.
 # --sidekey / --no-sidekey: the side key of the Hisense A9 as push to talk (hold = record, release = stop): installs sidekey-ptt,
 #   which keeps a root `cat` on /dev/input/event2 running, and starts it with the session. Off by default, stored as SIDEKEY.
 #   Set the long press of the E-Ink app to "Nothing". A bridge until the E-Ink app does it itself.
@@ -71,6 +76,14 @@
 # --headset / --no-headset: a long press on the key of a wired headset starts and stops push to talk: installs headset-ptt,
 #   which reads the key as root. Stored as HEADSET.
 # Keys nobody decided yet (no option, nothing in the config) are asked on a terminal, one question each; the answer is stored.
+# --language de|en: the language of Claude Code ("language" in its settings.json), of the texts in its CLAUDE.md and of the
+#   voice that reads aloud (Piper de_DE-kerstin-medium or en_US-lessac-medium; Articulino reads both). Asked once on a
+#   terminal (suggested: the language of the phone, English or else German; also the one without a terminal), stored as
+#   LANGUAGE; Claude Code's own setting changes only when you choose in that run.
+# --phantom-killer-off / --phantom-killer-on: Android ends child processes of an app beyond 32 ("Trimming phantom processes"),
+#   tmux with the sessions among them. Off switches that off as root (`rootbridge phantom-killer off`, on every run on a
+#   terminal: an Android update may set it back); on gives Android's defaults back. Asked once (default off), stored as
+#   PHANTOM_KILLER. Without root: Developer options, "Disable child process restrictions".
 #
 # Claude Code starts in /root/work in the guest (WORKDIR; the installer creates the folder).
 #
@@ -122,10 +135,13 @@ CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
 USE_CLAUDE=yes; USE_CLAUDE_SET=0; USE_CODEX=yes; USE_CODEX_SET=0   # which tools: yes | no
 USE_VOICE=yes; USE_VOICE_SET=0; USE_SIDEKEY=no; USE_SIDEKEY_SET=0   # voice dictation / side key as push to talk
+USE_SPEAK=yes; USE_SPEAK_SET=0     # reading Claude's answers aloud
+LANGUAGE=""; LANGUAGE_SET=0        # de | en: Claude Code's language, the texts in CLAUDE.md, the voice that reads aloud
 USE_HOMEKEY=no; USE_HOMEKEY_SET=0; USE_HEADSET=no; USE_HEADSET_SET=0   # long press on Home / on the headset key as push to talk
 HOMEKEY_OFF_OPT=0   # --no-home-key given: the assistant role is taken back in any case
 USE_BYPASS=yes; USE_BYPASS_SET=0   # Codex without its own sandbox
 USE_GUIDE=yes; USE_GUIDE_SET=0     # code quality guidelines in CLAUDE.md / AGENTS.md
+USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=0   # switch Android's phantom process killer off (root)
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 APT_RE='^(always|off|daily|[1-9][0-9]{0,2}h)$'
 while [ $# -gt 0 ]; do
@@ -165,11 +181,19 @@ while [ $# -gt 0 ]; do
         --no-codex-bypass) USE_BYPASS=no; USE_BYPASS_SET=1 ;;
         --voice) USE_VOICE=yes; USE_VOICE_SET=1 ;;
         --no-voice) USE_VOICE=no; USE_VOICE_SET=1 ;;
+        --language)
+            [ $# -ge 2 ] || { echo "--language braucht de oder en" >&2; exit 2; }
+            case "$2" in de|en) ;; *) echo "--language: ungültiger Wert '$2' (erlaubt: de, en)" >&2; exit 2 ;; esac
+            LANGUAGE="$2"; LANGUAGE_SET=1; shift ;;
+        --speak) USE_SPEAK=yes; USE_SPEAK_SET=1 ;;
+        --no-speak) USE_SPEAK=no; USE_SPEAK_SET=1 ;;
         --sidekey) USE_SIDEKEY=yes; USE_SIDEKEY_SET=1 ;;
         --no-sidekey) USE_SIDEKEY=no; USE_SIDEKEY_SET=1 ;;
         --home-key) USE_HOMEKEY=yes; USE_HOMEKEY_SET=1 ;;
         --no-home-key) USE_HOMEKEY=no; USE_HOMEKEY_SET=1; HOMEKEY_OFF_OPT=1 ;;
         --headset) USE_HEADSET=yes; USE_HEADSET_SET=1 ;;
+        --phantom-killer-off) USE_PHANTOM_OFF=yes; USE_PHANTOM_OFF_SET=1 ;;
+        --phantom-killer-on) USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=1 ;;
         --no-headset) USE_HEADSET=no; USE_HEADSET_SET=1 ;;
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
@@ -220,6 +244,312 @@ if [ -z "${ROOTBRIDGE_ALLOW_GUEST:-}" ] && [ "$(id -u)" -eq 0 ] \
     die "Du bist im Ubuntu-Gast. Bitte in einer normalen Termux-Shell ausführen (nicht in proot-distro)."
 fi
 
+backup() {
+    # nothing to keep of a missing or empty file (set_block creates an empty one first)
+    [ -s "$1" ] || return 0
+    local dest="$1.bak-$STAMP"
+    # Termux:Widget lists EVERY file in ~/.shortcuts and Termux:Boot runs EVERY file in
+    # ~/.termux/boot: backups of those must not sit next to the originals
+    case "$1" in
+        "$HOME/.shortcuts/"*|"$HOME/.termux/boot/"*)
+            mkdir -p "$BRIDGE_DIR/backups"
+            dest="$BRIDGE_DIR/backups/${1##*/}.bak-$STAMP" ;;
+    esac
+    [ -e "$dest" ] && return 0   # a second change in the same run: the first backup holds the state before the run
+    cp -p "$1" "$dest" && say "  Sicherung: $dest" || true
+}
+
+# inst <src> <dest> [interpreter]: copy with the Termux shebang (bash, or e.g. python3); back up only on change
+inst() {
+    local tmp="$2.new.$$"
+    mkdir -p "$(dirname "$2")"
+    sed "1s|^#!.*|#!$PREFIX/bin/${3:-bash}|" "$1" > "$tmp"
+    chmod 755 "$tmp"
+    if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 0; fi
+    backup "$2"
+    mv -f "$tmp" "$2"
+    say "  installiert: $2"
+}
+
+# put_data <src> <dest> <mode>: copy a data file as it is (no shebang rewrite); back up only on
+# change. Returns 0 if the file was written, 1 if it was already identical, 2 if it could not be written.
+put_data() {
+    local tmp="$2.new.$$"
+    # every step checked: a caller in a condition (put_data ... && ...) runs without set -e
+    { mkdir -p "$(dirname "$2")" && cp "$1" "$tmp" && chmod "$3" "$tmp"; } || { rm -f "$tmp"; say "  FEHLER: $2 nicht geschrieben"; return 2; }
+    if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 1; fi
+    backup "$2"
+    mv -f "$tmp" "$2" || { rm -f "$tmp"; say "  FEHLER: $2 nicht geschrieben"; return 2; }
+    say "  installiert: $2"
+}
+
+# set_block <file> <content-file>: replace our marked block, keep the rest
+set_block() {
+    local file="$1" content="$2" tmp
+    touch "$file"
+    tmp="$file.new.$$"
+    python3 -I "$REPO/guest/lib/rbfile.py" set "$file" "$tmp" "$BEGIN" "$END" "$content"
+    if cmp -s "$tmp" "$file"; then rm -f "$tmp"; else backup "$file"; mv -f "$tmp" "$file"; say "  aktualisiert: $file"; fi
+}
+
+# own_extra_keys <file>: succeeds if the file sets `extra-keys` OUTSIDE our block, i.e. a row of the user's
+# own. Our block is appended at the end and a later duplicate key wins, so it would silently replace it.
+own_extra_keys() {
+    [ -f "$1" ] || return 1
+    python3 -I "$REPO/guest/lib/rbfile.py" other "$1" "$BEGIN" "$END" '\s*extra-keys\s*[=:]'
+}
+
+# All questions come here, before anything is installed; the installation then runs through without asking. Each one is
+# asked once on a terminal: the answer is stored in the Termux config, an option changes it later.
+say "== Fragen und Einstellungen"
+CFG="$HOME/.config/termux-rootbridge/config"
+mkdir -p "$(dirname "$CFG")" "$BRIDGE_DIR"
+chmod 700 "$BRIDGE_DIR"
+if [ ! -e "$CFG" ]; then
+    cat > "$CFG" <<'EOF'
+# termux-rootbridge - read as data (no shell code is executed)
+DISTRO=ubuntu
+WORKDIR=/root/work
+SESSION=ubuntu
+# ASK_TIMEOUT=120       # seconds the Android dialog for a root request waits for your answer (no answer = refused)
+# SU_ARGS=-mm -c      # global mount namespace (Magisk), if paths look empty
+AUTOSTART_DELAY=3
+# REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); default android, change with install.sh --remote-name
+# APT_UPGRADE=6h        # apt-get update + upgrade in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
+# CLAUDE_UPDATE=6h      # claude update in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --claude-update / --no-claude-update
+# CODEX_UPDATE=6h       # codex update at session start: same values; set with install.sh --codex-update / --no-codex-update
+# TOOL_CLAUDE=on        # on | off: Claude Code is part of this installation; set with install.sh --claude / --no-claude
+# TOOL_CODEX=on         # on | off: Codex is part of this installation; set with install.sh --codex / --no-codex
+# GUIDELINES=on         # on | off: code quality block in the guest's CLAUDE.md / AGENTS.md; set with install.sh --guidelines / --no-guidelines
+# CODEX_BYPASS=on       # on | off: Codex without its own sandbox (CODEX_ARGS in the guest config); set with install.sh --codex-bypass / --no-codex-bypass
+# VOICE=on              # on | off: voice dictation for Claude Code (PulseAudio, microphone); set with install.sh --voice / --no-voice
+# LANGUAGE=de           # de | en: Claude Code's language, the texts in CLAUDE.md, the voice that reads aloud; install.sh --language
+# SPEAK=on              # on | off: reading Claude's answers aloud (Piper, Articulino); set with install.sh --speak / --no-speak
+# SPEAK_SHORT=set       # set by install.sh the first time it installs voice, after it switched reading aloud to the short version
+# SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
+# HOMEKEY=off           # on | off: long press on Home as push to talk (Termux is the assistant); install.sh --home-key / --no-home-key
+# HEADSET=off           # on | off: long press on the key of a wired headset as push to talk; install.sh --headset / --no-headset
+# PHANTOM_KILLER=off    # off: Android's phantom process killer switched off (root, on every install); install.sh --phantom-killer-off / -on
+# PTT_TARGET=ubuntu:claude   # `ptt`: tmux window it presses its key in (default <SESSION>:claude)
+# PTT_KEY=M-k           # `ptt`: tmux key name (Claude Code: voice:pushToTalk is bound to meta+k)
+# PTT_MODE=auto         # `ptt`: auto (the mode of Claude Code's /voice, read from its settings) | hold (repeat the key until stop) | tap (one press each); PTT_INTERVAL=50 (ms), PTT_WARMUP=1200 (ms before the first repeat), PTT_MAX=120 (s), PTT_BEEP=on (high beep: recording, low: ended)
+EOF
+    say "  neu: $CFG"
+fi
+# ask_key <yes|no var> <set var> <config key> <default yes|no> <question>: on a terminal, a choice that neither an option
+# nor the config decided; the answer counts as an option (it is stored). No answer (end of input): undecided, asked next
+# time.
+ask_key() {
+    local answer hint="[j/N]"
+    [ "${!2}" != 1 ] && [ -z "$(cfg_get "$3")" ] || return 0
+    [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ] || return 0
+    [ "$4" = yes ] && hint="[J/n]"
+    printf '%s %s ' "$5" "$hint"
+    IFS= read -r answer || { echo; return 0; }
+    case "$answer" in
+        j|J|ja|Ja|JA|y|Y|yes) answer=yes ;;
+        n|N|nein|Nein|NEIN|no) answer=no ;;
+        *) answer="$4" ;;
+    esac
+    printf -v "$1" '%s' "$answer"; printf -v "$2" '%s' 1
+}
+# onoff <yes|no>: the config spelling of a choice
+onoff() { if [ "$1" = yes ]; then echo on; else echo off; fi; }
+# cfg_get KEY: the value stored in the Termux config (quotes stripped; empty if there is none)
+cfg_get() {
+    local v
+    v="$(sed -n "s/^$1=//p" "$CFG" | tail -n 1)"
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+    printf '%s' "$v"
+}
+# cfg_set KEY VALUE MESSAGE: store KEY=VALUE (replace the line or add it; a backup only on a change)
+cfg_set() {
+    local tmp="$CFG.new.$$"
+    cp "$CFG" "$tmp"
+    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
+    if grep -q "^$1=" "$tmp"; then sed -i "s|^$1=.*|$1=$2|" "$tmp"; else printf '%s=%s\n' "$1" "$2" >> "$tmp"; fi
+    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  $3"; fi
+}
+# The old default WORKDIR=/root/workspace was never created. If the folder is not in the guest nobody uses it:
+# move to the new default /root/work (an existing /root/workspace and any other value stay).
+if grep -qx 'WORKDIR=/root/workspace' "$CFG"; then
+    d="$(cfg_get DISTRO)"; d="${d:-ubuntu}"
+    if [ ! -e "$PREFIX/var/lib/proot-distro/containers/$d/rootfs/root/workspace" ] \
+       && [ ! -e "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root/workspace" ]; then
+        tmp="$CFG.new.$$"
+        sed 's|^WORKDIR=/root/workspace$|WORKDIR=/root/work|' "$CFG" > "$tmp"
+        backup "$CFG"; mv -f "$tmp" "$CFG"
+        say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
+    fi
+fi
+if [ "$APT_MODE_SET" = 1 ]; then
+    # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
+    cfg_set APT_UPGRADE "$APT_MODE" "apt-Modus gespeichert: $APT_MODE"
+else
+    v="$(cfg_get APT_UPGRADE)"
+    if [[ "$v" =~ $APT_RE ]]; then APT_MODE="$v"; say "  apt-Modus aus der Konfig: $APT_MODE"; fi
+fi
+if [ "$CLAUDE_UPD_SET" = 1 ]; then
+    # same idea as APT_UPGRADE: the choice survives a reinstall of the guest
+    cfg_set CLAUDE_UPDATE "$CLAUDE_UPD_MODE" "claude-update-Modus gespeichert: $CLAUDE_UPD_MODE"
+else
+    v="$(cfg_get CLAUDE_UPDATE)"
+    if [[ "$v" =~ $APT_RE ]]; then CLAUDE_UPD_MODE="$v"; say "  claude-update-Modus aus der Konfig: $CLAUDE_UPD_MODE"; fi
+fi
+# Claude Code and Codex: an option wins, else the stored choice, else asked once (default yes). Both choices are settled
+# and checked BEFORE either is stored: a refused combination leaves the config as it was.
+if [ "$USE_CLAUDE_SET" != 1 ] && [ "$(cfg_get TOOL_CLAUDE)" = off ]; then
+    USE_CLAUDE=no; say "  Claude Code: abgewählt (aus der Konfig; wieder an mit --claude)"
+fi
+if [ "$USE_CODEX_SET" != 1 ] && [ "$(cfg_get TOOL_CODEX)" = off ]; then
+    USE_CODEX=no; say "  Codex: abgewählt (aus der Konfig; wieder an mit --codex)"
+fi
+ask_key USE_CLAUDE USE_CLAUDE_SET TOOL_CLAUDE yes "Claude Code installieren?"
+ask_key USE_CODEX USE_CODEX_SET TOOL_CODEX yes \
+    "Codex installieren (sind Claude Code und Codex installiert, prüft Codex jeden Commit von Claude Code)?"
+if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then die "$BOTH_OFF_MSG (eines wieder an: --claude oder --codex)"; fi
+# stored at the end, once the chosen tools are installed: the launchers (rootbridge attach) go by it, and a run that fails
+# half way must not switch them to a tool that is not there yet (the question then comes again)
+# Android's phantom process killer (switched later, as root): a stored choice counts, else asked once. restore: it was off
+# and is to go on again, which has not worked yet (no terminal, root refused): tried again on the next run.
+OLD_PHANTOM="$(cfg_get PHANTOM_KILLER)"   # off or restore before this run: switching it on gives Android's defaults back
+# switched off by hand (rootbridge phantom-killer off leaves this marker): it counts as off as well
+PHANTOM_MARKER="$(dirname "${ROOTBRIDGE_CONFIG:-$CFG}")/phantom-killer-off"   # where rootbridge-lib.sh puts it
+if [ -e "$PHANTOM_MARKER" ] && [ "$OLD_PHANTOM" != restore ]; then OLD_PHANTOM=off; fi
+if [ "$USE_PHANTOM_OFF_SET" != 1 ]; then
+    case "$OLD_PHANTOM" in off) USE_PHANTOM_OFF=yes ;; restore) USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=1 ;; esac
+fi
+ask_key USE_PHANTOM_OFF USE_PHANTOM_OFF_SET PHANTOM_KILLER yes \
+    "Den Phantom Process Killer von Android abschalten? Er beendet sonst tmux, Claude Code und Codex, wenn viele Prozesse laufen. Solange er aus ist, lädt Android auch keine Systemeinstellungen mehr aus der Ferne nach (device_config; zurück mit rootbridge phantom-killer on). Braucht Root"
+if [ "$USE_PHANTOM_OFF_SET" = 1 ]; then
+    if [ "$USE_PHANTOM_OFF" = yes ]; then v=off; elif [ "$OLD_PHANTOM" = off ] || [ "$OLD_PHANTOM" = restore ]; then v=restore
+    else v=on; fi
+    cfg_set PHANTOM_KILLER "$v" "Phantom Process Killer: $v"
+fi
+# code quality guidelines: same idea (default on)
+if [ "$USE_GUIDE_SET" != 1 ] && [ "$(cfg_get GUIDELINES)" = off ]; then
+    USE_GUIDE=no; say "  Richtlinien: abgewählt (aus der Konfig; wieder an mit --guidelines)"
+fi
+if [ "$USE_GUIDE_SET" = 1 ]; then
+    cfg_set GUIDELINES "$(onoff "$USE_GUIDE")" "Richtlinien: $USE_GUIDE"
+fi
+# Codex without its sandbox: same idea (default on; Codex off = nothing to decide)
+if [ "$USE_BYPASS_SET" != 1 ] && [ "$(cfg_get CODEX_BYPASS)" = off ]; then
+    USE_BYPASS=no; say "  Codex-Sandbox: bleibt an (aus der Konfig; ohne Sandbox mit --codex-bypass)"
+fi
+if [ "$USE_BYPASS_SET" = 1 ]; then
+    cfg_set CODEX_BYPASS "$(onoff "$USE_BYPASS")" "Codex ohne eigene Sandbox: $USE_BYPASS"
+fi
+# voice and side key: same idea (an option wins and is stored; without one the stored value counts)
+if [ "$USE_VOICE_SET" != 1 ] && [ "$(cfg_get VOICE)" = off ]; then
+    USE_VOICE=no; say "  Sprache: abgewählt (aus der Konfig; wieder an mit --voice)"
+fi
+if [ "$USE_SIDEKEY_SET" != 1 ] && [ "$(cfg_get SIDEKEY)" = on ]; then
+    USE_SIDEKEY=yes; say "  Seitentaste: an (aus der Konfig; aus mit --no-sidekey)"
+fi
+# the language (Claude Code only): an option wins, else the stored one, else asked once on a terminal. The suggestion (and the
+# language without a terminal) is the one of the phone: English when Android's language is English, else German.
+sys_lang=de
+case "$( (getprop persist.sys.locale; getprop ro.product.locale) 2>/dev/null | grep -m1 . || echo "${LANG:-}")" in
+    en*) sys_lang=en ;;
+esac
+if [ "$USE_CLAUDE" = yes ] && [ "$LANGUAGE_SET" != 1 ]; then
+    v="$(cfg_get LANGUAGE)"
+    if [ "$v" = de ] || [ "$v" = en ]; then
+        LANGUAGE="$v"
+    elif [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; then
+        if [ "$sys_lang" = en ]; then hint="[d/E]"; else hint="[D/e]"; fi
+        printf '%s ' "Sprache für Claude Code und das Vorlesen: Deutsch oder Englisch (wie das Telefon: $sys_lang)? $hint"
+        if IFS= read -r answer; then
+            case "$answer" in
+                e|E|en|EN|englisch|Englisch|english|English) LANGUAGE=en ;;
+                d|D|de|DE|deutsch|Deutsch|german|German) LANGUAGE=de ;;
+                *) LANGUAGE="$sys_lang" ;;
+            esac
+            LANGUAGE_SET=1
+        else
+            echo
+        fi
+    fi
+fi
+LANGUAGE="${LANGUAGE:-$sys_lang}"   # stored at the end, once the guest has it (a run that fails before asks again)
+# reading aloud and voice dictation: asked apart, once (with Claude Code only: there is nothing else to talk to)
+if [ "$USE_SPEAK_SET" != 1 ] && [ "$(cfg_get SPEAK)" = off ]; then
+    USE_SPEAK=no; say "  Vorlesen: abgewählt (aus der Konfig; wieder an mit --speak)"
+fi
+if [ "$USE_CLAUDE" = yes ]; then
+    ask_key USE_SPEAK USE_SPEAK_SET SPEAK yes "Vorlesen: Claudes Antworten vorlesen lassen (Piper, auf Wunsch mit deiner eigenen Stimme)?"
+    ask_key USE_VOICE USE_VOICE_SET VOICE yes "Spracheingabe: Claude Code per Mikrofon diktieren (/voice, Push to Talk)?"
+fi
+# reading aloud undecided (a config from before it, no terminal): as voice dictation, which it was part of
+if [ "$USE_SPEAK_SET" != 1 ] && [ -z "$(cfg_get SPEAK)" ]; then USE_SPEAK="$USE_VOICE"; fi
+if [ "$USE_SPEAK_SET" = 1 ]; then
+    cfg_set SPEAK "$(onoff "$USE_SPEAK")" "Vorlesen: $USE_SPEAK"
+fi
+OLD_VOICE="$(cfg_get VOICE)"   # off before this run, or on (also empty): switching voice off gives the Home key role back
+if [ "$USE_VOICE_SET" = 1 ]; then
+    cfg_set VOICE "$(onoff "$USE_VOICE")" "Sprache: $USE_VOICE"
+fi
+# Resolve the device name after the enabled tools, so Codex-only installs ask no Claude question. Asked once, like the
+# keys: a valid name in the config counts (change it with --remote-name NAME).
+if [ "$REMOTE_NAME_SET" != 1 ]; then
+    v="$(cfg_get REMOTE_NAME)"
+    if [[ "$v" =~ $NAME_RE ]]; then
+        REMOTE_NAME="$v"
+        say "  Remote-Control-Name: $REMOTE_NAME (aus der Konfig; ändern mit --remote-name NAME)"
+    elif [ "$USE_CLAUDE" = yes ] && [ -t 0 ]; then
+        say "Wie soll dieses Gerät in Claude Remote Control heißen?"
+        say "  Erlaubt: Buchstaben, Ziffern, Punkt, _ und -; maximal 64 Zeichen (z. B. boox-max-lumi)."
+        while true; do
+            printf 'Gerätename [%s]: ' "$REMOTE_NAME"
+            IFS= read -r answer || die "Namensabfrage abgebrochen; für einen Aufruf ohne Nachfrage --remote-name NAME verwenden."
+            answer="${answer:-$REMOTE_NAME}"
+            if [[ "$answer" =~ $NAME_RE ]]; then
+                REMOTE_NAME="$answer"; REMOTE_NAME_SET=1; break
+            fi
+            say "Ungültiger Gerätename. Bitte ohne Leerzeichen oder Sonderzeichen eingeben."
+        done
+    else
+        say "  Remote-Control-Name: $REMOTE_NAME (ohne Nachfrage; ändern mit --remote-name NAME)"
+    fi
+fi
+if [ "$REMOTE_NAME_SET" = 1 ]; then
+    # store the name in the Termux config: it survives a reinstall of the guest
+    cfg_set REMOTE_NAME "$REMOTE_NAME" "Remote-Control-Name gespeichert: $REMOTE_NAME"
+fi
+if [ "$USE_HOMEKEY_SET" != 1 ] && [ "$(cfg_get HOMEKEY)" = on ]; then USE_HOMEKEY=yes; fi
+# HEADSET not decided yet (a config from before it): the headset key follows the side key, as the reader always read both
+if [ "$USE_HEADSET_SET" != 1 ]; then
+    case "$(cfg_get HEADSET)" in
+        on) USE_HEADSET=yes ;;
+        "") USE_HEADSET="$USE_SIDEKEY" ;;
+    esac
+fi
+OLD_HOMEKEY="$(cfg_get HOMEKEY)"   # on before this run: --no-home-key takes the assistant role back
+# the keys for push to talk work only with voice dictation
+if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then
+    ask_key USE_SIDEKEY USE_SIDEKEY_SET SIDEKEY no \
+        "Seitentaste als Push to Talk (halten = sprechen; nur Hisense A9, braucht Root)?"
+    ask_key USE_HOMEKEY USE_HOMEKEY_SET HOMEKEY yes \
+        "Langer Druck auf Home startet und stoppt die Spracheingabe (Termux wird digitaler Assistent, braucht Root)?"
+    ask_key USE_HEADSET USE_HEADSET_SET HEADSET yes \
+        "Langer Druck auf die Taste eines Kabel-Headsets startet und stoppt die Spracheingabe (braucht Root)?"
+fi
+if [ "$USE_SIDEKEY_SET" = 1 ]; then
+    cfg_set SIDEKEY "$(onoff "$USE_SIDEKEY")" "Seitentaste: $USE_SIDEKEY"
+fi
+if [ "$USE_HOMEKEY_SET" = 1 ]; then
+    cfg_set HOMEKEY "$(onoff "$USE_HOMEKEY")" "Home-Taste: $USE_HOMEKEY"
+fi
+if [ "$USE_HEADSET_SET" = 1 ]; then
+    cfg_set HEADSET "$(onoff "$USE_HEADSET")" "Headset-Taste: $USE_HEADSET"
+fi
+if [ "$CODEX_UPD_SET" = 1 ]; then
+    cfg_set CODEX_UPDATE "$CODEX_UPD_MODE" "codex-update-Modus gespeichert: $CODEX_UPD_MODE"
+else
+    v="$(cfg_get CODEX_UPDATE)"
+    if [[ "$v" =~ $APT_RE ]]; then CODEX_UPD_MODE="$v"; say "  codex-update-Modus aus der Konfig: $CODEX_UPD_MODE"; fi
+fi
 # Setup, part 1: the Termux packages that are missing. pkg_for maps a command to its Termux package.
 # Without recommended packages: python recommends python-pip, which recommends clang, make and pkg-config (about 500 MB with
 # LLVM on the A9); rootbridge needs none of them.
@@ -266,62 +596,6 @@ if [ "$DEPS" = 1 ]; then
         || say "Hinweis: pkg install termux-api und die App Termux:API (für die Rückfrage bei Root-Anfragen, Browser-Öffnen und Zwischenablage). Ohne den Dialog lehnt der Daemon jede Root-Anfrage ab."
 fi
 
-backup() {
-    # nothing to keep of a missing or empty file (set_block creates an empty one first)
-    [ -s "$1" ] || return 0
-    local dest="$1.bak-$STAMP"
-    # Termux:Widget lists EVERY file in ~/.shortcuts and Termux:Boot runs EVERY file in
-    # ~/.termux/boot: backups of those must not sit next to the originals
-    case "$1" in
-        "$HOME/.shortcuts/"*|"$HOME/.termux/boot/"*)
-            mkdir -p "$BRIDGE_DIR/backups"
-            dest="$BRIDGE_DIR/backups/${1##*/}.bak-$STAMP" ;;
-    esac
-    [ -e "$dest" ] && return 0   # a second change in the same run: the first backup holds the state before the run
-    cp -p "$1" "$dest" && say "  Sicherung: $dest" || true
-}
-
-# inst <src> <dest> [interpreter]: copy with the Termux shebang (bash, or e.g. python3); back up only on change
-inst() {
-    local tmp="$2.new.$$"
-    mkdir -p "$(dirname "$2")"
-    sed "1s|^#!.*|#!$PREFIX/bin/${3:-bash}|" "$1" > "$tmp"
-    chmod 755 "$tmp"
-    if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 0; fi
-    backup "$2"
-    mv -f "$tmp" "$2"
-    say "  installiert: $2"
-}
-
-# put_data <src> <dest> <mode>: copy a data file as it is (no shebang rewrite); back up only on
-# change. Returns 0 if the file was written, 1 if it was already identical.
-put_data() {
-    local tmp="$2.new.$$"
-    mkdir -p "$(dirname "$2")"
-    cp "$1" "$tmp"
-    chmod "$3" "$tmp"
-    if [ -e "$2" ] && cmp -s "$tmp" "$2"; then rm -f "$tmp"; return 1; fi
-    backup "$2"
-    mv -f "$tmp" "$2"
-    say "  installiert: $2"
-}
-
-# set_block <file> <content-file>: replace our marked block, keep the rest
-set_block() {
-    local file="$1" content="$2" tmp
-    touch "$file"
-    tmp="$file.new.$$"
-    python3 -I "$REPO/guest/lib/rbfile.py" set "$file" "$tmp" "$BEGIN" "$END" "$content"
-    if cmp -s "$tmp" "$file"; then rm -f "$tmp"; else backup "$file"; mv -f "$tmp" "$file"; say "  aktualisiert: $file"; fi
-}
-
-# own_extra_keys <file>: succeeds if the file sets `extra-keys` OUTSIDE our block, i.e. a row of the user's
-# own. Our block is appended at the end and a later duplicate key wins, so it would silently replace it.
-own_extra_keys() {
-    [ -f "$1" ] || return 1
-    python3 -I "$REPO/guest/lib/rbfile.py" other "$1" "$BEGIN" "$END" '\s*extra-keys\s*[=:]'
-}
-
 command -v python3 >/dev/null 2>&1 || die "python3 fehlt (pkg install python)"
 
 say "== 1/5 Programme"
@@ -340,195 +614,6 @@ if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
 fi
 
 say "== 2/5 Konfiguration"
-CFG="$HOME/.config/termux-rootbridge/config"
-mkdir -p "$(dirname "$CFG")" "$BRIDGE_DIR"
-chmod 700 "$BRIDGE_DIR"
-if [ ! -e "$CFG" ]; then
-    cat > "$CFG" <<'EOF'
-# termux-rootbridge - read as data (no shell code is executed)
-DISTRO=ubuntu
-WORKDIR=/root/work
-SESSION=ubuntu
-# ASK_TIMEOUT=120       # seconds the Android dialog for a root request waits for your answer (no answer = refused)
-# SU_ARGS=-mm -c      # global mount namespace (Magisk), if paths look empty
-AUTOSTART_DELAY=3
-# REMOTE_NAME=android   # name in the Remote Control view (claude.ai/code); default android, change with install.sh --remote-name
-# APT_UPGRADE=6h        # apt-get update + upgrade in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --apt-upgrade / --no-apt-upgrade
-# CLAUDE_UPDATE=6h      # claude update in the guest at session start: 6h (<N>h = every N hours) | daily (= 24h) | always | off; set with install.sh --claude-update / --no-claude-update
-# CODEX_UPDATE=6h       # codex update at session start: same values; set with install.sh --codex-update / --no-codex-update
-# TOOL_CLAUDE=on        # on | off: Claude Code is part of this installation; set with install.sh --claude / --no-claude
-# TOOL_CODEX=on         # on | off: Codex is part of this installation; set with install.sh --codex / --no-codex
-# GUIDELINES=on         # on | off: code quality block in the guest's CLAUDE.md / AGENTS.md; set with install.sh --guidelines / --no-guidelines
-# CODEX_BYPASS=on       # on | off: Codex without its own sandbox (CODEX_ARGS in the guest config); set with install.sh --codex-bypass / --no-codex-bypass
-# VOICE=on              # on | off: voice dictation for Claude Code (PulseAudio, microphone); set with install.sh --voice / --no-voice
-# SPEAK_SHORT=set       # set by install.sh the first time it installs voice, after it switched reading aloud to the short version
-# SIDEKEY=off           # on | off: side key of the Hisense A9 as push to talk; set with install.sh --sidekey / --no-sidekey
-# HOMEKEY=off           # on | off: long press on Home as push to talk (Termux is the assistant); install.sh --home-key / --no-home-key
-# HEADSET=off           # on | off: long press on the key of a wired headset as push to talk; install.sh --headset / --no-headset
-# PTT_TARGET=ubuntu:claude   # `ptt`: tmux window it presses its key in (default <SESSION>:claude)
-# PTT_KEY=M-k           # `ptt`: tmux key name (Claude Code: voice:pushToTalk is bound to meta+k)
-# PTT_MODE=auto         # `ptt`: auto (the mode of Claude Code's /voice, read from its settings) | hold (repeat the key until stop) | tap (one press each); PTT_INTERVAL=50 (ms), PTT_WARMUP=1200 (ms before the first repeat), PTT_MAX=120 (s), PTT_BEEP=on (high beep: recording, low: ended)
-EOF
-    say "  neu: $CFG"
-fi
-# onoff <yes|no>: the config spelling of a choice
-onoff() { if [ "$1" = yes ]; then echo on; else echo off; fi; }
-# cfg_get KEY: the value stored in the Termux config (quotes stripped; empty if there is none)
-cfg_get() {
-    local v
-    v="$(sed -n "s/^$1=//p" "$CFG" | tail -n 1)"
-    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
-    printf '%s' "$v"
-}
-# cfg_set KEY VALUE MESSAGE: store KEY=VALUE (replace the line or add it; a backup only on a change)
-cfg_set() {
-    local tmp="$CFG.new.$$"
-    cp "$CFG" "$tmp"
-    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
-    if grep -q "^$1=" "$tmp"; then sed -i "s|^$1=.*|$1=$2|" "$tmp"; else printf '%s=%s\n' "$1" "$2" >> "$tmp"; fi
-    if cmp -s "$tmp" "$CFG"; then rm -f "$tmp"; else backup "$CFG"; mv -f "$tmp" "$CFG"; say "  $3"; fi
-}
-# The old default WORKDIR=/root/workspace was never created. If the folder is not in the guest nobody uses it:
-# move to the new default /root/work (an existing /root/workspace and any other value stay).
-if grep -qx 'WORKDIR=/root/workspace' "$CFG"; then
-    d="$(cfg_get DISTRO)"; d="${d:-ubuntu}"
-    if [ ! -e "$PREFIX/var/lib/proot-distro/containers/$d/rootfs/root/workspace" ] \
-       && [ ! -e "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root/workspace" ]; then
-        tmp="$CFG.new.$$"
-        sed 's|^WORKDIR=/root/workspace$|WORKDIR=/root/work|' "$CFG" > "$tmp"
-        backup "$CFG"; mv -f "$tmp" "$CFG"
-        say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
-    fi
-fi
-if [ "$APT_MODE_SET" = 1 ]; then
-    # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
-    cfg_set APT_UPGRADE "$APT_MODE" "apt-Modus gespeichert: $APT_MODE"
-else
-    v="$(cfg_get APT_UPGRADE)"
-    if [[ "$v" =~ $APT_RE ]]; then APT_MODE="$v"; say "  apt-Modus aus der Konfig: $APT_MODE"; fi
-fi
-if [ "$CLAUDE_UPD_SET" = 1 ]; then
-    # same idea as APT_UPGRADE: the choice survives a reinstall of the guest
-    cfg_set CLAUDE_UPDATE "$CLAUDE_UPD_MODE" "claude-update-Modus gespeichert: $CLAUDE_UPD_MODE"
-else
-    v="$(cfg_get CLAUDE_UPDATE)"
-    if [[ "$v" =~ $APT_RE ]]; then CLAUDE_UPD_MODE="$v"; say "  claude-update-Modus aus der Konfig: $CLAUDE_UPD_MODE"; fi
-fi
-# Claude keeps the stored choice without an option. Codex defaults to yes on every installer run:
-# an earlier --no-codex must not silently suppress its CLI, widget and review hook on the next installation.
-# Both choices are settled and checked BEFORE either is stored: a refused combination leaves the config as it was.
-if [ "$USE_CLAUDE_SET" != 1 ] && [ "$(cfg_get TOOL_CLAUDE)" = off ]; then
-    USE_CLAUDE=no; say "  Claude Code: abgewählt (aus der Konfig; wieder an mit --claude)"
-fi
-if [ "$USE_CLAUDE" = no ] && [ "$USE_CODEX" = no ]; then die "$BOTH_OFF_MSG (die Konfig hat eines abgewählt: --claude oder --codex)"; fi
-if [ "$USE_CLAUDE_SET" = 1 ]; then
-    cfg_set TOOL_CLAUDE "$(onoff "$USE_CLAUDE")" "Claude Code: $USE_CLAUDE"
-fi
-if [ "$USE_CODEX_SET" = 1 ] || [ "$(cfg_get TOOL_CODEX)" = off ]; then
-    cfg_set TOOL_CODEX "$(onoff "$USE_CODEX")" "Codex: $USE_CODEX"
-fi
-# code quality guidelines: same idea (default on)
-if [ "$USE_GUIDE_SET" != 1 ] && [ "$(cfg_get GUIDELINES)" = off ]; then
-    USE_GUIDE=no; say "  Richtlinien: abgewählt (aus der Konfig; wieder an mit --guidelines)"
-fi
-if [ "$USE_GUIDE_SET" = 1 ]; then
-    cfg_set GUIDELINES "$(onoff "$USE_GUIDE")" "Richtlinien: $USE_GUIDE"
-fi
-# Codex without its sandbox: same idea (default on; Codex off = nothing to decide)
-if [ "$USE_BYPASS_SET" != 1 ] && [ "$(cfg_get CODEX_BYPASS)" = off ]; then
-    USE_BYPASS=no; say "  Codex-Sandbox: bleibt an (aus der Konfig; ohne Sandbox mit --codex-bypass)"
-fi
-if [ "$USE_BYPASS_SET" = 1 ]; then
-    cfg_set CODEX_BYPASS "$(onoff "$USE_BYPASS")" "Codex ohne eigene Sandbox: $USE_BYPASS"
-fi
-# voice and side key: same idea (an option wins and is stored; without one the stored value counts)
-if [ "$USE_VOICE_SET" != 1 ] && [ "$(cfg_get VOICE)" = off ]; then
-    USE_VOICE=no; say "  Sprache: abgewählt (aus der Konfig; wieder an mit --voice)"
-fi
-if [ "$USE_SIDEKEY_SET" != 1 ] && [ "$(cfg_get SIDEKEY)" = on ]; then
-    USE_SIDEKEY=yes; say "  Seitentaste: an (aus der Konfig; aus mit --no-sidekey)"
-fi
-OLD_VOICE="$(cfg_get VOICE)"   # off before this run, or on (also empty): switching voice off gives the Home key role back
-if [ "$USE_VOICE_SET" = 1 ]; then
-    cfg_set VOICE "$(onoff "$USE_VOICE")" "Sprache: $USE_VOICE"
-fi
-# Resolve the device name after the enabled tools, so Codex-only installs ask no Claude question. Asked once, like the
-# keys: a valid name in the config counts (change it with --remote-name NAME).
-if [ "$REMOTE_NAME_SET" != 1 ]; then
-    v="$(cfg_get REMOTE_NAME)"
-    if [[ "$v" =~ $NAME_RE ]]; then
-        REMOTE_NAME="$v"
-        say "  Remote-Control-Name: $REMOTE_NAME (aus der Konfig; ändern mit --remote-name NAME)"
-    elif [ "$USE_CLAUDE" = yes ] && [ -t 0 ]; then
-        say "Wie soll dieses Gerät in Claude Remote Control heißen?"
-        say "  Erlaubt: Buchstaben, Ziffern, Punkt, _ und -; maximal 64 Zeichen (z. B. boox-max-lumi)."
-        while true; do
-            printf 'Gerätename [%s]: ' "$REMOTE_NAME"
-            IFS= read -r answer || die "Namensabfrage abgebrochen; für einen Aufruf ohne Nachfrage --remote-name NAME verwenden."
-            answer="${answer:-$REMOTE_NAME}"
-            if [[ "$answer" =~ $NAME_RE ]]; then
-                REMOTE_NAME="$answer"; REMOTE_NAME_SET=1; break
-            fi
-            say "Ungültiger Gerätename. Bitte ohne Leerzeichen oder Sonderzeichen eingeben."
-        done
-    else
-        say "  Remote-Control-Name: $REMOTE_NAME (ohne Nachfrage; ändern mit --remote-name NAME)"
-    fi
-fi
-if [ "$REMOTE_NAME_SET" = 1 ]; then
-    # store the name in the Termux config: it survives a reinstall of the guest
-    cfg_set REMOTE_NAME "$REMOTE_NAME" "Remote-Control-Name gespeichert: $REMOTE_NAME"
-fi
-if [ "$USE_HOMEKEY_SET" != 1 ] && [ "$(cfg_get HOMEKEY)" = on ]; then USE_HOMEKEY=yes; fi
-# HEADSET not decided yet (a config from before it): the headset key follows the side key, as the reader always read both
-if [ "$USE_HEADSET_SET" != 1 ]; then
-    case "$(cfg_get HEADSET)" in
-        on) USE_HEADSET=yes ;;
-        "") USE_HEADSET="$USE_SIDEKEY" ;;
-    esac
-fi
-OLD_HOMEKEY="$(cfg_get HOMEKEY)"   # on before this run: --no-home-key takes the assistant role back
-# the keys for push to talk, after the device name (its question comes first on the terminal)
-# ask_key <yes|no var> <set var> <config key> <default yes|no> <question>: on a terminal, a key that neither an option nor
-# the config decided; the answer counts as an option (it is stored). No answer (end of input): undecided, asked next time.
-ask_key() {
-    local answer hint="[j/N]"
-    [ "${!2}" != 1 ] && [ -z "$(cfg_get "$3")" ] || return 0
-    [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ] || return 0
-    [ "$4" = yes ] && hint="[J/n]"
-    printf '%s %s ' "$5" "$hint"
-    IFS= read -r answer || { echo; return 0; }
-    case "$answer" in
-        j|J|ja|Ja|JA|y|Y|yes) answer=yes ;;
-        n|N|nein|Nein|NEIN|no) answer=no ;;
-        *) answer="$4" ;;
-    esac
-    printf -v "$1" '%s' "$answer"; printf -v "$2" '%s' 1
-}
-# the keys for push to talk work only with voice dictation
-if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then
-    ask_key USE_SIDEKEY USE_SIDEKEY_SET SIDEKEY no \
-        "Seitentaste als Push to Talk (halten = sprechen; nur Hisense A9, braucht Root)?"
-    ask_key USE_HOMEKEY USE_HOMEKEY_SET HOMEKEY yes \
-        "Langer Druck auf Home startet und stoppt die Spracheingabe (Termux wird digitaler Assistent, braucht Root)?"
-    ask_key USE_HEADSET USE_HEADSET_SET HEADSET yes \
-        "Langer Druck auf die Taste eines Kabel-Headsets startet und stoppt die Spracheingabe (braucht Root)?"
-fi
-if [ "$USE_SIDEKEY_SET" = 1 ]; then
-    cfg_set SIDEKEY "$(onoff "$USE_SIDEKEY")" "Seitentaste: $USE_SIDEKEY"
-fi
-if [ "$USE_HOMEKEY_SET" = 1 ]; then
-    cfg_set HOMEKEY "$(onoff "$USE_HOMEKEY")" "Home-Taste: $USE_HOMEKEY"
-fi
-if [ "$USE_HEADSET_SET" = 1 ]; then
-    cfg_set HEADSET "$(onoff "$USE_HEADSET")" "Headset-Taste: $USE_HEADSET"
-fi
-if [ "$CODEX_UPD_SET" = 1 ]; then
-    cfg_set CODEX_UPDATE "$CODEX_UPD_MODE" "codex-update-Modus gespeichert: $CODEX_UPD_MODE"
-else
-    v="$(cfg_get CODEX_UPDATE)"
-    if [[ "$v" =~ $APT_RE ]]; then CODEX_UPD_MODE="$v"; say "  codex-update-Modus aus der Konfig: $CODEX_UPD_MODE"; fi
-fi
 TMP_SNIP="$(mktemp)"; cp "$REPO/termux/tmux.conf.snippet" "$TMP_SNIP"
 set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
 
@@ -591,11 +676,12 @@ fi
 EOF
 set_block "$HOME/.bashrc" "$TMP_RC"; rm -f "$TMP_RC"
 # Voice dictation (/voice of Claude Code) and reading aloud work only with Claude Code: without it there is nothing to talk to.
-VOICE_ON=no
+VOICE_ON=no; SPEAK_ON=no
 if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then VOICE_ON=yes; fi
+if [ "$USE_SPEAK" = yes ] && [ "$USE_CLAUDE" = yes ]; then SPEAK_ON=yes; fi
 # Reading aloud reads the short version (speak-first: the summary paragraph and the last question; the guest's CLAUDE.md asks
 # Claude to write them). Set once: SPEAK_SHORT=set remembers it, so `rootbridge voice speak all` stays your choice.
-if [ "$VOICE_ON" = yes ] && [ -z "$(cfg_get SPEAK_SHORT)" ]; then
+if [ "$SPEAK_ON" = yes ] && [ -z "$(cfg_get SPEAK_SHORT)" ]; then
     # mktemp + mv replaces a link instead of writing through it; only a switch that is in place is remembered
     if mkdir -p "$BRIDGE_DIR" && tmp="$(mktemp "$BRIDGE_DIR/.speak-first.XXXXXX")" && mv -fT "$tmp" "$BRIDGE_DIR/speak-first"; then
         cfg_set SPEAK_SHORT set "Vorlesen: nur die Kurzfassung (die ganze Antwort: rootbridge voice speak all)"
@@ -655,14 +741,14 @@ if [ "$DO_WIDGETS" = 1 ]; then
             say "  Icon: $icon"
         fi
     done
-    # reading aloud (voice): two widgets in tasks/, which Termux:Widget runs in the background (no terminal opens)
+    # reading aloud: two widgets in tasks/, which Termux:Widget runs in the background (no terminal opens)
     for pair in "speak:Vorlesen" "speak-stop:Stopp"; do
         src="${pair%%:*}"; name="${pair#*:}"
-        if [ "$VOICE_ON" = yes ]; then
+        if [ "$SPEAK_ON" = yes ]; then
             inst "$REPO/termux/shortcuts/$src" "$SC/tasks/$name"
         elif [ -f "$SC/tasks/$name" ] && grep -q 'rootbridge voice speak' "$SC/tasks/$name" 2>/dev/null; then
             rm -f "$SC/tasks/$name"
-            say "  Widget entfernt: tasks/$name (Sprache abgewählt)"
+            say "  Widget entfernt: tasks/$name (Vorlesen abgewählt)"
         fi
     done
 else
@@ -672,9 +758,52 @@ if [ "$DO_BOOT" = 1 ] && [ -d "$HOME/.termux/boot" ]; then
     inst "$REPO/termux/boot/10-rootbridge.sh" "$HOME/.termux/boot/10-rootbridge.sh"
 fi
 
-say "== Sprache (/voice) und Seitentaste"
-if [ "$VOICE_ON" = yes ]; then
-    # PulseAudio in Termux: the guest records from it (sox in the guest, PULSE_SERVER=127.0.0.1)
+# pa_daemon_conf: reading aloud only: ~/.config/pulse/daemon.conf with allow-module-loading = no, so also a PulseAudio that
+# starts by itself (autospawn of a client) gives the guest, which has the cookie, no way to load the microphone source.
+# Only when the setting is missing it is added, right after our marker (also to a daemon.conf of your own; with a backup).
+# Otherwise just that pair goes again (a setting of your own stays); lines of your own stay (with a backup), and the file
+# goes only when nothing else is left.
+PA_MARK="# termux-rootbridge voice: reading aloud only, no microphone (installed by install.sh)"
+pa_daemon_conf() {
+    local dc="$HOME/.config/pulse/daemon.conf" tmp
+    if [ "$VOICE_ON" != yes ] && [ "$SPEAK_ON" = yes ]; then
+        tmp="$(mktemp)" || die "keine temporäre Datei für $dc"
+        if [ -e "$dc" ]; then cp "$dc" "$tmp" || die "$dc ließ sich nicht lesen"; fi
+        grep -qx 'allow-module-loading = no' "$tmp" || printf '%s\n' "$PA_MARK" 'allow-module-loading = no' >> "$tmp"
+        local rc=0
+        put_data "$tmp" "$dc" 644 || rc=$?
+        rm -f "$tmp"
+        # without the restriction a server a client starts by itself would let the guest load the microphone
+        [ "$rc" != 2 ] || die "$dc ließ sich nicht schreiben; ohne die Sperre hätte der Gast das Mikrofon. Erneut: bash install.sh"
+    elif grep -qs 'termux-rootbridge voice' "$dc"; then
+        local rc=0
+        tmp="$(mktemp)" || { say "  Hinweis: $dc bleibt (keine temporäre Datei)"; return 0; }
+        # our pair only: the marker and the setting right after it
+        awk '/^# termux-rootbridge voice/ { ours = 1; next } ours && $0 == "allow-module-loading = no" { ours = 0; next }
+             { ours = 0; print }' "$dc" > "$tmp" || rc=2
+        if [ "$rc" -gt 1 ]; then   # an error (a full disk): the file stays as it is
+            rm -f "$tmp"
+            say "  Hinweis: $dc ließ sich nicht lesen oder abschreiben und bleibt (die Sperre für nur Vorlesen darin)"
+            return 0
+        fi
+        if grep -q '[^[:space:]]' "$tmp"; then
+            put_data "$tmp" "$dc" 644 || true   # with a backup
+            say "  $dc: die Sperre für nur Vorlesen entfernt, deine Zeilen bleiben"
+        else
+            rm -f "$dc"
+            say "  entfernt: $dc (die Sperre für nur Vorlesen)"
+        fi
+        rm -f "$tmp"
+        # a server running with that restriction (also one a client started by itself) cannot load the microphone: anew
+        if [ "$VOICE_ON" = yes ]; then
+            { "$PREFIX/bin/rootbridge" voice stop && "$PREFIX/bin/rootbridge" voice start; } >/dev/null \
+                || say "  Hinweis: PulseAudio ließ sich nicht neu starten (rootbridge voice stop, dann voice start)"
+        fi
+    fi
+}
+say "== Sprache (/voice), Vorlesen und Tasten"
+if [ "$VOICE_ON" = yes ] || [ "$SPEAK_ON" = yes ]; then
+    # PulseAudio in Termux: the guest records from it and plays through it (sox in the guest, PULSE_SERVER=127.0.0.1)
     if [ ! -x "$PREFIX/bin/pulseaudio" ]; then
         if [ "$DO_SETUP" = 1 ] && [ "$DEPS" = 1 ] && command -v pkg >/dev/null 2>&1; then
             say "  pkg install -y pulseaudio"
@@ -688,15 +817,72 @@ if [ "$VOICE_ON" = yes ]; then
         fi
     fi
     # PulseAudio configuration: Termux' own default.pa plus the microphone and the local socket. A default.pa of your own stays.
+    # the restriction for reading aloud only first: a server that starts meanwhile (a restart below, or one a client starts by
+    # itself) already has it
+    pa_daemon_conf
     PA_FILE="$HOME/.config/pulse/default.pa"
     if [ -e "$PA_FILE" ] && ! grep -q 'termux-rootbridge voice' "$PA_FILE" 2>/dev/null; then
         say "  $PA_FILE ist deine eigene Datei und bleibt unverändert (ohne die Zeilen aus termux/pulse/default.pa kein Mikrofon)"
     else
         TMP_PA="$(mktemp)"
         sed "s|@PREFIX@|$PREFIX|g" "$REPO/termux/pulse/default.pa" > "$TMP_PA"
-        put_data "$TMP_PA" "$PA_FILE" 644 || true
+        # reading aloud only: no microphone source (it would record whenever Termux has the permission). Also one that
+        # Termux' own default.pa may load goes, right after it and before the listener for the guest opens.
+        if [ "$VOICE_ON" != yes ]; then
+            sed -i -e '/module-sles-source\|OpenSL_ES_source/d' \
+                -e 's|^\.nofail$|.nofail\n# reading aloud only: no source for recording, also none of the include above\nunload-module module-sles-source\nunload-module module-aaudio-source|' "$TMP_PA"
+        fi
+        pa_rc=0
+        put_data "$TMP_PA" "$PA_FILE" 644 || pa_rc=$?   # 0 written, 1 unchanged, 2 failed (then no restart)
         rm -f "$TMP_PA"
+        # reading aloud only must not go on with an older default.pa that loads the microphone
+        if [ "$pa_rc" = 2 ] && [ "$VOICE_ON" != yes ]; then
+            die "$PA_FILE ließ sich nicht schreiben; ohne sie hätte der Gast das Mikrofon. Nichts umgestellt, erneut: bash install.sh"
+        fi
+        # a server that runs already keeps the setup it started with (the listener for the guest, the microphone): anew
+        if [ "$pa_rc" = 0 ] && "$PREFIX/bin/rootbridge" voice status 2>/dev/null | grep -q 'PulseAudio: *läuft'; then
+            { "$PREFIX/bin/rootbridge" voice stop && "$PREFIX/bin/rootbridge" voice start; } >/dev/null \
+                || say "  Hinweis: PulseAudio ließ sich nicht neu starten (rootbridge voice stop, dann voice start)"
+        fi
     fi
+    # reading aloud only: a running PulseAudio may still have the microphone of before. voice_start finds every server of
+    # Termux (also one whose pid file is gone), keeps exactly one and starts it anew without a source for recording. With our
+    # default.pa a source for recording still there (any source but the monitors of the outputs) ends the installation:
+    # the guest would have the microphone; with one of your own it is a note.
+    if [ "$VOICE_ON" != yes ] && [ -x "$PREFIX/bin/pulseaudio" ]; then
+        "$PREFIX/bin/rootbridge" voice start >/dev/null || say "  Hinweis: PulseAudio startet nicht (rootbridge voice start)"
+        if ! sources="$(pactl list short sources 2>/dev/null)"; then
+            say "  Hinweis: ob PulseAudio das Mikrofon noch geladen hat, ließ sich nicht prüfen (pactl). Sicher aus:  rootbridge voice stop"
+        elif cut -f2 <<< "$sources" | grep -qv '\.monitor$'; then
+            if grep -qs 'termux-rootbridge voice' "$PA_FILE"; then
+                # the guest must not keep that server
+                if "$PREFIX/bin/rootbridge" voice stop >/dev/null 2>&1; then
+                    die "PulseAudio hatte trotz nur Vorlesen eine Quelle zum Aufnehmen geladen und ist beendet (rootbridge voice status)"
+                fi
+                die "PulseAudio hat trotz nur Vorlesen eine Quelle zum Aufnehmen geladen und ließ sich NICHT beenden; der Gast könnte noch aufnehmen: pulseaudio --kill"
+            fi
+            say "  Hinweis: deine eigene $PA_FILE lädt eine Quelle zum Aufnehmen (nur Vorlesen)"
+        else
+            say "  Mikrofon: aus (nur Vorlesen)"
+        fi
+    fi
+else
+    say "  übersprungen ($([ "$USE_CLAUDE" = yes ] && echo '--no-voice, --no-speak' || echo 'ohne Claude Code gibt es kein /voice'))"
+    # neither: our PulseAudio setup goes (the listener for the guest first, and the server that has it), then the restriction
+    pa="$HOME/.config/pulse/default.pa"
+    if grep -qs 'termux-rootbridge voice' "$pa"; then
+        if cp -p "$pa" "$pa.bak-$STAMP"; then   # also yours, should you have changed ours: removed only with its backup
+            "$PREFIX/bin/rootbridge" voice stop >/dev/null 2>&1 \
+                || say "  Hinweis: PulseAudio ließ sich nicht beenden (rootbridge voice stop)"
+            rm -f "$pa"
+            say "  entfernt: $pa (weder Vorlesen noch Spracheingabe; Sicherung: $pa.bak-$STAMP)"
+        else
+            say "  Hinweis: $pa ließ sich nicht sichern und bleibt (von Hand entfernen)"
+        fi
+    fi
+    pa_daemon_conf
+fi
+if [ "$VOICE_ON" = yes ]; then
     # Android's microphone permission for Termux (root). Only on a terminal, where the root manager can ask you; a pipe or a
     # script run never starts a root command by itself.
     if [ "$DO_SETUP" = 1 ] && { [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; }; then
@@ -711,8 +897,6 @@ if [ "$VOICE_ON" = yes ]; then
     else
         say "  Mikrofon-Berechtigung: einmal von Hand   rootbridge voice grant   (braucht Root; PulseAudio startet mit der Sitzung)"
     fi
-else
-    say "  übersprungen ($([ "$USE_CLAUDE" = yes ] && echo '--no-voice' || echo 'ohne Claude Code gibt es kein /voice'))"
 fi
 # Home key: Termux as the digital assistant (root), on every run: "Force stop" in the app info takes the role away. Taken back
 # when the key was on before this run, or always with --no-home-key (also without voice, also a role set by hand), and when
@@ -767,6 +951,24 @@ key_reader() {
 }
 key_reader sidekey-ptt "$USE_SIDEKEY" Seitentaste
 key_reader headset-ptt "$USE_HEADSET" Headset-Taste
+
+# Android's phantom process killer: off on every run on a terminal (an Android update may set it back); on again only when
+# it was off before this run. Root: only on a terminal, where the root manager can ask you.
+# Switching it on is done once it worked: until then PHANTOM_KILLER=restore keeps it pending.
+phantom=""
+if [ "$USE_PHANTOM_OFF" = yes ]; then phantom=off; elif [ "$(cfg_get PHANTOM_KILLER)" = restore ]; then phantom=on; fi
+if [ -n "$phantom" ]; then
+    if [ "$DO_SETUP" = 1 ] && { [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; }; then
+        say "  Phantom Process Killer $phantom (Root; der Root-Manager fragt):"
+        if "$PREFIX/bin/rootbridge" phantom-killer "$phantom"; then
+            [ "$phantom" = off ] || cfg_set PHANTOM_KILLER on "Phantom Process Killer: on (Android-Standard)"
+        else
+            say "  Hinweis: nicht geändert. Später:  rootbridge phantom-killer $phantom"
+        fi
+    else
+        say "  Phantom Process Killer: einmal von Hand   rootbridge phantom-killer $phantom   (braucht Root)"
+    fi
+fi
 
 say "== 4/5 Migration der alten Popup-Bridge (v1)"
 if [ "$DO_MIGRATE" = 1 ]; then
@@ -843,11 +1045,14 @@ if [ "$DO_GUEST" = 1 ]; then
             [ -e "$GROOT/usr/bin/git" ] || return 1
             [ -e "$GROOT/usr/bin/bwrap" ] || return 1
         fi
-        if [ "$VOICE_ON" = yes ]; then
-            [ -e "$GROOT/usr/bin/rec" ] || return 1      # sox: Claude Code records through it
+        if [ "$VOICE_ON" = yes ] || [ "$SPEAK_ON" = yes ]; then
+            [ -e "$GROOT/usr/bin/rec" ] || return 1      # sox: Claude Code records through it, the guest plays through it
+        fi
+        if [ "$SPEAK_ON" = yes ]; then
             [ -e "$GROOT/opt/piper/bin/piper" ] || return 1   # Piper reads the answers aloud
-            [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx" ] || return 1
-            [ -s "$GROOT/opt/piper/voices/de_DE-kerstin-medium.onnx.json" ] || return 1
+            local voice=de_DE-kerstin-medium; [ "$LANGUAGE" = en ] && voice=en_US-lessac-medium
+            [ -s "$GROOT/opt/piper/voices/$voice.onnx" ] || return 1
+            [ -s "$GROOT/opt/piper/voices/$voice.onnx.json" ] || return 1
             # Articulino (your own voice): its model comes last, so it stands for the whole step; a failed download is
             # tried again with the next installation
             [ -s "$GROOT/opt/articulino/model/int8/voice.onnx" ] || return 1
@@ -860,12 +1065,13 @@ if [ "$DO_GUEST" = 1 ]; then
     if [ "$DO_SETUP" = 1 ] && ! guest_ready; then
         say "  Gast: Voraussetzungen, Claude Code und Codex einrichten (Claude Code: $USE_CLAUDE, Codex: $USE_CODEX)"
         proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/setup-guest.sh \
-            --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" \
+            --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --speak "$SPEAK_ON" --language "$LANGUAGE" \
             || die "Die Einrichtung im Gast ist fehlgeschlagen. Erneut starten: bash install.sh"
         SETUP_DID=1
     fi
-    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --codex-bypass "$USE_BYPASS" --guidelines "$USE_GUIDE")
+    GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --voice "$VOICE_ON" --speak "$SPEAK_ON" --language "$LANGUAGE" --codex-bypass "$USE_BYPASS" --guidelines "$USE_GUIDE")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
+    if [ "$LANGUAGE_SET" = 1 ]; then GUEST_ARGS+=(--set-language); fi   # chosen in this run: Claude Code's setting follows
     if [ "$MODEL_SET" = 1 ]; then GUEST_ARGS+=(--model "$MODEL"); fi
     if [ "$DO_COLORS" = 1 ]; then GUEST_ARGS+=(--theme "$CLAUDE_THEME"); fi
     if [ -n "$APT_MODE" ]; then GUEST_ARGS+=(--apt-upgrade "$APT_MODE"); fi
@@ -875,6 +1081,23 @@ if [ "$DO_GUEST" = 1 ]; then
     rm -rf "$STAGE"
 else
     say "  übersprungen (--no-guest)"
+fi
+
+# the language, now that the guest has it: Claude Code's setting, the texts, the voice (whose model may be missing with
+# --no-setup: then a note, and speak.py reads with the German voice)
+if [ "$LANGUAGE_SET" = 1 ]; then
+    cfg_set LANGUAGE "$LANGUAGE" "Sprache: $LANGUAGE"
+fi
+if [ "$DO_GUEST" = 1 ] && [ "$SPEAK_ON" = yes ] && [ "$LANGUAGE" = en ] && [ -n "${GROOT:-}" ] \
+        && ! [ -s "$GROOT/opt/piper/voices/en_US-lessac-medium.onnx" ]; then
+    say "Hinweis: die englische Piper-Stimme fehlt im Gast (Piper liest bis dahin deutsch). Laden mit:  bash install.sh"
+fi
+# the choice of the tools, now that they are installed (see the questions)
+if [ "$USE_CLAUDE_SET" = 1 ]; then
+    cfg_set TOOL_CLAUDE "$(onoff "$USE_CLAUDE")" "Claude Code: $USE_CLAUDE"
+fi
+if [ "$USE_CODEX_SET" = 1 ]; then
+    cfg_set TOOL_CODEX "$(onoff "$USE_CODEX")" "Codex: $USE_CODEX"
 fi
 
 # start the daemon with the new code: without it nothing reads aloud and no root request gets through until the next session
@@ -924,9 +1147,11 @@ fi
 if [ "$USE_CODEX" = yes ] && [ "$USE_BYPASS" = yes ]; then
     say "Codex läuft ohne eigene Sandbox (unter proot scheitert sie; aus mit --no-codex-bypass). Android-Root bekommt es nur, wenn du die Rückfrage in Termux bestätigst."
 fi
+if [ "$SPEAK_ON" = yes ]; then
+    say "Vorlesen: Claudes Antworten liest Piper vor, mit deiner eigenen Stimme nach 'rootbridge-speak --record' im Gast; aus/an mit dem Widget 'Vorlesen' oder 'rootbridge voice speak off|on', sofort still mit 'Stopp'; beim Sprechen (ptt, /voice) pausiert es. Sprachbefehle: 'Welche Sprachbefehle gibt es'."
+fi
 if [ "$VOICE_ON" = yes ]; then
     say "Sprache: /voice in Claude Code (Alt+K; ptt folgt dem Modus hold oder tap); 'ptt start' / 'ptt stop' bedienen die Taste für dich (rootbridge voice status prüft das Mikrofon)."
-    say "Vorlesen: Claudes Antworten liest Piper vor, mit deiner eigenen Stimme nach 'rootbridge-speak --record' im Gast; aus/an mit dem Widget 'Vorlesen' oder 'rootbridge voice speak off|on', sofort still mit 'Stopp'; beim Sprechen (ptt, /voice) pausiert es."
     if [ "$USE_SIDEKEY" = yes ]; then
         say "Seitentaste: Langdruck = aufnehmen, loslassen = stoppen. In den E-Ink-Einstellungen den Langdruck auf 'Nothing' stellen."
     fi

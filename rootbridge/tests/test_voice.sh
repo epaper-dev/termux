@@ -80,9 +80,11 @@ cat > "$T/vstubs/pulseaudio" <<'EOF'
 echo "pulseaudio $*" >> "$STUB_LOG"
 case "$1" in
     --check) [ -s "$STUB_STATE/pa.running" ] && kill -0 "$(cat "$STUB_STATE/pa.running")" 2>/dev/null ;;
-    --start) "$STUB_FAKEPA" 600 > /dev/null 2>&1 &
+    --start) [ -z "${STUB_PA_START_FAIL:-}" ] || exit 1
+             "$STUB_FAKEPA" 600 > /dev/null 2>&1 &
              echo $! >> "$STUB_STATE/pa.servers"; echo $! > "$STUB_STATE/pa.running"
-             [ -e "$STUB_STATE/perm" ] && touch "$STUB_STATE/source"; exit 0 ;;
+             # our default.pa for reading aloud only has no source: a server started that way has none
+             [ -e "$STUB_STATE/perm" ] && [ "$*" = "${*/--disallow-module-loading/}" ] && touch "$STUB_STATE/source"; exit 0 ;;
     --kill) [ -s "$STUB_STATE/pa.running" ] || exit 1
             kill "$(cat "$STUB_STATE/pa.running")" 2>/dev/null; rm -f "$STUB_STATE/pa.running" "$STUB_STATE/source"; exit 0 ;;
 esac
@@ -92,7 +94,7 @@ cat > "$T/vstubs/pactl" <<'EOF'
 #!/bin/bash
 echo "pactl $*" >> "$STUB_LOG"
 case "$1 $2" in
-    "list short") [ -e "$STUB_STATE/source" ] && printf '1\tOpenSL_ES_source\tmodule-sles-source.c\ts16le 2ch 44100Hz\tIDLE\n'; exit 0 ;;
+    "list short") [ -z "${STUB_LIST_FAIL:-}" ] || exit 1; [ -e "$STUB_STATE/source" ] && printf '1\tOpenSL_ES_source\tmodule-sles-source.c\ts16le 2ch 44100Hz\tIDLE\n'; exit 0 ;;
     "load-module module-sles-source") [ -e "$STUB_STATE/perm" ] || { echo "Failure: Module initialization failed" >&2; exit 1; }; touch "$STUB_STATE/source"; exit 0 ;;
 esac
 exit 0
@@ -101,9 +103,11 @@ cat > "$T/vstubs/su" <<'EOF'
 #!/bin/bash
 echo "su $*" >> "$STUB_LOG"
 [ "${STUB_SU_FAIL:-0}" = 1 ] && exit 1
+[ -n "${STUB_SU_EXIT:-}" ] && exit "$STUB_SU_EXIT"
 # no Termux:API: pm grant refuses its package
 [ "${STUB_SU_NOAPI:-0}" = 1 ] && case "$*" in *com.termux.api*) exit 1 ;; esac
 case "$*" in *voice_interaction_service*) printf '%s\n' "${STUB_ASSISTANT:-null}"; exit 0 ;; esac
+case "$*" in *"settings get global settings_enable_monitor_phantom_procs"*) printf '%s\n' "${STUB_PHANTOM:-}"; exit 0 ;; esac
 touch "$STUB_STATE/perm"
 exit 0
 EOF
@@ -180,6 +184,32 @@ rb bash "$T/bin/rootbridge" voice status
 check "voice status danach: PulseAudio läuft, Mikrofon ok" "1 1" "$(count "$T/out.txt" 'PulseAudio: *läuft') $(count "$T/out.txt" 'Mikrofon: *ok')"
 rb bash "$T/bin/rootbridge" voice start
 check "voice start mit Quelle: lädt nichts nach"          0 "$(calls '^pactl load-module')"
+printf 'VOICE=off\nSPEAK=on\n' > "$RBC"
+rb bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen: der Server mit Mikrofon startet neu, ohne Nachladen von Modulen" "1 1 0" \
+      "$(calls '^pulseaudio --kill$') $(calls '^pulseaudio --start --exit-idle-time=-1 --disallow-module-loading$') $(has "$T/state/source" | grep -c ja)"
+check "nur Vorlesen: der Server steht in der Datei, die nur Termux sieht" 1 "$(grep -c . "$T/home/.cache/rootbridge-pulse-playback-only")"
+rb bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen: zweiter Start lässt diesen Server"   0 "$(calls '^pulseaudio --start')"
+touch "$T/state/source"; mkdir -p "$T/home/.config/pulse"
+printf '# my own\nload-module module-sles-source\n' > "$T/home/.config/pulse/default.pa"
+rb bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen, eigene default.pa mit Mikrofon: Hinweis" 1 "$(count "$T/out.txt" 'eigene PulseAudio-Konfiguration lädt das Mikrofon')"
+printf '# termux-rootbridge voice: ours\n' > "$T/home/.config/pulse/default.pa"
+rb bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen, unsere default.pa und doch ein Mikrofon: Server beendet, Fehler" "1 1 1" \
+      "$RC $(count "$T/out.txt" 'obwohl nur vorgelesen wird; beendet') $(calls '^pulseaudio --kill$')"
+rb env STUB_LIST_FAIL=1 bash "$T/bin/rootbridge" voice start
+check "nur Vorlesen: Abfrage scheitert, Hinweis"          1 "$(count "$T/out.txt" 'ließ sich nicht prüfen')"
+rm -f "$T/home/.config/pulse/default.pa" "$T/state/source"
+: > "$RBC"
+rb bash "$T/bin/rootbridge" voice start
+rb bash "$T/bin/rootbridge" voice stop
+rb env STUB_PA_START_FAIL=1 bash "$T/bin/rootbridge" voice start
+check "voice start: PulseAudio startet nicht, Fehler und Meldung" "1 1" "$RC $(count "$T/out.txt" 'PulseAudio startet nicht')"
+rb bash "$T/bin/rootbridge" voice start
+check "Spracheingabe wieder an: neuer Server mit Nachladen, die Datei weg" "1 nein" \
+      "$(calls '^pulseaudio --start --exit-idle-time=-1$') $(has "$T/home/.cache/rootbridge-pulse-playback-only")"
 
 rb bash "$T/bin/rootbridge" voice stop
 check "voice stop: pulseaudio --kill"                     1 "$(calls '^pulseaudio --kill$')"
@@ -192,7 +222,7 @@ reset_pa; echo 999999999 > "$T/state/pa.stubborn"
 rb bash "$T/bin/rootbridge" voice stop
 check "voice stop: ein Server bleibt, Fehler mit Meldung"  "1 1" "$RC $(count "$T/out.txt" 'PulseAudio läuft noch.*999999999')"
 rb bash "$T/bin/rootbridge" voice start
-check "voice start: ein Server bleibt, Hinweis, Sitzung startet trotzdem (Exit 0)" "0 1" "$RC $(count "$T/out.txt" 'lassen sich nicht beenden')"
+check "voice start: ein Server bleibt, Hinweis, Fehler (Exit 1)" "1 1" "$RC $(count "$T/out.txt" 'lassen sich nicht beenden')"
 check "voice start: neben dem hartnäckigen Server startet kein weiterer" 0 "$(calls '^pulseaudio --start')"
 # the status of a server cannot be read: stop does not claim success; a pid gone meanwhile (no /proc entry) is skipped
 reset_pa; spawn_pa; P1=$LAST_PA
@@ -262,6 +292,43 @@ rb env STUB_SU_FAIL=1 bash "$T/bin/rootbridge" voice assistant on
 check "voice assistant on: su verweigert, Fehler"         "1 1" "$RC $(count "$T/out.txt" 'ließ sich nicht setzen')"
 rb env RB_SU="$T/gibt-es-nicht" bash "$T/bin/rootbridge" voice assistant on
 check "voice assistant ohne su: Fehler"                   1 "$RC"
+# Android's phantom process killer (root)
+: > "$STUB_LOG"
+rb bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off: Einstellung, device_config, Meldung" "0 1 1 1 1" "$RC $(calls 'settings put global settings_enable_monitor_phantom_procs false') $(calls '&& set_sync persistent') $(calls 'device_config put activity_manager max_phantom_processes 2147483647') $(count "$T/out.txt" 'Phantom Process Killer: aus')"
+check "phantom-killer off: Marke neben der Konfig"         ja "$(has "$(dirname "$RBC")/phantom-killer-off")"
+rb bash "$T/bin/rootbridge" phantom-killer on
+check "phantom-killer on: Marke weg"                       nein "$(has "$(dirname "$RBC")/phantom-killer-off")"
+check "phantom-killer on: Android-Standard zurück"        "0 1 1 1" "$RC $(calls 'settings delete global settings_enable_monitor_phantom_procs') $(calls 'device_config delete activity_manager max_phantom_processes') $(calls 'set_sync none || r=1')"
+printf '#!/bin/sh\necho "${STUB_SDK:-34}"\n' > "$T/vstubs/getprop"; chmod +x "$T/vstubs/getprop"
+rb env STUB_SDK=31 bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off unter Android 12: Hinweis auf hohe Rechenlast" "0 1" "$RC $(count "$T/out.txt" 'Android 12 beendet sie bei hoher Rechenlast')"
+rb bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off ab Android 13: kein solcher Hinweis" "0 0" "$RC $(count "$T/out.txt" 'Android 12 beendet')"
+rb bash "$T/bin/rootbridge" phantom-killer on
+rb env STUB_PHANTOM=false bash "$T/bin/rootbridge" phantom-killer
+check "phantom-killer status: aus"                        "0 1" "$RC $(count "$T/out.txt" 'Phantom Process Killer: aus')"
+rb env STUB_PHANTOM=null bash "$T/bin/rootbridge" phantom-killer status
+check "phantom-killer status: an, mit Hinweis"            1 "$(count "$T/out.txt" 'an - rootbridge phantom-killer off')"
+check "phantom-killer status: ohne globale Einstellung die der Entwickleroption" 1 "$(calls 'getprop persist.sys.fflag.override.settings_enable_monitor_phantom_procs')"
+cp "$RBC" "$T/rbc.saved"; printf 'VOICE=on\nPHANTOM_KILLER=off\n' > "$RBC"
+rb bash "$T/bin/rootbridge" phantom-killer on
+check "phantom-killer on von Hand: die Konfig sagt on, der Rest bleibt" "PHANTOM_KILLER=on VOICE=on" "$(grep -E '^(PHANTOM_KILLER|VOICE)=' "$RBC" | sort | tr '\n' ' ' | sed 's/ $//')"
+rb bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off von Hand: die Konfig sagt off"  PHANTOM_KILLER=off "$(grep '^PHANTOM_KILLER=' "$RBC")"
+cp "$T/rbc.saved" "$RBC"
+rb env STUB_SU_EXIT=3 bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off: Werte nicht gesetzt, zurückgerollt, Marke weg" "1 1 nein" "$RC $(count "$T/out.txt" 'Android-Standard ist wiederhergestellt') $(has "$(dirname "$RBC")/phantom-killer-off")"
+check "phantom-killer off: liest die Werte nach und rollt sonst zurück" "1 1 1" "$(calls 'max_phantom_processes)" = 2147483647') $(calls 'sync_mode)" = persistent') $(calls 'exit 3')"
+rb bash "$T/bin/rootbridge" phantom-killer on
+check "phantom-killer on: liest den Android-Standard nach" 1 "$(calls 'sync_mode)" = none')"
+rb env STUB_SU_FAIL=1 bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off: su verweigert, Fehler; die Marke bleibt für den Rückweg" "1 1 ja" "$RC $(count "$T/out.txt" 'ließ sich nicht abschalten') $(has "$(dirname "$RBC")/phantom-killer-off")"
+rm -f "$(dirname "$RBC")/phantom-killer-off"; : > "$T/kein-ordner"
+rb env ROOTBRIDGE_CONFIG="$T/kein-ordner/config" bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer off: ohne Marke nichts geändert"    "1 0" "$RC $(calls 'phantom')"
+rb env RB_SU="$T/gibt-es-nicht" bash "$T/bin/rootbridge" phantom-killer off
+check "phantom-killer ohne su: Hinweis auf die Entwickleroption" "1 1" "$RC $(count "$T/out.txt" 'untergeordnete Prozesse')"
 rb bash "$T/bin/rootbridge" voice assistant nope
 check "voice assistant: unbekannter Befehl"               "1 1" "$RC $(count "$T/out.txt" 'voice assistant: on')"
 rb bash "$T/bin/rootbridge" voice nope
@@ -513,7 +580,7 @@ rm -f "$T/keys.fail" "$BRIDGE_DIR/prompt-clear"
 rb bash "$T/bin/rootbridge" help
 check "help nennt voice start|stop|status|grant"          1 "$(count "$T/out.txt" 'rootbridge voice start|stop|status|grant')"
 rb bash "$T/bin/rootbridge" status
-check "status (VOICE on): zeigt den Abschnitt Sprache"    1 "$(count "$T/out.txt" '^Sprache (/voice):')"
+check "status (VOICE on): zeigt den Abschnitt Sprache"    1 "$(count "$T/out.txt" '^Sprache (/voice, Vorlesen):')"
 printf 'VOICE=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" status
 check "status (VOICE off): nennt --no-voice"              1 "$(count "$T/out.txt" '--no-voice')"
@@ -569,6 +636,9 @@ exit 1
 EOF
 printf '#!/bin/bash\necho "setsid $*" >> "$STUB_LOG"\n[ "${STUB_READER_DIES:-0}" = 1 ] || : > "$STUB_LOG.reader"\nexit 0\n' > "$T/istubs/setsid"
 printf '#!/bin/bash\ncase "$*" in *-ptt*) [ -e "$STUB_LOG.reader" ] ;; *) exit 1 ;; esac\n' > "$T/istubs/pgrep"
+# PulseAudio: the installer may end or start it (rootbridge voice stop|start); never the real one of the device
+printf '#!/bin/bash\necho "pulseaudio $*" >> "$STUB_LOG"\n[ "$1" = --check ] && exit 1\nexit 0\n' > "$T/istubs/pulseaudio"
+printf '#!/bin/bash\necho "pactl $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs/pactl"
 chmod +x "$T/istubs"/*
 export STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$T/iguest"
 ILOG="$T/i.log"
@@ -615,6 +685,7 @@ printf '#!/bin/sh\necho mine\n' > "$H/.shortcuts/tasks/Stopp"
 irun --no-voice
 check "install.sh --no-voice: ein eigenes Widget Stopp bleibt" ja "$(has "$H/.shortcuts/tasks/Stopp")"
 rm -f "$H/.shortcuts/tasks/Stopp"
+rm -f "$H/.config/pulse"/default.pa.bak-*   # --no-voice above: neither, our default.pa went with a backup
 irun --voice
 check "install.sh --voice: Widgets wieder da"              "ja ja" "$(has "$H/.shortcuts/tasks/Vorlesen") $(has "$H/.shortcuts/tasks/Stopp")"
 check "install.sh: keine Backup-Datei bei der ersten Installation" 0 "$(baks "$H/.config/pulse/*bak*")"
@@ -640,14 +711,58 @@ check "--no-voice: läuft, VOICE=off gespeichert"           "0 off" "$IRC $(iget
 check "--no-voice: keine default.pa"                       nein "$(has "$PA")"
 check "--no-voice: gibt --voice no an den Gast"            1 "$(guestargs | grep -c -- '--voice no')"
 check "--no-voice: Gast ohne Tastenbelegung"               nein "$(has "$T/iguest/root/.claude/keybindings.json")"
-check "--no-voice: Meldung"                                1 "$(count "$T/install.log" 'übersprungen (--no-voice)')"
+check "--no-voice: Meldung"                                1 "$(count "$T/install.log" 'übersprungen (--no-voice, --no-speak)')"
+check "--no-voice ohne Vorlese-Wahl: Vorlesen folgt, an den Gast" 1 "$(guestargs | grep -c -- '--voice no --speak no')"
 irun
 check "ohne Option nach --no-voice: bleibt aus (Konfig)"   "0 nein" "$IRC $(has "$PA")"
 check "ohne Option nach --no-voice: Meldung aus der Konfig" 1 "$(count "$T/install.log" 'Sprache: abgewählt')"
+# reading aloud without dictation, and dictation without reading aloud
+irun --no-voice --speak
+check "nur Vorlesen: PulseAudio-Konfig, Widgets, an den Gast" "0 on ja ja 1" "$IRC $(iget SPEAK) $(has "$PA") $(has "$H/.shortcuts/tasks/Vorlesen") $(guestargs | grep -c -- '--voice no --speak yes')"
+check "nur Vorlesen: keine Mikrofon-Berechtigung"          0 "$(count "$T/install.log" 'Mikrofon-Berechtigung')"
+check "nur Vorlesen: default.pa ohne Mikrofonquelle, mit Marke" "0 1" "$(count "$PA" '^load-module module-sles-source\|OpenSL_ES_source') $(count "$PA" 'termux-rootbridge voice')"
+check "nur Vorlesen: Quellen aus Termux' default.pa entladen, vor dem Zugang für den Gast" "ja" \
+      "$(awk '/^unload-module module-sles-source$/ { u = NR } /^load-module module-native-protocol-tcp/ { l = NR } END { print (u && u < l) ? "ja" : "nein" }' "$PA")"
+check "nur Vorlesen: daemon.conf sperrt das Nachladen von Modulen" 1 "$(count "$H/.config/pulse/daemon.conf" '^allow-module-loading = no$')"
+irun --voice --no-speak
+check "nur Spracheingabe: default.pa wieder mit Mikrofonquelle" 1 "$(count "$PA" '^load-module module-sles-source$')"
+check "nur Spracheingabe: unsere daemon.conf weg, der Neustart meldet keinen Fehler" "nein 1 0" \
+      "$(has "$H/.config/pulse/daemon.conf") $(count "$T/install.log" 'entfernt: .*daemon.conf') $(count "$T/install.log" 'nicht neu starten')"
+irun --no-voice --speak
+echo 'flat-volumes = no' >> "$H/.config/pulse/daemon.conf"
+irun --no-voice --speak
+check "nur Vorlesen zweimal: deine Zeile in unserer daemon.conf bleibt" "1 1" \
+      "$(count "$H/.config/pulse/daemon.conf" '^flat-volumes = no$') $(count "$H/.config/pulse/daemon.conf" '^allow-module-loading = no$')"
+irun --voice --no-speak
+check "dann Spracheingabe: nur unsere Zeilen gehen, deine bleibt" "flat-volumes = no 0" \
+      "$(cat "$H/.config/pulse/daemon.conf") $(count "$H/.config/pulse/daemon.conf" 'termux-rootbridge\|allow-module-loading')"
+rm -f "$H/.config/pulse/daemon.conf" "$H/.config/pulse"/daemon.conf.bak-*
+printf 'flat-volumes = no\n' > "$H/.config/pulse/daemon.conf"
+irun --no-voice --speak
+check "nur Vorlesen, eigene daemon.conf: deine Zeile bleibt, unsere Sperre kommt dazu" "1 1 1" \
+      "$(count "$H/.config/pulse/daemon.conf" '^flat-volumes = no$') $(count "$H/.config/pulse/daemon.conf" '^allow-module-loading = no$') $(count "$H/.config/pulse/daemon.conf" 'termux-rootbridge voice')"
+printf 'allow-module-loading = no\n' > "$H/.config/pulse/daemon.conf"   # yours already
+irun --no-voice --speak
+check "nur Vorlesen, eigene Sperre schon da: nichts dazu" "allow-module-loading = no" "$(cat "$H/.config/pulse/daemon.conf")"
+irun --voice --no-speak
+check "dann Spracheingabe: deine eigene Sperre bleibt"    "allow-module-loading = no" "$(cat "$H/.config/pulse/daemon.conf")"
+rm -f "$H/.config/pulse/daemon.conf" "$H/.config/pulse"/daemon.conf.bak-*
+irun --voice --no-speak
+check "nur Spracheingabe: Widgets weg, an den Gast"        "0 off nein 1" "$IRC $(iget SPEAK) $(has "$H/.shortcuts/tasks/Vorlesen") $(guestargs | grep -c -- '--voice yes --speak no')"
+check "nur Spracheingabe: Gast mit Tastenbelegung"          ja "$(has "$T/iguest/root/.claude/keybindings.json")"
+irun --speak
 irun --voice
 check "--voice: wieder an, VOICE=on gespeichert"           "0 on ja" "$IRC $(iget VOICE) $(has "$PA")"
 irun
 check "ohne Option nach --voice: bleibt an"                ja "$(has "$PA")"
+
+# neither reading aloud nor dictation: our default.pa goes, with a backup (you may have changed it)
+rm -f "$H/.config/pulse"/default.pa.bak-*
+printf '# termux-rootbridge voice: ours\n# changed by me\n' > "$PA"
+irun --no-voice --no-speak
+check "weder noch: unsere default.pa weg, mit Sicherung"   "nein 1" "$(has "$PA") $(grep -l 'changed by me' "$H/.config/pulse"/default.pa.bak-* 2>/dev/null | wc -l | tr -d ' ')"
+rm -f "$H/.config/pulse"/default.pa.bak-*
+irun --voice --speak
 
 # without Claude Code there is no /voice
 rm -f "$PA"
@@ -756,7 +871,7 @@ check "Setup: pulseaudio ohne empfohlene Pakete"          1 "$(count "$ILOG" '^p
 check "Setup am Terminal: Mikrofon fehlt, su -c pm grant"  1 "$(count "$ILOG" '^su -c pm grant com.termux.api android.permission.RECORD_AUDIO$')"
 check "Setup am Terminal: Quelle ist danach da"            ja "$(has "$T/state/source")"
 sinst bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot --no-voice
-check "Setup --no-voice: kein pulseaudio-Paket, kein su"   "0 0" "$(count "$ILOG" 'pulseaudio') $(count "$ILOG" '^su ')"
+check "Setup --no-voice: kein pulseaudio-Paket, kein su"   "0 0" "$(count "$ILOG" '^pkg install.*pulseaudio') $(count "$ILOG" '^su ')"
 # the permission is there already (the source exists after the start): no root command
 reset_pa; touch "$T/state/perm"
 : > "$ILOG"; rm -f "$SP/bin/pulseaudio"
@@ -770,13 +885,14 @@ sinst bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-b
 check "--no-setup: kein Root-Befehl"                       0 "$(count "$ILOG" '^su ')"
 check "ohne Antwort am Terminal: keine Taste gefragt-gespeichert" "" "$(sed -n 's/^\(SIDEKEY\|HOMEKEY\|HEADSET\)=//p' "$SH/.config/termux-rootbridge/config")"
 # the questions for the keys, answered on the terminal: n (side key), Enter (Home: yes), j (headset)
-ainst() {   # ainst <answers> [args]: like sinst, with the answers on stdin
-    local answers="$1"; shift
+ainst() {   # ainst <answers> [args]: like sinst, with the answers on stdin; only the key questions are asked here
+    local answers="$1" phantom=--phantom-killer-on; shift
+    [[ " $* " == *" --phantom-killer-"* ]] || grep -qs '^PHANTOM_KILLER=' "$SCFG" && phantom=""
     reset_pa; : > "$ILOG"; rm -f "$SP/bin/pulseaudio"
     printf '%s' "$answers" | env HOME="$SH" PREFIX="$SP" PATH="$T/sbindir:$T/sstubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 \
         BRIDGE_DIR="$SH/.rootbridge" STUB_LOG="$ILOG" STUB_STATE="$T/state" RB_SU="$T/sstubs/su" \
-        ROOTBRIDGE_FORCE_INTERACTIVE=1 bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot "$@" \
-        > "$T/install.log" 2>&1
+        ROOTBRIDGE_FORCE_INTERACTIVE=1 bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot \
+        --claude --codex --speak --voice --language de ${phantom:+"$phantom"} "$@" > "$T/install.log" 2>&1
     IRC=$?
 }
 SCFG="$SH/.config/termux-rootbridge/config"
@@ -790,6 +906,21 @@ check "Fragen beantwortet: zweiter Lauf fragt nicht mehr, die Rolle wird erneut 
       "$(count "$T/install.log" 'Seitentaste als Push to Talk') $(count "$T/install.log" 'Langer Druck auf Home') $(count "$ILOG" '^su -c cmd role add-role-holder')"
 ainst '' --no-home-key
 check "--no-home-key am Terminal: Rolle per su zurückgenommen" "off 1" "$(sget HOMEKEY) $(count "$ILOG" '^su -c cmd role remove-role-holder --user 0 android.app.role.ASSISTANT com.termux$')"
+# Android's phantom process killer: off on every run; on again stays pending (restore) until it worked
+ainst '' --phantom-killer-off
+check "Phantom Killer aus: per su, gespeichert"           "off 1" "$(sget PHANTOM_KILLER) $(count "$ILOG" 'settings_enable_monitor_phantom_procs false')"
+ainst ''
+check "Phantom Killer: jeder Lauf schaltet ihn erneut aus" "off 1" "$(sget PHANTOM_KILLER) $(count "$ILOG" 'settings_enable_monitor_phantom_procs false')"
+STUB_SU_FAIL=1 ainst '' --phantom-killer-on
+check "Phantom Killer an, Root verweigert: bleibt vorgemerkt" "restore 1" "$(sget PHANTOM_KILLER) $(count "$T/install.log" 'rootbridge phantom-killer on')"
+ainst ''
+check "Phantom Killer: der nächste Lauf holt es nach"     "on 1" "$(sget PHANTOM_KILLER) $(count "$ILOG" 'settings delete global settings_enable_monitor_phantom_procs')"
+ainst ''
+check "Phantom Killer an: danach kein Root-Befehl mehr"   "on 0" "$(sget PHANTOM_KILLER) $(count "$ILOG" 'phantom')"
+: > "$(dirname "$SCFG")/phantom-killer-off"   # rootbridge phantom-killer off by hand
+ainst '' --phantom-killer-on
+check "Phantom Killer von Hand aus, dann --phantom-killer-on: zurück zum Standard" "on 1" \
+      "$(sget PHANTOM_KILLER) $(count "$ILOG" 'settings delete global settings_enable_monitor_phantom_procs')"
 
 # =========================================================================== 5. install-guest.sh
 GA="$T/ga"; rm -rf "$GA"; mkdir -p "$GA"
@@ -814,6 +945,36 @@ check "Gast frisch: speak.py und rootbridge-speak"         "ja ja" "$(has "$GA/u
 check "Gast frisch: rootbridge-speak mit dem Python des Gasts" 1 "$(count "$GA/usr/local/bin/rootbridge-speak" '^exec /usr/bin/python3 -I .*/usr/local/lib/termux-rootbridge/speak.py')"
 check "Gast frisch: CLAUDE.md, ein Block mit Code Quality und dem Text fürs Vorlesen" "1 1 1" \
       "$(count "$GA/root/.claude/CLAUDE.md" '^<!-- >>> termux-rootbridge >>> -->$') $(count "$GA/root/.claude/CLAUDE.md" '^## Code quality requirements') $(count "$GA/root/.claude/CLAUDE.md" '^## Answers read aloud')"
+# reading aloud and dictation apart
+GS="$T/gs"; rm -rf "$GS"; mkdir -p "$GS"
+gi "$GS" --claude yes --codex no --voice no --speak yes
+check "Gast nur Vorlesen: speak.py, Stop-Hook, Text in CLAUDE.md" "0 ja 1 1" \
+      "$GRC $(has "$GS/usr/local/lib/termux-rootbridge/speak.py") $(hookcmd "$GS/etc/claude-code/managed-settings.json" Stop | grep -c speak.py) $(count "$GS/root/.claude/CLAUDE.md" '^## Answers read aloud')"
+check "Gast nur Vorlesen: Marke no-microphone (keine Aufnahme der Stimme)" ja "$(has "$GS/usr/local/lib/termux-rootbridge/no-microphone")"
+rm -f "$GS/usr/local/lib/termux-rootbridge/no-microphone"; echo fremd > "$T/fremd"
+ln -s "$T/fremd" "$GS/usr/local/lib/termux-rootbridge/no-microphone"
+gi "$GS" --claude yes --codex no --voice no --speak yes
+check "Gast nur Vorlesen: die Marke ersetzt einen Link, die Datei dahinter bleibt" "fremd -" \
+      "$(cat "$T/fremd") $(ls -l "$GS/usr/local/lib/termux-rootbridge/no-microphone" | cut -c1)"
+check "Gast nur Vorlesen: keine Tastenbelegung, kein voice, Cookie in .bashrc" "nein null 1" \
+      "$(has "$GS/root/.claude/keybindings.json") $(sv "$GS") $(count "$GS/root/.bashrc" 'export PULSE_COOKIE=')"
+# the language: Claude Code's setting (written when chosen in this run, else only where none is set), the texts, speak.py
+GL="$T/gl"; rm -rf "$GL"; mkdir -p "$GL"
+gi "$GL" --claude yes --codex no --voice yes --speak yes --language en --set-language
+check "Gast Englisch: language english, Text englisch, speak.py liest Englisch" "0 \"english\" 1 0 en" \
+      "$GRC $(python3 -I -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("language")))' "$GL/root/.claude/settings.json") $(count "$GL/root/.claude/CLAUDE.md" '^## Answers read aloud') $(count "$GL/root/.claude/CLAUDE.md" '^## Antworten werden vorgelesen') $(cat "$GL/usr/local/lib/termux-rootbridge/language")"
+gi "$GL" --claude yes --codex no --voice yes --speak yes
+check "Gast ohne --language: die eingestellte Sprache bleibt" en "$(cat "$GL/usr/local/lib/termux-rootbridge/language")"
+gi "$GL" --claude yes --codex no --voice yes --speak yes --language de
+check "Gast Deutsch ohne neue Wahl: die Einstellung english bleibt, Text und Vorlesen deutsch" "\"english\" 1 de" \
+      "$(python3 -I -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("language")))' "$GL/root/.claude/settings.json") $(count "$GL/root/.claude/CLAUDE.md" '^## Antworten werden vorgelesen') $(cat "$GL/usr/local/lib/termux-rootbridge/language")"
+GV="$T/gv"; rm -rf "$GV"; mkdir -p "$GV"
+gi "$GV" --claude yes --codex no --voice yes --speak no
+check "Gast nur Spracheingabe: Tastenbelegung und voice" "0 ja 1" "$GRC $(has "$GV/root/.claude/keybindings.json") $(sv "$GV" | grep -c tap)"
+gi "$GS" --claude yes --codex no --voice yes --speak yes
+check "Gast Vorlesen und Spracheingabe: Marke no-microphone weg" nein "$(has "$GS/usr/local/lib/termux-rootbridge/no-microphone")"
+check "Gast nur Spracheingabe: kein speak.py, kein Stop-Hook, kein Text fürs Vorlesen" "nein 0 0" \
+      "$(has "$GV/usr/local/lib/termux-rootbridge/speak.py") $(hookcmd "$GV/etc/claude-code/managed-settings.json" Stop | grep -c speak.py) $(count "$GV/root/.claude/CLAUDE.md" '^## Answers read aloud')"
 KBSUM="$(cksum < "$GA/root/.claude/keybindings.json")"; SSUM="$(cksum < "$GA/root/.claude/settings.json")"
 gi "$GA" --claude yes --codex no
 check "Gast zweimal: keybindings.json unverändert"         "$KBSUM" "$(cksum < "$GA/root/.claude/keybindings.json")"
@@ -996,16 +1157,23 @@ H2="$T/uh"; P2="$T/up"; mkdir -p "$H2/.config/pulse" "$P2/bin"
 printf '#!/bin/sh\n# sidekey-ptt\n' > "$P2/bin/sidekey-ptt"
 printf '#!/bin/sh\n# headset-ptt\n' > "$P2/bin/headset-ptt"
 printf '# termux-rootbridge voice: x\n' > "$H2/.config/pulse/default.pa"
+printf '# termux-rootbridge voice: x\nallow-module-loading = no\nflat-volumes = no\n' > "$H2/.config/pulse/daemon.conf"
 run_un() { : > "$ILOG"; STUB_LOG="$ILOG" HOME="$H2" PREFIX="$P2" PATH="$T/istubs:$PATH" bash "$UNINSTALL" --no-guest > "$T/uninstall.log" 2>&1; }
 mkdir -p "$H2/.shortcuts/tasks"
 cp "$ROOT/termux/shortcuts/speak" "$H2/.shortcuts/tasks/Vorlesen"; cp "$ROOT/termux/shortcuts/speak-stop" "$H2/.shortcuts/tasks/Stopp"
+printf '#!/bin/bash\necho "rootbridge $*" >> "$STUB_LOG"\nexit 0\n' > "$P2/bin/rootbridge"; chmod +x "$P2/bin/rootbridge"
 run_un
+check "uninstall: unser PulseAudio beendet, solange rootbridge noch da ist" 1 "$(count "$ILOG" '^rootbridge voice stop$')"
 check "uninstall: beide Leser weg und beendet"            "nein nein 1 1" "$(has "$P2/bin/sidekey-ptt") $(has "$P2/bin/headset-ptt") $(count "$ILOG" '^pkill -f sidekey-ptt') $(count "$ILOG" '^pkill -f headset-ptt')"
 check "uninstall: Widgets Vorlesen und Stopp weg"          "nein nein" "$(has "$H2/.shortcuts/tasks/Vorlesen") $(has "$H2/.shortcuts/tasks/Stopp")"
 printf '#!/bin/sh\necho mine\n' > "$H2/.shortcuts/tasks/Stopp"
 run_un
 check "uninstall: ein eigenes Widget Stopp bleibt"         ja "$(has "$H2/.shortcuts/tasks/Stopp")"
-check "uninstall: unsere default.pa weg"                   nein "$(has "$H2/.config/pulse/default.pa")"
+check "uninstall: unsere default.pa weg, aus daemon.conf nur unsere Zeilen" "nein flat-volumes = no" \
+      "$(has "$H2/.config/pulse/default.pa") $(cat "$H2/.config/pulse/daemon.conf")"
+printf '# termux-rootbridge voice: x\nallow-module-loading = no\n' > "$H2/.config/pulse/daemon.conf"
+run_un
+check "uninstall: unsere daemon.conf ohne eigene Zeilen geht ganz" nein "$(has "$H2/.config/pulse/daemon.conf")"
 printf '# my own\n' > "$H2/.config/pulse/default.pa"
 printf '#!/bin/sh\necho mine\n' > "$P2/bin/sidekey-ptt"
 run_un
@@ -1020,6 +1188,17 @@ check "uninstall mit HOMEKEY=off: der Hinweis auch (ein früheres Zurücknehmen 
 rm -rf "$H2/.config/termux-rootbridge"
 run_un
 check "uninstall ohne HOMEKEY: kein Hinweis"               0 "$(count "$T/uninstall.log" "remove-role-holder")"
+mkdir -p "$H2/.config/termux-rootbridge"
+echo "PHANTOM_KILLER=off" > "$H2/.config/termux-rootbridge/config"
+run_un
+check "uninstall: nur gespeichert, nie umgeschaltet (keine Marke): kein Hinweis" 0 "$(count "$T/uninstall.log" "set_sync_disabled_for_tests")"
+mkdir -p "$T/anderswo"; : > "$T/anderswo/phantom-killer-off"
+: > "$ILOG"; STUB_LOG="$ILOG" HOME="$H2" PREFIX="$P2" PATH="$T/istubs:$PATH" ROOTBRIDGE_CONFIG="$T/anderswo/config" \
+    bash "$UNINSTALL" --no-guest > "$T/uninstall.log" 2>&1
+check "uninstall: die Marke neben ROOTBRIDGE_CONFIG zählt"  1 "$(count "$T/uninstall.log" "device_config set_sync_disabled_for_tests none")"
+: > "$H2/.config/termux-rootbridge/phantom-killer-off"   # switched off by hand
+run_un
+check "uninstall nach phantom-killer off von Hand: der su-Befehl" 1 "$(count "$T/uninstall.log" "settings delete global settings_enable_monitor_phantom_procs")"
 
 # =========================================================================== 8. rootbridge-claude and the PulseAudio cookie
 CL="$ROOT/guest/bin/rootbridge-claude"

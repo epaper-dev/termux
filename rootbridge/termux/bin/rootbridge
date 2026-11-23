@@ -14,6 +14,7 @@
 #   rootbridge theme light|dark      Claude Code theme "Auto epaper" follows (tmux hook)
 #   rootbridge voice start|stop|status|grant   microphone for /voice: PulseAudio, source, Android permission
 #   rootbridge voice assistant [on|off|status]   Termux push to talk as Android's digital assistant (long press on Home; root)
+#   rootbridge phantom-killer [off|on|status]   Android's phantom process killer (it ends tmux and the sessions; root)
 #   rootbridge voice speak [on|off|toggle|stop|first|all|status]   reading Claude's answers aloud (off also ends what is being
 #                        read; first = a short version: the first paragraph, at most 3 sentences, and the last
 #                        question, all = the whole answer)
@@ -226,6 +227,12 @@ status_codex() {
 VOICE_SOURCE="OpenSL_ES_source"
 voice_running() { pulseaudio --check >/dev/null 2>&1; }
 voice_source() { pactl list short sources 2>/dev/null | grep -q "$VOICE_SOURCE"; }
+voice_load_source() {
+    pactl load-module module-sles-source >/dev/null 2>&1 && pactl set-source-volume "$VOICE_SOURCE" 131072 >/dev/null 2>&1
+}
+# mic_state: 0 a source for recording is loaded (any source but the monitors of the outputs), 1 none, 2 PulseAudio could
+# not be asked
+mic_state() { local l; l="$(pactl list short sources 2>/dev/null)" || return 2; cut -f2 <<< "$l" | grep -qv '\.monitor$'; }
 # voice_pids: the PulseAudio servers of Termux itself, one pid per line. A process of that name in the guest runs under proot,
 # which traces it (TracerPid in /proc/<pid>/status): that one is not ours and stays. Fails when pgrep fails (1 is "none") or
 # the status of a process that still exists cannot be read (a pid that is gone meanwhile is skipped).
@@ -248,6 +255,7 @@ voice_pids() {
 # after 2 s and SIGKILL, or when they cannot be listed.
 voice_end_all() {
     local pids
+    rm -f "$HOME/.cache/rootbridge-pulse-playback-only"   # that server goes: its note for the guest's cookie too
     pids="$(voice_pids)" || return 1
     pulseaudio --kill >/dev/null 2>&1
     # shellcheck disable=SC2086   # a list of pids
@@ -269,21 +277,58 @@ voice_end_all() {
 # in default.pa) and keeps Android's microphone on (seen on the A9: three servers). So more than one server, or one that
 # --check does not know, means: end them all, then start one.
 voice_start() {
-    local pids n=0
+    local pids n=0 restart=no st=0 playback="$HOME/.cache/rootbridge-pulse-playback-only"
     command -v pulseaudio >/dev/null 2>&1 || return 0
     # when the servers cannot be listed, nothing is ended (as before: --check decides)
     if pids="$(voice_pids)"; then n="$(printf '%s' "$pids" | grep -c .)"; fi
-    if [ "$n" -gt 1 ] || { [ "$n" -gt 0 ] && ! voice_running; }; then
+    # Reading aloud only: the guest gets the cookie of PulseAudio, and with it could load the microphone source again. So the
+    # server runs with module loading shut (--disallow-module-loading); which server that is stays in a file only Termux sees.
+    # A server that is not that one (one from when dictation was on) starts anew; with dictation on again, one without it.
+    if [ "$n" -gt 0 ]; then
+        if [ "$VOICE" != on ] && [ "$pids" != "$(cat "$playback" 2>/dev/null)" ]; then restart=yes; fi
+        if [ "$VOICE" = on ] && [ -s "$playback" ]; then restart=yes; fi
+    fi
+    if [ "$n" -gt 1 ] || { [ "$n" -gt 0 ] && ! voice_running; } || [ "$restart" = yes ]; then
         if ! voice_end_all; then   # no further server next to it: the session starts without the microphone
             echo "rootbridge: PulseAudio-Server lassen sich nicht beenden ($(voice_pids | tr '\n' ' '))" >&2
-            return 0
+            rm -f "$playback"   # not verified for reading aloud only: the guest gets no cookie (rb_login_opts)
+            return 1
         fi
     fi
-    voice_running || pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 || return 0
-    # the source is missing when Android's microphone permission was not there at the first start
-    if command -v pactl >/dev/null 2>&1 && ! voice_source; then
-        pactl load-module module-sles-source >/dev/null 2>&1 \
-            && pactl set-source-volume "$VOICE_SOURCE" 131072 >/dev/null 2>&1
+    if [ "$VOICE" != on ]; then
+        if ! voice_running; then
+            pulseaudio --start --exit-idle-time=-1 --disallow-module-loading >/dev/null 2>&1 \
+                || { echo "rootbridge: PulseAudio startet nicht (nur Vorlesen; siehe pulseaudio -v)" >&2; return 1; }
+            mkdir -p "$(dirname "$playback")" && voice_pids > "$playback"
+        fi
+    else
+        rm -f "$playback"
+        voice_running || pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 \
+            || { echo "rootbridge: PulseAudio startet nicht (siehe pulseaudio -v)" >&2; return 1; }
+    fi
+    command -v pactl >/dev/null 2>&1 || return 0
+    if [ "$VOICE" != on ]; then
+        # the microphone source comes only from a default.pa: ours has none for reading aloud only; one of your own may
+        mic_state || st=$?
+        if [ "$st" = 2 ]; then
+            echo "rootbridge: ob PulseAudio das Mikrofon geladen hat, ließ sich nicht prüfen (nur Vorlesen)" >&2
+        elif [ "$st" = 0 ] && ! grep -qs 'termux-rootbridge voice' "$HOME/.config/pulse/default.pa"; then
+            echo "rootbridge: deine eigene PulseAudio-Konfiguration lädt das Mikrofon (nur Vorlesen)" >&2
+        elif [ "$st" = 0 ]; then
+            # with our default.pa it must not be: the guest would have the microphone; the server goes (no reading aloud)
+            rm -f "$playback"
+            if voice_end_all; then
+                echo "rootbridge: PulseAudio hatte das Mikrofon geladen, obwohl nur vorgelesen wird; beendet (bash install.sh)" >&2
+            else
+                echo "rootbridge: PulseAudio hat das Mikrofon geladen, obwohl nur vorgelesen wird, und ließ sich NICHT beenden: pulseaudio --kill" >&2
+            fi
+            return 1
+        fi
+    elif ! voice_source; then
+        # the source is missing when Android's microphone permission was not there at the first start (a server that cannot
+        # load modules, from reading aloud only, the installer restarts when it switches dictation on)
+        voice_load_source || true
+        voice_source || echo "rootbridge: PulseAudio hat kein Mikrofon (Berechtigung? rootbridge voice grant)" >&2
     fi
     return 0
 }
@@ -379,7 +424,7 @@ voice_speak() {
 
 cmd_voice() {
     case "${1:-}" in
-        start)  voice_start; voice_status ;;
+        start)  local rc=0; voice_start || rc=$?; voice_status; return "$rc" ;;
         stop)   voice_end_all || die "PulseAudio läuft noch oder pgrep schlug fehl: $(voice_pids | tr '\n' ' ')"; echo "PulseAudio gestoppt." ;;
         status) voice_status ;;
         grant)  voice_grant ;;
@@ -410,9 +455,9 @@ keys_start() {
     return 0
 }
 
-# what runs next to a session: the microphone (VOICE=on) and the key readers (SIDEKEY=on, HEADSET=on)
+# what runs next to a session: PulseAudio (VOICE=on or SPEAK=on) and the key readers (SIDEKEY=on, HEADSET=on)
 extras_start() {
-    if [ "$VOICE" = on ]; then voice_start; fi
+    if rb_audio; then voice_start || true; fi   # the session starts anyway (voice_start said why)
     keys_start
 }
 
@@ -449,13 +494,13 @@ cmd_status() {
     else
         echo "Gast ($DISTRO):    nicht gefunden"
     fi
-    if [ "$VOICE" = on ]; then
-        echo "Sprache (/voice):"
+    if rb_audio; then
+        echo "Sprache (/voice, Vorlesen):"
         voice_status | sed 's/^/  /'
         command -v ptt >/dev/null 2>&1 && echo "  ptt:           ok" || echo "  ptt:           FEHLT"
         voice_speak status | sed 's/^Vorlesen: /  Vorlesen:      /'
     else
-        echo "Sprache:      nicht Teil der Installation (--no-voice)"
+        echo "Sprache:      nicht Teil der Installation (--no-voice, --no-speak)"
     fi
     for reader in $(key_readers); do
         if pgrep -f "$reader" >/dev/null 2>&1; then echo "Tasten:       $reader läuft"; else echo "Tasten:       $reader gestoppt (rootbridge start)"; fi
@@ -553,6 +598,90 @@ cmd_theme() {
     fi
 }
 
+# Android's phantom process killer ends child processes of an app beyond 32 (logcat "Trimming phantom processes"): tmux, and
+# with it proot, Claude Code and Codex, when tests or downloads start many processes. off sets what the developer option
+# "Disable child process restrictions" sets, and keeps device_config from syncing it back (for the whole phone: Android then
+# loads no system settings from remote while it is off); on gives Android's defaults back (the global setting deleted, so the
+# developer option counts again). The marker phantom-killer-off next to the config tells uninstall.sh to do that too.
+# Needs root; an Android update may set it back (the installer sets off again on every run on a terminal).
+# The sync of device_config, for the shell of su: set_sync <persistent|none> sets it, sync_mode prints it. Android 13 and newer
+# know persistent|until_reboot|none (set_/get_sync_disabled_for_tests); Android 12 knows only true|false
+# (set_sync_disabled_for_tests, is_sync_disabled_for_tests).
+PHANTOM_SYNC='set_sync() { device_config set_sync_disabled_for_tests "$1" 2>/dev/null \
+        || { [ "$1" = none ] && device_config set_sync_disabled_for_tests false; } \
+        || { [ "$1" = persistent ] && device_config set_sync_disabled_for_tests true; }; }
+    sync_mode() { m="$(device_config get_sync_disabled_for_tests 2>/dev/null)"
+        case "$m" in persistent|until_reboot|none) echo "$m"; return ;; esac
+        case "$(device_config is_sync_disabled_for_tests 2>/dev/null)" in true) echo persistent ;; false) echo none ;; esac; }'
+# Android's defaults for it, read back afterwards (Android may report success without writing): the global setting and the
+# process limit deleted, device_config syncing again; each step is tried, also when one before it failed
+PHANTOM_DEFAULTS='r=0; settings delete global settings_enable_monitor_phantom_procs || r=1
+    device_config delete activity_manager max_phantom_processes || r=1
+    set_sync none || r=1
+    [ "$r" = 0 ] \
+    && [ "$(settings get global settings_enable_monitor_phantom_procs)" = null ] \
+    && [ "$(device_config get activity_manager max_phantom_processes)" = null ] \
+    && [ "$(sync_mode)" = none ]'
+# phantom_choice <on|off>: what rootbridge phantom-killer did is the choice in the config too (PHANTOM_KILLER), so the next
+# installation keeps it instead of switching back. A config that cannot be written: a note, the change stays.
+phantom_choice() {
+    local tmp="$RB_CONFIG.new.$$" rc=0
+    [ -f "$RB_CONFIG" ] || return 0
+    grep -v '^PHANTOM_KILLER=' "$RB_CONFIG" > "$tmp" || rc=$?   # 1: no other line, 2: an error
+    if [ "$rc" -le 1 ] && echo "PHANTOM_KILLER=$1" >> "$tmp" && mv -f "$tmp" "$RB_CONFIG"; then return 0; fi
+    rm -f "$tmp"
+    echo "Hinweis: PHANTOM_KILLER=$1 ließ sich nicht in $RB_CONFIG schreiben; bash install.sh --phantom-killer-$1" >&2
+}
+cmd_phantom_killer() {
+    local out marker
+    marker="$(dirname "$RB_CONFIG")/phantom-killer-off"
+    command -v "$RB_SU" >/dev/null 2>&1 \
+        || die "kein su gefunden - ohne Root: Entwickleroptionen, Beschränkungen für untergeordnete Prozesse deaktivieren"
+    # shellcheck disable=SC2086   # SU_ARGS is "-c" or "-mm -c" on purpose
+    case "${1:-status}" in
+        off)   # the marker first: also a change that failed half way is given back by on and by uninstall.sh
+            { mkdir -p "$(dirname "$marker")" && : > "$marker"; } \
+                || die "$marker ließ sich nicht anlegen - nichts geändert"
+            # read back what was set (Android may report success without writing); when something is missing, all of it
+            # goes back to Android's defaults (exit 3 once that is read back too; then the marker goes)
+            timeout 60 "$RB_SU" $SU_ARGS "$PHANTOM_SYNC
+                { settings put global settings_enable_monitor_phantom_procs false \
+                && set_sync persistent \
+                && device_config put activity_manager max_phantom_processes 2147483647 \
+                && [ \"\$(settings get global settings_enable_monitor_phantom_procs)\" = false ] \
+                && [ \"\$(device_config get activity_manager max_phantom_processes)\" = 2147483647 ] \
+                && [ \"\$(sync_mode)\" = persistent ]; } \
+                || { $PHANTOM_DEFAULTS && exit 3; exit 1; }" </dev/null
+            case $? in
+                0) ;;
+                3) rm -f "$marker"; die "Der Phantom Process Killer ließ sich nicht abschalten; der Android-Standard ist wiederhergestellt" ;;
+                *) die "Der Phantom Process Killer ließ sich nicht abschalten (Root verweigert?); zurück: rootbridge phantom-killer on" ;;
+            esac
+            phantom_choice off
+            echo "Phantom Process Killer: aus (Android beendet tmux und die Sitzungen nicht mehr, weil es zu viele Prozesse sind)."
+            # Android 12 (API 31, 32) still ends phantom processes that use much CPU in the background
+            case "$(getprop ro.build.version.sdk 2>/dev/null)" in
+                31|32) echo "Hinweis: Android 12 beendet sie bei hoher Rechenlast im Hintergrund trotzdem; erst ab Android 13 nicht mehr." ;;
+            esac ;;
+        on)
+            timeout 60 "$RB_SU" $SU_ARGS "$PHANTOM_SYNC
+                $PHANTOM_DEFAULTS" </dev/null \
+                || die "Der Phantom Process Killer ließ sich nicht wieder einschalten (Root verweigert, oder Android hat nicht alles übernommen?)"
+            rm -f "$marker"   # only now: until Android's defaults are read back, the marker stays
+            phantom_choice on
+            echo "Phantom Process Killer: an (wie Android ihn ausliefert)." ;;
+        status)   # the global setting; without one, what the developer option keeps (a property of its own)
+            out="$(timeout 60 "$RB_SU" $SU_ARGS "v=\"\$(settings get global settings_enable_monitor_phantom_procs)\" || exit 1
+                case \"\$v\" in ''|null) getprop persist.sys.fflag.override.settings_enable_monitor_phantom_procs ;; *) echo \"\$v\" ;; esac" </dev/null)" \
+                || die "Der Phantom Process Killer ließ sich nicht lesen (Root verweigert?)"
+            case "${out//[$'\r\n']/}" in
+                false) echo "Phantom Process Killer: aus" ;;
+                *) echo "Phantom Process Killer: an - rootbridge phantom-killer off" ;;
+            esac ;;
+        *) die "phantom-killer: off | on | status" ;;
+    esac
+}
+
 case "${1:-}" in
     start)        shift; cmd_start "$@" ;;
     attach)       shift; cmd_attach "$@" ;;
@@ -567,9 +696,10 @@ case "${1:-}" in
     guard-on)     cmd_guard on ;;
     theme)        shift; cmd_theme "$@" ;;
     voice)        shift; cmd_voice "$@" ;;
+    phantom-killer) shift; cmd_phantom_killer "$@" ;;
     daemon-start) daemon_start; echo "Daemon läuft." ;;
     daemon-stop)  daemon_stop; echo "Daemon gestoppt." ;;
     version|--version) echo "rootbridge $VERSION" ;;
-    ""|help|-h|--help) sed -n '2,17p' "$self" | sed 's/^# \{0,1\}//' ;;
+    ""|help|-h|--help) sed -n '2,18p' "$self" | sed 's/^# \{0,1\}//' ;;
     *) die "unbekannter Befehl: $1 (rootbridge help)" ;;
 esac

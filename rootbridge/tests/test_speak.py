@@ -103,6 +103,13 @@ class TestEnglish(unittest.TestCase):
         self.assertEqual(speak.english("Der Pull Request ist gemergt, der Commit auf main.", articulino=True),
                          "Der [en]Pull Request[/en] ist gemörtscht, der [en]Commit[/en] auf [en]main[/en].")
 
+    def test_an_english_voice_reads_english_words_as_they_are(self):
+        old, speak.LANGUAGE = speak.LANGUAGE, "en"
+        try:
+            self.assertEqual(speak.english("The Pull Request is merged."), "The Pull Request is merged.")
+        finally:
+            speak.LANGUAGE = old
+
     def test_no_list_no_change(self):
         speak.ENGLISH = os.path.join(self.tmp.name, "fehlt.txt")
         self.assertEqual(speak.english("Der Pull Request"), "Der Pull Request")
@@ -162,9 +169,9 @@ class TTS:
         with open(voice, encoding="utf-8") as fh:
             self.voice = fh.read().strip()
 
-    def stream(self, text, seed):
+    def stream(self, text, seed, language="de"):
         for sentence in text.split(". "):
-            yield Audio(("%s:%s|" % (self.voice, sentence)).encode())
+            yield Audio(("%s:%s%s|" % (self.voice, "" if language == "de" else language + "/", sentence)).encode())
 """
 
 
@@ -223,6 +230,10 @@ class TestServer(unittest.TestCase):
 
     def test_answers_sentence_by_sentence(self):
         self.assertEqual(self.say("Eins. Zwei"), "A:Eins|A:Zwei|")
+
+    def test_takes_the_language_from_the_first_line(self):
+        self.assertEqual(self.say("\x01en\nHello. There"), "A:en/Hello|A:en/There|")
+        self.assertEqual(self.say("\x01xx\nHallo"), "A:Hallo|", "an unknown language: German")
 
     def test_a_new_recording_is_used_with_the_next_text(self):
         self.assertEqual(self.say("Eins"), "A:Eins|")
@@ -448,6 +459,36 @@ class TestPlayer(unittest.TestCase):
         self.assertIn("-r 24000", self.out_file("play.args"))
         self.assertIsNone(self.out_file("piper.in"))
 
+    def test_articulino_gets_the_language_first_when_it_is_not_german(self):
+        env = self.articulino()
+        self.run_speak(["Hello there."], RB_SPEAK_LANGUAGE="en", **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "PCM:\x01en\nHello there."), self.out_file("play.in"))
+
+    def voice_for(self, language, *models):
+        """The Piper voice speak.py picks for language, with these models in a folder of voices."""
+        voices = os.path.join(self.tmp.name, "voices-" + "-".join(models or ("none",)))
+        os.makedirs(voices, exist_ok=True)
+        for model in models:
+            open(os.path.join(voices, model + ".onnx"), "w").close()
+        env = {k: v for k, v in os.environ.items() if k != "PIPER_VOICE"}
+        env.update(RB_SPEAK_LANGUAGE=language, RB_SPEAK_PIPER_VOICES=voices)
+        r = subprocess.run([sys.executable, "-I", "-c", "import runpy, sys; print(runpy.run_path(sys.argv[1])['VOICE'])",
+                            SPEAK], env=env, capture_output=True, text=True, timeout=20)
+        return os.path.basename(r.stdout.strip())
+
+    def test_the_language_picks_the_piper_voice(self):
+        both = ("de_DE-kerstin-medium", "en_US-lessac-medium")
+        self.assertEqual(self.voice_for("en", *both), "en_US-lessac-medium.onnx")
+        self.assertEqual(self.voice_for("de", *both), "de_DE-kerstin-medium.onnx")
+        # the English voice not loaded yet: the German one reads rather than none
+        self.assertEqual(self.voice_for("en", "de_DE-kerstin-medium"), "de_DE-kerstin-medium.onnx")
+
+    def test_a_voice_of_your_own_stays_also_when_it_is_missing(self):
+        env = dict(os.environ, RB_SPEAK_LANGUAGE="en", PIPER_VOICE="/gibt/es/nicht.onnx")
+        r = subprocess.run([sys.executable, "-I", "-c", "import runpy, sys; print(runpy.run_path(sys.argv[1])['VOICE'])",
+                            SPEAK], env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(r.stdout.strip(), "/gibt/es/nicht.onnx")
+
     def test_articulino_server_is_started_once(self):
         env = self.articulino()
         self.run_speak(["Eins."], **env)
@@ -572,6 +613,13 @@ class TestPlayer(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertNotIn("Gespeichert", out)
         self.assertFalse(os.path.exists(env["RB_SPEAK_VOICE_SAMPLE"]))
+
+    def test_without_a_microphone_no_recording_and_no_offer(self):
+        nomic = os.path.join(self.tmp.name, "no-microphone")
+        open(nomic, "w").close()
+        r = self.run_speak(["--record"], RB_SPEAK_NO_MICROPHONE=nomic, RB_SPEAK_REC=os.path.join(self.tmp.name, "gibt-es-nicht"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("bash install.sh --voice", r.stderr.decode())
 
     def test_offer_is_silent_with_a_voice_or_without_articulino(self):
         self.assertEqual(self.offer("j", voice=True)[1], "")

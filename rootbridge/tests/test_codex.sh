@@ -537,6 +537,20 @@ check "Gemeinsamer Speicher: /sdcard und /storage/emulated/0 sind da" 1 "$(calls
 printf 'VOICE=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
 check "Voice aus: kein Cookie im Gast"                     1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- ')"
+printf 'VOICE=off\nSPEAK=on\n' > "$RBC"
+rb bash "$T/bin/rootbridge" attach
+check "Nur Vorlesen, Server ohne Sperre nicht bestätigt: kein Cookie" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- ')"
+# a PulseAudio server of Termux with pid 4711 (pgrep and its status in a fake /proc), noted as started for reading aloud only
+mkdir -p "$T/home/.cache" "$T/pstubs" "$T/fproc/4711"; printf 'TracerPid:\t0\n' > "$T/fproc/4711/status"
+printf '#!/bin/bash\n[ "$*" = "-x pulseaudio" ] && { echo 4711; exit 0; }\nexit 1\n' > "$T/pstubs/pgrep"
+printf '#!/bin/bash\n[ "$1" = --check ]\n' > "$T/pstubs/pulseaudio"; chmod +x "$T/pstubs"/*
+echo 4711 > "$T/home/.cache/rootbridge-pulse-playback-only"
+rb env PATH="$T/pstubs:$T/stubs:$PATH" RB_PROC_DIR="$T/fproc" bash "$T/bin/rootbridge" attach
+check "Nur Vorlesen, der Server mit Sperre läuft: das Cookie kommt dazu" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' --bind '"$COOKIE:$COOKIE"' -- ')"
+echo 4712 > "$T/home/.cache/rootbridge-pulse-playback-only"
+rb env PATH="$T/pstubs:$T/stubs:$PATH" RB_PROC_DIR="$T/fproc" bash "$T/bin/rootbridge" attach
+check "Nur Vorlesen, ein anderer Server läuft: kein Cookie" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- ')"
+rm -f "$T/home/.cache/rootbridge-pulse-playback-only"
 printf 'GUEST_ISOLATE=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
 check "GUEST_ISOLATE=off: Gast wie bisher, ohne Optionen"  1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu  -- /usr/local/bin/rootbridge-claude$')"
@@ -597,6 +611,10 @@ mkdir -p "$H" "$P/bin" "$GROOT/var/tmp" "$T/istubs"
 cp "$ROOT/tests/stubs/proot-distro-guest-scripts" "$T/istubs/proot-distro"
 printf '#!/bin/bash\nexit 0\n' > "$T/istubs/termux-reload-settings"
 printf '#!/bin/bash\necho "rootbridge $*" >> "$STUB_LOG"\nexit 1\n' > "$T/istubs/rootbridge"
+# PulseAudio: the installer may end or start it (rootbridge voice stop|start); never the real one of the device
+printf '#!/bin/bash\n[ "$1" = --check ] && exit 1\nexit 0\n' > "$T/istubs/pulseaudio"
+printf '#!/bin/bash\nexit 1\n' > "$T/istubs/pactl"
+printf '#!/bin/bash\ncase "$*" in *pulseaudio*) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v pgrep || echo false)" > "$T/istubs/pgrep"
 chmod +x "$T/istubs"/*
 export STUB_GROOT="$GROOT" STUB_GUEST_ROOT="$T/iguest"
 ILOG="$T/i.log"
@@ -636,14 +654,10 @@ check "install.sh --no-codex: Abschluss ohne Codex-Login-Satz" 0 "$(count "$T/in
 
 KEEP_GUEST=1 irun
 check "install.sh danach ohne Option: läuft"               0 "$IRC"
-check "install.sh danach ohne Option: Codex-Widget wieder da" "ja" "$(has "$H/.shortcuts/Codex")"
-check "install.sh danach: keine übernommene Codex-Abwahl" 0 "$(count "$T/install.log" 'Codex: abgewählt')"
-check "install.sh danach: Gast bekommt --codex yes"       1 "$(guestargs | grep -c -- '--codex yes')"
-check "install.sh danach: Termux-Konfig wieder on"        on "$(iget TOOL_CODEX)"
-check "install.sh danach: bestehende Gast-Konfig wieder on" on "$(sed -n 's/^TOOL_CODEX=//p' "$T/iguest/etc/termux-rootbridge.conf")"
-check "install.sh danach: Review-Hook wieder vorhanden" "pre=1 codex=1 notice=2 post=2 prompt=1 timeout=1560 onFailure=block" "$(msum "$T/iguest")"
-check "install.sh danach: Codex-Kurzbefehl nach source verfügbar" "alias codex='rootbridge attach codex'" \
-      "$(env -i HOME="$H" PATH=/usr/bin:/bin bash --noprofile --norc -c 'source "$HOME/.bashrc"; alias codex')"
+check "install.sh danach ohne Option: Codex bleibt abgewählt" nein "$(has "$H/.shortcuts/Codex")"
+check "install.sh danach: gespeicherte Codex-Abwahl genannt" 1 "$(count "$T/install.log" 'Codex: abgewählt (aus der Konfig')"
+check "install.sh danach: Gast bekommt --codex no"        1 "$(guestargs | grep -c -- '--codex no')"
+check "install.sh danach: Termux-Konfig bleibt off"       off "$(iget TOOL_CODEX)"
 KEEP_GUEST=1 irun --no-codex
 check "install.sh erneutes --no-codex: Widget wieder entfernt" nein "$(has "$H/.shortcuts/Codex")"
 check "install.sh erneutes --no-codex: Review-Hook wieder entfernt" "pre=0 codex=0 notice=2 post=2 prompt=1 timeout=- onFailure=-" "$(msum "$T/iguest")"
@@ -651,6 +665,10 @@ irun --codex
 check "install.sh --codex: Codex-Widget wieder da"         ja "$(has "$H/.shortcuts/Codex")"
 check "install.sh --codex: Wahl in der Konfig on"          on "$(iget TOOL_CODEX)"
 check "install.sh --codex: Gast bekommt --codex yes"       1 "$(guestargs | grep -c -- '--codex yes')"
+check "install.sh --codex: bestehende Gast-Konfig wieder on" on "$(sed -n 's/^TOOL_CODEX=//p' "$T/iguest/etc/termux-rootbridge.conf")"
+check "install.sh --codex: Review-Hook wieder vorhanden" "pre=1 codex=1 notice=2 post=2 prompt=1 timeout=1560 onFailure=block" "$(msum "$T/iguest")"
+check "install.sh --codex: Codex-Kurzbefehl nach source verfügbar" "alias codex='rootbridge attach codex'" \
+      "$(env -i HOME="$H" PATH=/usr/bin:/bin bash --noprofile --norc -c 'source "$HOME/.bashrc"; alias codex')"
 
 irun --no-claude
 check "install.sh --no-claude: läuft"                      0 "$IRC"
