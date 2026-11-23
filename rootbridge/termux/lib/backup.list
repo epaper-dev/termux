@@ -1,0 +1,38 @@
+# backup.list - what `rootbridge backup` saves (installed next to rootbridge-backup.py). Your own lines go into backup.list
+# next to the Termux config (~/.config/termux-rootbridge/backup.list), in the same form.
+# A line: settings|secret termux|guest PATH (relative to the Termux home or to the root of the guest; * ? [] as in the
+# shell), or: exclude termux|guest PATH. settings go into a.tgz, secrets into k.enc (encrypted with your password).
+
+# --- Termux (@config: the active config, also with ROOTBRIDGE_CONFIG)
+secret   termux @config
+settings termux .termux/termux.properties
+settings termux .ssh/authorized_keys
+settings termux .termux/colors.properties
+
+# --- the guest: rootbridge, git, Claude Code, Codex
+settings guest  root/.claude/CLAUDE.md
+settings guest  root/.claude/keybindings.json
+settings guest  root/.claude/themes
+settings guest  root/.claude/scripts      # for example the Codex pre-commit script
+settings guest  root/.claude/commands
+settings guest  root/.claude/agents
+settings guest  root/.codex/AGENTS.md
+
+# --- secrets: logins of git, gh, Claude Code and Codex; the settings of git, Claude Code and Codex too, they can hold
+# tokens (url rewrites, http headers, env, API keys)
+secret   guest  root/.claude/projects/*/memory   # private session notes
+secret   guest  root/.claude/plans               # private plans
+secret   guest  etc/termux-rootbridge.conf   # CLAUDE_ARGS can hold tokens (--mcp-config)
+secret   guest  root/.gitconfig
+secret   guest  root/.claude/settings.json
+secret   guest  root/.claude/settings.local.json
+secret   guest  root/.codex/config.toml
+secret   guest  root/.git-credentials
+secret   guest  root/.config/git/credentials
+secret   guest  root/.config/git/config
+secret   guest  root/.config/gh
+secret   guest  root/.claude/.credentials.json
+secret   guest  root/.claude.json
+secret   guest  root/.codex/auth.json
+secret   guest  root/.bashrc               # holds GITHUB_PERSONAL_ACCESS_TOKEN
+secret   guest  root/.android             # adb keys
