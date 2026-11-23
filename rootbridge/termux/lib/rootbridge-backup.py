@@ -864,11 +864,14 @@ def apply_ops(ops):
                         pass
                     try:
                         os.link(name, name + alt, src_dir_fd=dfd, dst_dir_fd=dfd, follow_symlinks=False)
-                    except OSError:   # no hard links here: a copy
-                        with open(os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd), "rb") as inp, \
-                                os.fdopen(os.open(name + alt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                                                  0o600, dir_fd=dfd), "wb") as out:
-                            shutil.copyfileobj(inp, out)
+                    except (OSError, AttributeError, NotImplementedError):   # no hard links here (Python on Android has no os.link): a copy
+                        with open(os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd), "rb") as inp:
+                            orig_mode = os.fstat(inp.fileno()).st_mode & 0o7777   # a rollback must not strip x bits
+                            with os.fdopen(os.open(name + alt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                                   0o600, dir_fd=dfd), "wb") as out:
+                                shutil.copyfileobj(inp, out)
+                                out.flush()
+                                os.fchmod(out.fileno(), orig_mode)
                 done.append((op, had))
                 os.replace(name + neu, name, src_dir_fd=dfd, dst_dir_fd=dfd)
             in_folder(op, swap)
