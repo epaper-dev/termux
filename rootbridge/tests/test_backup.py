@@ -793,6 +793,21 @@ class TestBackup(unittest.TestCase):
         with open(os.path.join(self.out, "previous/h")) as fh:
             self.assertEqual(fh.read(), older)
 
+    def test_restore_works_where_python_has_no_os_link(self):
+        # Python on Android (Termux) has no os.link: the original is then kept as a copy
+        self.backup()
+        home, guest = self.fresh()
+        self.write(guest, "root/.codex/auth.json", "old login")   # an original to keep
+        env = dict(os.environ, HOME=home, ROOTBRIDGE_CONFIG=os.path.join(home, ".config/termux-rootbridge/config"),
+                   RB_GUEST_ROOT=guest, BKPW="test")
+        code = ("import os, runpy, sys; hasattr(os, 'link') and delattr(os, 'link'); sys.argv = [%r, 'restore', %r, '--yes']; "
+                "runpy.run_path(%r, run_name='__main__')" % (TOOL, self.out, TOOL))
+        r = subprocess.run([sys.executable, "-I", "-c", code], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(guest, "root/.codex/auth.json")) as fh:
+            self.assertEqual(fh.read(), "secret")
+        self.assertFalse([n for n in os.listdir(os.path.join(guest, "root/.codex")) if "rootbridge-" in n])
+
     def test_two_backups_at_once_are_refused(self):
         import fcntl
         priv = os.path.join(self.home, ".config/termux-rootbridge")
