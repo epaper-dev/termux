@@ -1203,7 +1203,10 @@ def transcript_tail(path, tool_use_id):
         except OSError as e:
             log("Zwischenstand: Sitzungsprotokoll nicht lesbar, %s" % e)
             return None
-        if not tool_use_id or tool_use_id.encode() in tail or time.time() >= end:
+        if not tool_use_id or tool_use_id.encode() in tail:
+            return tail
+        if time.time() >= end:
+            log("Zwischenstand: der Aufruf %s stand nach %d s noch nicht im Sitzungsprotokoll" % (tool_use_id[-6:], WAIT_SECONDS))
             return tail
         time.sleep(0.1)
 
