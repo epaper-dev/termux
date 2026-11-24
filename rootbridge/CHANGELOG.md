@@ -16,6 +16,9 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   where and asks, unpacks only the files and folders the lists name (no links) with tarfile's `data` filter, checks every target first and then
   copies into the Termux home and the guest only, never through a link. The settings of git, Claude Code and Codex and the configs of Termux and the guest go into `k.enc`: they can hold tokens. All files are written beside their targets first and then replaced together; a failure puts the originals back. Tests:
   `tests/test_backup.py`.
+* **SSH in the guest.** The guest gets `openssh-client` (setup-guest.sh; the installer sets the guest up again when `ssh` is missing),
+  and the base list of the backup takes `~/.ssh` of the guest (keys, config, known hosts) into `k.enc`; a restore keeps
+  their rights (`0600`, folder `0700`). Test: `tests/test_backup.py`, `tests/test_setup.sh` (B1b, A2f).
 * **Phone storage, openssl and the backup in the installer.** Without access to `/sdcard` the installer runs
   `termux-setup-storage` at the start (on a terminal, with `--setup`); `openssl` (`openssl-tool`) is installed when
   missing. A backup in `/sdcard/backup/termux` on a fresh installation (no guest yet) is offered with the other

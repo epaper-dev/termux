@@ -1045,7 +1045,7 @@ cat > "$T/gstubs/apt-get" <<'EOF'
 echo "apt-get $*" >> "$STUB_LOG"
 exit 0
 EOF
-for c in python3 curl shellcheck; do printf '#!/bin/bash\nexit 0\n' > "$T/gstubs/$c"; done
+for c in python3 curl shellcheck ssh; do printf '#!/bin/bash\nexit 0\n' > "$T/gstubs/$c"; done
 printf '#!/bin/bash\nexit 0\n' > "$T/gstubs/git"
 chmod +x "$T/gstubs"/*
 mkdir -p "$T/gbin"

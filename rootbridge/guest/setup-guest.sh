@@ -81,6 +81,7 @@ guest_has python3 || pkgs="$pkgs python3"
 guest_has curl    || pkgs="$pkgs curl"
 [ -s "$CA_BUNDLE" ] || pkgs="$pkgs ca-certificates"
 guest_has shellcheck || pkgs="$pkgs shellcheck"
+guest_has ssh || pkgs="$pkgs openssh-client"   # git over SSH, and the keys that rootbridge restore brings back
 if [ "$CODEX_ON" = yes ]; then
     guest_has git || pkgs="$pkgs git"
     command -v bwrap >/dev/null 2>&1 || pkgs="$pkgs bubblewrap"
@@ -105,7 +106,7 @@ if [ -n "$pkgs" ]; then
     apt-get install -y --no-install-recommends $pkgs \
         || die "apt-get install$pkgs ist fehlgeschlagen. Erneut starten: bash install.sh --setup"
 else
-    say "  python3, curl, Zertifikate und shellcheck sind da"
+    say "  python3, curl, Zertifikate, shellcheck und ssh sind da"
 fi
 # the plugin needs Node.js 18.18 or newer; only a warning (an older node is the user's own choice)
 if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ] && command -v node >/dev/null 2>&1; then

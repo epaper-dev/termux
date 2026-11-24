@@ -88,6 +88,26 @@ class TestBackup(unittest.TestCase):
         with tarfile.open(os.path.join(self.out, "a.tgz")) as tar:
             self.assertNotIn("g/root/.codex/auth.json", tar.getnames())
 
+    def test_ssh_keys_of_the_guest_are_secrets_and_keep_their_rights(self):
+        for name, mode in (("root/.ssh/id_test", 0o600), ("root/.ssh/id_test.pub", 0o644), ("root/.ssh/config", 0o600)):
+            self.write(self.guest, name, "KEY-MARKER " + name)
+            os.chmod(os.path.join(self.guest, name), mode)
+        os.chmod(os.path.join(self.guest, "root/.ssh"), 0o700)
+        self.backup()
+        with open(os.path.join(self.out, "k.enc"), "rb") as fh:
+            self.assertNotIn(b"KEY-MARKER", fh.read())
+        with tarfile.open(os.path.join(self.out, "a.tgz")) as tar:
+            self.assertFalse([n for n in tar.getnames() if ".ssh" in n and n.startswith("g/")], "not in the settings")
+        home, guest = self.fresh()
+        r = self.run_tool(["restore", self.out, "--yes"], home, guest)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for name, mode in (("id_test", 0o600), ("id_test.pub", 0o644), ("config", 0o600)):
+            path = os.path.join(guest, "root/.ssh", name)
+            with open(path) as fh:
+                self.assertEqual(fh.read(), "KEY-MARKER root/.ssh/" + name)
+            self.assertEqual(os.stat(path).st_mode & 0o777, mode, name)
+        self.assertEqual(os.stat(os.path.join(guest, "root/.ssh")).st_mode & 0o777, 0o700)
+
     def test_the_checksums_of_the_own_backup_count(self):
         self.backup()
         r = self.run_tool(["restore", self.out, "--yes"], self.home, self.guest)
@@ -169,13 +189,13 @@ class TestBackup(unittest.TestCase):
             self.assertEqual(fh.read(), first)
 
     def test_a_trailing_slash_names_the_folder(self):
-        self.write(self.guest, "root/.ssh/id_ed25519", "key")
-        self.write(self.home, ".config/termux-rootbridge/backup.list", "secret guest root/.ssh/\n")
+        self.write(self.guest, "root/.gnupg/key", "key")   # a folder the base list does not name
+        self.write(self.home, ".config/termux-rootbridge/backup.list", "secret guest root/.gnupg/\n")
         self.backup()
         home, guest = self.fresh()
         r = self.run_tool(["restore", self.out, "--yes"], home, guest)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(os.path.isfile(os.path.join(guest, "root/.ssh/id_ed25519")))
+        self.assertTrue(os.path.isfile(os.path.join(guest, "root/.gnupg/key")))
 
     def extract_from(self, info, data=b"x"):
         """The extract step of restore on a hand-made archive (a.tgz without a seal is not read at all, so the archive

@@ -1081,6 +1081,7 @@ if [ "$DO_GUEST" = 1 ]; then
         local h="${ROOTBRIDGE_GUEST_HOME:-/root}"
         { [ -e "$GROOT/usr/bin/python3" ] && [ -e "$GROOT/usr/bin/curl" ] && [ -s "$GROOT/etc/ssl/certs/ca-certificates.crt" ]; } || return 1
         [ -e "$GROOT/usr/bin/shellcheck" ] || return 1      # the agents check their shell scripts with it
+        [ -e "$GROOT/usr/bin/ssh" ] || return 1             # git over SSH with the keys of the backup
         if [ "$USE_CLAUDE" = yes ]; then
             { [ -x "$GROOT$h/.local/bin/claude" ] || [ -x "$GROOT/usr/local/bin/claude" ] || [ -x "$GROOT/usr/bin/claude" ]; } || return 1
         fi
