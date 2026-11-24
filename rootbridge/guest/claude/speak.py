@@ -1270,7 +1270,10 @@ def read_note(note, begun, session):
             fh.write(note[0] + "\n")
             fh.flush()
             # switched off or stopped while it waited for the transcript: the note counts as read, nothing starts
-            if not os.path.exists(OFF) and not stopped_since(begun):
+            why = "ausgeschaltet" if os.path.exists(OFF) else "gestoppt" if stopped_since(begun) else ""
+            log("Zwischenstand %s (%d Zeichen, %.1f s nach dem Hook): %s" % (
+                note[0][:8], len(note[1]), time.time() - begun, "nicht gelesen, " + why if why else "wird gelesen"))
+            if not why:
                 speak_answer(note[1], session)
                 # a stop between that check and the ticket missed the player: a new stop ends it before the first sound
                 if os.path.exists(OFF) or stopped_since(begun):
