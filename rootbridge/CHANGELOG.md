@@ -176,6 +176,10 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **The pre-commit review blocks less.** Codex blocks only for security, privacy and stability defects it is confident
+  about (a long run on one commit needed over 25 rounds for edge cases); everything else, real edge cases too, comes as up to
+  five notes after `ALLOW`. Every blocking finding carries a concrete fix, and the message to Claude says to weigh Codex's
+  suggestions when fixing. Test: `tests/test_codex_precommit.py`.
 * **One Termux window for the session.** A widget tap (`Claude`, `Codex`, `Claude Neu`) opened another Termux session that
   attached to the same tmux session and only mirrored it, so the list filled with identical entries. Now `rootbridge attach`
   detaches the Termux sessions that already show the tmux session (they end) and shows it in the new one; the control client

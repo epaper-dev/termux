@@ -315,8 +315,10 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
   Git-Aliase (`git ci`) und Skripte, die committen, erkennt er nicht, und die Prüfung betrachtet den ganzen Arbeitsbaum
   (staged und unstaged, Binäränderungen eingeschlossen) sowie, wenn derselbe Befehl `git add` ausführt, die noch nicht
   verfolgten Dateien, die dabei dazukommen können (sie stehen in keinem Diff).
-  Codex blockiert nur bei hoher Schwere (ein Bug, der etwas kaputt macht, eine Sicherheitslücke, ein Secret, Datenverlust,
-  ein verschluckter Fehler); Kleineres kommt als Hinweis hinter `ALLOW`. Die Prüfung sieht den Arbeitsbaum, wie er beim
+  Codex blockiert nur bei Sicherheit (Lücke, Secret), Datenschutz (Daten oder Zugangsdaten gehen nach außen) und Stabilität
+  (Absturz, Hänger, Datenverlust, kaputte Funktion, verschluckter Fehler) und nur, wenn es sich sicher ist; alles andere,
+  auch echte Randfälle, kommt als Hinweis hinter `ALLOW`. Die Lösungsvorschläge von Codex gehen mit dem Block an Claude und
+  werden bei der Behebung berücksichtigt. Die Prüfung sieht den Arbeitsbaum, wie er beim
   Start des Befehls ist: Was derselbe Befehl vor dem Commit noch ändert (`sed -i … && git commit -a`, ein Build-Skript),
   ist nicht erfasst.
   Codex prüft mit Effort `high` innerhalb eines Budgets von 1500 s ab Start des Hooks (das Hook-Timeout von 1560 s liegt
