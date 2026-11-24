@@ -707,7 +707,7 @@ check "install.sh --codex-update bogus: Gast nicht angefasst" 0 "$(wc -c < "$ILO
 
 # Readiness checks prerequisites; the plugin cache is populated later by Claude Code itself.
 mkdir -p "$GROOT/usr/bin" "$GROOT/etc/ssl/certs" "$GROOT/root/.local/bin"
-for b in python3 curl shellcheck; do printf '#!/bin/bash\n' > "$GROOT/usr/bin/$b"; done
+for b in python3 curl shellcheck ssh; do printf '#!/bin/bash\n' > "$GROOT/usr/bin/$b"; done
 echo cert > "$GROOT/etc/ssl/certs/ca-certificates.crt"
 printf '#!/bin/bash\n' > "$GROOT/root/.local/bin/claude"; chmod +x "$GROOT/root/.local/bin/claude"
 rm -f "$H/.config/termux-rootbridge/config"
