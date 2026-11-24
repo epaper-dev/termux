@@ -179,6 +179,11 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **The short version reads the whole paragraph of the last question.** `speak first` read the first paragraph and the last question sentence alone, which was
+  heard without its context. Now it reads the paragraph of that question; a question alone in its paragraph comes with the paragraph before it.
+* **A line in the log says where the time to the first sound went.** `~/.cache/rootbridge-speak.log` gets one line per text, for example
+  `Vorlesen: Warten 0.3 s, Fokus 0.4 s, Stimme bereit 0.0 s, erstes Audio 1.7 s, bis zum Ton 0.1 s; zusammen 2.5 s seit dem Hook (Articulino)`, and
+  `Articulino gestartet nach 8.8 s` when a text had to start the server. Tests: `tests/test_speak.py`.
 * **No second Claude window; Codex goes on with its conversation.** The widget `Claude Neu` and `rootbridge attach claude -n/--new` are gone:
   the new conversation was a window of the session that the Termux window of the open Claude showed, and it needs
   the performance for the voice (reading aloud and dictation work in one window only). A new conversation starts with `/clear`. An
