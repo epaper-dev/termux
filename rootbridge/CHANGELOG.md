@@ -179,6 +179,12 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **Codex in a Termux window of its own.** Codex ran as a window of the same tmux session as Claude Code, so tapping the Codex widget
+  took the Termux window of Claude, and when Codex ended that window showed Claude again. Codex now has its own tmux session
+  `ubuntu-codex`: its own Termux window, which ends when Codex ends, like the Ubuntu shell. Claude Code keeps `ubuntu` (and ptt and
+  the input line with it; the targets are written `=ubuntu`, so that tmux never takes `ubuntu` for `ubuntu-codex`); a Codex that still runs as a
+  window of `ubuntu` stays there until it ends; a second tap on one tool still shows it in one window only. `rootbridge stop` and `status` know both.
+  Tests: `tests/test_codex.sh`, `tests/test_rootbridge_shell.sh`.
 * **The pre-commit review blocks less.** Codex blocks only for security, privacy and stability defects it is confident
   about (a long run on one commit needed over 25 rounds for edge cases); everything else, real edge cases too, comes as up to
   five notes after `ALLOW`. Every blocking finding carries a concrete fix, and the message to Claude says to weigh Codex's

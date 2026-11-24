@@ -158,7 +158,7 @@ Options: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`,
 `--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`, `--no-claude-update`, `--codex-update 6h|<N>h|daily|always|off`, `--no-codex-update`, `--no-claude`, `--no-codex`, `--no-codex-bypass` (`--codex-bypass` turns Codex' sandbox-less mode back on), `--no-guidelines` (the code quality blocks in the guest's `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` are on by default; your own text in those files stays, `--guidelines` turns them on again; stored as `GUIDELINES`; `--claude` / `--codex` turn a tool on again, see [Codex next to Claude Code](#codex-next-to-claude-code)). The installer is idempotent, backs up what it changes, and
 migrates the old v1 popup bridge if it finds one.
 
-**Widgets.** With the Termux:Widget app you get three shortcuts: **Claude** (attach to the Claude Code session), **Codex** (the Codex window, see
+**Widgets.** With the Termux:Widget app you get three shortcuts: **Claude** (attach to the Claude Code session), **Codex** (its own Termux window with its own tmux session `ubuntu-codex`, see
 [Codex next to Claude Code](#codex-next-to-claude-code)) and **Ubuntu** (a plain Ubuntu shell). The installer puts them into
 `~/.shortcuts` together with the widget icon (`termux/shortcuts/icons/widget.png`, copied to `~/.shortcuts/icons/<name>.png`,
 the same one for all; `tools/make-widget-icon.py` makes it from the logo `termux/shortcuts/icons/logo.png`). The coloured
@@ -308,7 +308,7 @@ a new window.
 | `rootbridge start` | daemon + session; `--no-attach` creates it in the background (Termux:Boot runs that after a reboot) |
 | `claude` / `rootbridge attach claude` | open the Claude Code session or attach to the running session (widget **Claude**) |
 | `claude -n` / `claude --new` | start a new Claude conversation in a separate window |
-| `codex` / `rootbridge attach codex` | attach to the Codex window (widget **Codex**; the session is created if it is missing) |
+| `codex` / `rootbridge attach codex` | attach to the Codex session `ubuntu-codex` (widget **Codex**; created if it is missing), in a Termux window of its own |
 | `ubuntu` / `rootbridge shell` | plain Ubuntu shell in this terminal (starts the daemon for `androidsu`, but no Claude Code and no tmux session; widget "Ubuntu") |
 | `rootbridge attach` | open the default tool: Claude Code, or Codex on an installation without Claude Code |
 | `rootbridge status` | daemon, session, guest install, last audit lines |

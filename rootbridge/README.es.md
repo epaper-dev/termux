@@ -260,7 +260,7 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
   `/reload-plugins` o reinicia Claude Code. El hook previo al commit bloquea los commits hasta que el plugin esté listo.
   Una segunda ejecución no usa la red si ya están los requisitos; instala `bwrap` si falta aunque Codex ya esté instalado.
   `--no-codex`, `--no-claude` y la desinstalación eliminan esta declaración y conservan las de otros plugins.
-* **Widget «Codex»** y `rootbridge attach codex`: una segunda ventana en la misma sesión de tmux. Bajo proot la sandbox
+* **Widget «Codex»** y `rootbridge attach codex`: una sesión de tmux propia (`ubuntu-codex`), en una ventana propia de Termux. Bajo proot la sandbox
   bubblewrap de Codex falla en cada comando (`unsupported host mount`), por lo que Codex se ejecuta por defecto **sin su
   propia sandbox**: el instalador pone `CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox"` en
   `/etc/termux-rootbridge.conf` (tus otros argumentos se conservan); `install.sh --no-codex-bypass` lo quita y recuerda la
@@ -312,7 +312,7 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
 | `rootbridge start` | daemon + sesión; `--no-attach` la crea en segundo plano (Termux:Boot lo ejecuta tras un reinicio) |
 | `claude` / `rootbridge attach claude` | abrir la sesión de Claude Code o conectarse a la sesión activa (widget **Claude**) |
 | `claude -n` / `claude --new` | iniciar una conversación nueva de Claude en una ventana separada |
-| `codex` / `rootbridge attach codex` | conectarse a la ventana de Codex (widget **Codex**; la sesión se crea si falta) |
+| `codex` / `rootbridge attach codex` | conectarse a la sesión de Codex `ubuntu-codex` (widget **Codex**; se crea si falta), en una ventana propia de Termux |
 | `ubuntu` / `rootbridge shell` | shell Ubuntu simple en este terminal (inicia el daemon para `androidsu`, pero no Claude Code ni una sesión de tmux; widget «Ubuntu») |
 | `rootbridge attach` | abrir la herramienta predeterminada: Claude Code, o Codex si Claude Code no está instalado |
 | `rootbridge status` | daemon, sesión, instalación en el invitado, últimas líneas de auditoría |
