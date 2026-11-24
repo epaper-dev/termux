@@ -767,7 +767,7 @@ irun --claude --codex
 printf '#!/usr/bin/env bash\nexec rootbridge attach claude --new\n' > "$H/.shortcuts/Claude Neu"
 irun --claude --codex
 check "Claude Neu: das alte Widget wird entfernt" nein "$(has "$H/.shortcuts/Claude Neu")"
-check "Claude Neu: Kopie in den Sicherungen" 1 "$(ls "$H/.rootbridge/backups" 2>/dev/null | grep -c '^Claude Neu.old-')"
+check "Claude Neu: Kopie in den Sicherungen" 1 "$(ls "$H/.rootbridge/backups"/"Claude Neu".old-* 2>/dev/null | wc -l | tr -d ' ')"
 check "Claude Neu: kein neues Widget" nein "$(has "$H/.shortcuts/Claude Neu")"
 printf '#!/bin/sh\necho mein eigenes\n' > "$H/.shortcuts/Claude Neu"
 irun --claude --codex
