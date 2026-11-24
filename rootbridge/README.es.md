@@ -311,7 +311,6 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
 |---|---|
 | `rootbridge start` | daemon + sesión; `--no-attach` la crea en segundo plano (Termux:Boot lo ejecuta tras un reinicio) |
 | `claude` / `rootbridge attach claude` | abrir la sesión de Claude Code o conectarse a la sesión activa (widget **Claude**) |
-| `claude -n` / `claude --new` | iniciar una conversación nueva de Claude en una ventana separada |
 | `codex` / `rootbridge attach codex` | conectarse a la sesión de Codex `ubuntu-codex` (widget **Codex**; se crea si falta), en una ventana propia de Termux |
 | `ubuntu` / `rootbridge shell` | shell Ubuntu simple en este terminal (inicia el daemon para `androidsu`, pero no Claude Code ni una sesión de tmux; widget «Ubuntu») |
 | `rootbridge attach` | abrir la herramienta predeterminada: Claude Code, o Codex si Claude Code no está instalado |

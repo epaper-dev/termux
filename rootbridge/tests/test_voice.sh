@@ -540,9 +540,9 @@ rm -f "$T/ftmp/rootbridge-audio-focus" "$BRIDGE_DIR/rec-stale"
 cat > "$T/fake-tmux" <<'FT'
 #!/bin/bash
 case "$1" in
-    list-panes) [ -e "$T_KEYS.lsfail" ] && exit 1; printf 'bash %%3\nclaude %%1\nclaude-new %%2\n' ;;
-    capture-pane) [ "$4" = %3 ] && echo "FEHLER" >> "$T_KEYS" ;;&
-    capture-pane) [ "$4" = %2 ] || { echo "❯ "; exit; }; printf '│ Antwort\n─────\n❯\xc2\xa0%s  \n─────\n' "$(cat "$T_PANE")" ;;
+    list-panes) [ -e "$T_KEYS.lsfail" ] && exit 1; printf 'bash %%3\nclaude %%1\ncodex %%2\n' ;;
+    capture-pane) case "$4" in %3|%2) echo "FEHLER" >> "$T_KEYS" ;; esac ;;&   # bash and Codex are never read
+    capture-pane) [ "$4" = %1 ] || { echo "❯ "; exit; }; printf '│ Antwort\n─────\n❯\xc2\xa0%s  \n─────\n' "$(cat "$T_PANE")" ;;
     send-keys) [ -e "$T_KEYS.fail" ] && exit 1; echo "$*" >> "$T_KEYS" ;;
 esac
 FT
@@ -550,7 +550,7 @@ chmod +x "$T/fake-tmux"
 clear_round() { ( export RB_TMUX="$T/fake-tmux" T_PANE="$T/pane" T_KEYS="$T/keys"; . "$LIB"; rb_prompt_clear ); }
 : > "$T/keys"; echo "Stoppe die Sprachausgabe." > "$T/pane"; printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"
 clear_round
-check "Eingabezeile: der Satz wird im Fenster mit dem Satz geleert"       "send-keys -t %2 C-u;nein" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear")"
+check "Eingabezeile: der Satz wird im Fenster mit dem Satz geleert"       "send-keys -t %1 C-u;nein" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear")"
 : > "$T/keys"; echo "Stoppe die Sprachausgabe und mehr" > "$T/pane"; printf 'Stoppe die Sprachausgabe.' > "$BRIDGE_DIR/prompt-clear"
 clear_round
 check "Eingabezeile: anderer Text bleibt, der Auftrag wartet" ";ja" "$(cat "$T/keys");$(has "$BRIDGE_DIR/prompt-clear")"

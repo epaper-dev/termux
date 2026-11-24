@@ -307,7 +307,6 @@ a new window.
 |---|---|
 | `rootbridge start` | daemon + session; `--no-attach` creates it in the background (Termux:Boot runs that after a reboot) |
 | `claude` / `rootbridge attach claude` | open the Claude Code session or attach to the running session (widget **Claude**) |
-| `claude -n` / `claude --new` | start a new Claude conversation in a separate window |
 | `codex` / `rootbridge attach codex` | attach to the Codex session `ubuntu-codex` (widget **Codex**; created if it is missing), in a Termux window of its own |
 | `ubuntu` / `rootbridge shell` | plain Ubuntu shell in this terminal (starts the daemon for `androidsu`, but no Claude Code and no tmux session; widget "Ubuntu") |
 | `rootbridge attach` | open the default tool: Claude Code, or Codex on an installation without Claude Code |

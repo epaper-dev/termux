@@ -3,7 +3,7 @@
 #
 #   rootbridge start [--no-attach] [claude|codex]   daemon + session of that tool (Termux:Boot: --no-attach;
 #                                    default: Claude Code, Codex if installed without Claude Code)
-#   rootbridge attach [claude|codex] [-n|--new] attach to the session, in the window of that tool (create if missing)
+#   rootbridge attach [claude|codex]  attach to the session, in the window of that tool (create if missing)
 #   rootbridge shell                 plain guest shell here (does not start Claude Code or Codex)
 #   rootbridge stop                  stop session and daemon
 #   rootbridge status                daemon, session, guest install, audit log
@@ -87,7 +87,7 @@ guest_login() {   # guest_login <command...>
     proot-distro login "$DISTRO" $(rb_login_opts) -- "$@"
 }
 
-# The tmux session of a tool: Claude Code lives in SESSION (windows claude and claude-new), Codex in a session of its own, so
+# The tmux session of a tool: Claude Code lives in SESSION (window claude), Codex in a session of its own, so
 # that each has its own Termux window (as the Ubuntu shell has), and ptt and the input line stay with Claude's session.
 # (Targets are written "=name": tmux would otherwise take "ubuntu" for "ubuntu-codex" when only that one runs.) A Codex of an
 # earlier installation still runs as a window of SESSION: it stays there until it ends, then the next one gets its own session.
@@ -119,8 +119,6 @@ pick_tool() {
 
 tool_cmd() {
     printf 'proot-distro login %s %s -- %s/rootbridge-%s' "$DISTRO" "$(rb_login_opts)" "$GUEST_BIN" "$1"
-    [ "${2:-}" != --new ] || printf ' --new'
-    return 0
 }
 
 # session_create [tool]: a new session whose first window runs the tool (does nothing if it exists)
@@ -129,42 +127,33 @@ session_create() {
     [ -n "$tool" ] || tool="$(default_tool)"
     command -v tmux >/dev/null 2>&1 || die "tmux fehlt (pkg install tmux)"
     session_exists "$tool" && return 0
-    tmux new-session -d -s "$(session_of "$tool")" -n "$tool" "$(tool_cmd "$tool" "${2:-}")"
+    tmux new-session -d -s "$(session_of "$tool")" -n "$tool" "$(tool_cmd "$tool")"
 }
 
-# window_ensure <tool>: the window of that tool in its running session (Claude Code ended cleanly has closed its window
-# while a claude-new window keeps the session alive)
+# window_ensure <tool>: the window of that tool in its running session (a window that ended cleanly is gone)
 window_ensure() {
     tmux list-windows -t "=$(session_of "$1")" -F '#W' 2>/dev/null | grep -qx "$1" \
         || tmux new-window -d -t "=$(session_of "$1"):" -n "$1" "$(tool_cmd "$1")"
 }
 
 cmd_attach() {
-    local tool="" new=0 a
+    local tool="" a
     for a in "$@"; do
         case "$a" in
-            -n|--new) new=1 ;;
             claude|codex) [ -z "$tool" ] || die "Nur ein Programm angeben"; tool="$a" ;;
-            *) die "unbekanntes Programm oder Option: $a (claude oder codex; -n/--new für Claude)" ;;
+            *) die "unbekanntes Programm oder Option: $a (claude oder codex)" ;;
         esac
     done
     tool="$(pick_tool "$tool")" || exit 1
-    [ "$new" = 0 ] || [ "$tool" = claude ] || die "--new ist nur für Claude Code verfügbar"
     daemon_start
     extras_start
     local session
     session="$(session_of "$tool")"
     if session_exists "$tool"; then
-        if [ "$new" = 1 ]; then
-            # Select a new window, never respawn or replace an existing conversation.
-            tmux new-window -t "=$session:" -n claude-new "$(tool_cmd "$tool" --new)"
-        else
-            window_ensure "$tool"
-            tmux select-window -t "=$session:$tool" 2>/dev/null || true
-        fi
+        window_ensure "$tool"
+        tmux select-window -t "=$session:$tool" 2>/dev/null || true
     else
-        if [ "$new" = 1 ]; then session_create "$tool" --new
-        else session_create "$tool"; fi
+        session_create "$tool"
     fi
     if [ -n "${TMUX:-}" ]; then
         tmux switch-client -t "=$session"
