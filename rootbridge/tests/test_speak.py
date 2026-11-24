@@ -856,6 +856,15 @@ class TestPlayer(unittest.TestCase):
                         self.out_file("piper.all"))
         self.assertTrue(os.path.exists(first), "einmal ganz: die nächsten Antworten bleiben kurz")
 
+    def test_more_ways_to_say_read_it_whole_and_read_it_again_are_ours(self):
+        for sentence in ("Lese den kompletten Text.", "Lies den ganzen Text vor", "Lies die komplette Antwort vor",
+                         "Read the whole text"):
+            self.assertIn(speak.said(sentence), speak.WHOLE_PHRASES, sentence)
+        for sentence in ("Wiederhole den Text", "Lese nochmal vor", "Lies es noch mal vor", "Lese es nochmal vor"):
+            self.assertIn(speak.said(sentence), speak.REPEAT_TEXT_PHRASES, sentence)
+        r = self.command("Lese den kompletten Text")           # nothing was read yet: it is ours all the same
+        self.assertEqual(json.loads(r.stdout)["reason"], "Es gibt keine Antwort, die ich vorlesen könnte.")
+
     def test_the_newest_answer_of_its_own_window_is_kept_also_when_reading_is_off(self):
         open(os.path.join(self.bridge, "speak-off"), "w").close()
         self.run_speak(["--hook"], json.dumps({"last_assistant_message": "Neu.", "session_id": "s1"}))

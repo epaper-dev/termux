@@ -179,6 +179,10 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **More spoken sentences for "read it whole" and "read it again".** "Lese den kompletten Text", "Lies den ganzen Text vor",
+  "Lies die komplette Antwort vor", "Read the whole text" read the newest answer whole; "Wiederhole den Text", "Lese nochmal vor",
+  "Lies es noch mal vor" (and the forms with "nochmal" / "noch mal") read the last text again. They are listed in the READMEs; the
+  list of the Termux daemon (input line) is the same. Test: `tests/test_speak.py`.
 * **The short version reads the whole paragraph of the last question.** `speak first` read the first paragraph and the last question sentence alone, which was
   heard without its context. Now it reads the paragraph of that question; a question alone in its paragraph comes with the paragraph before it.
 * **A line in the log says where the time to the first sound went.** `~/.cache/rootbridge-speak.log` gets one line per text, for example

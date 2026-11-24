@@ -121,13 +121,20 @@ RESUME_SENTENCES = ("Lies weiter vor", "Lese weiter vor", "Lies bitte weiter vor
 REPEAT_SENTENCE_SENTENCES = ("Wiederhole den letzten Satz", "Lies den letzten Satz nochmal",
                              "Lies den letzten Satz noch mal", "Repeat the last sentence")
 REPEAT_TEXT_SENTENCES = ("Wiederhole den Text nochmal", "Wiederhole den Text noch mal", "Lies das nochmal vor",
-                         "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text")
+                         "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text",
+                         "Wiederhole den Text", "Lies es nochmal vor", "Lese es nochmal vor", "Lies es noch mal vor",
+                         "Lese es noch mal vor", "Lies nochmal vor", "Lese nochmal vor", "Lies noch mal vor",
+                         "Lese noch mal vor")
 # read the newest answer whole now (once; also after its short version was read); read whole answers (without code) or
 # only their short version from now on (speak-first, as `rootbridge voice speak all|first`)
 WHOLE_SENTENCES = ("Lies alles vor", "Lese alles vor", "Lies mir alles vor", "Lese mir alles vor",
                    "Lies die ganze Antwort vor", "Lies mir die ganze Antwort vor", "Lies den gesamten Text vor",
                    "Lies mir den gesamten Text vor", "Lese mir den gesamten Text vor", "Read everything aloud",
-                   "Read the whole answer")
+                   "Read the whole answer",
+                   "Lese den kompletten Text", "Lies den kompletten Text", "Lese den kompletten Text vor",
+                   "Lies den kompletten Text vor", "Lese den ganzen Text", "Lies den ganzen Text",
+                   "Lese den ganzen Text vor", "Lies den ganzen Text vor", "Lies mir den ganzen Text vor",
+                   "Lies die komplette Antwort vor", "Read the whole text")
 ALL_SENTENCES = ("Lies immer alles vor", "Lies mir immer alles vor", "Lese immer alles vor", "Lies ab jetzt alles vor",
                  "Lies ab jetzt immer alles vor", "Always read everything", "Always read the whole answer")
 SHORT_SENTENCES = ("Lies nur die Kurzfassung vor", "Lies immer nur die Kurzfassung vor",
