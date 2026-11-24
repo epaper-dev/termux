@@ -179,6 +179,10 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **The pre-commit review says that it starts.** The review takes a while (over 30 s are usual), and Claude Code writes the note before the commit
+  into the transcript, from where it is read aloud, only after the hook is done. So the review says "Codex prüft den Commit." (in English
+  with the language `en`) when it starts, unless reading aloud is off. It never waits for the sentence and never fails because of it.
+  Test: `tests/test_codex_precommit.py`.
 * **No second Claude window; Codex goes on with its conversation.** The widget `Claude Neu` and `rootbridge attach claude -n/--new` are gone:
   the new conversation was a window of the session that the Termux window of the open Claude showed, and it needs
   the performance for the voice (reading aloud and dictation work in one window only). A new conversation starts with `/clear`. An
