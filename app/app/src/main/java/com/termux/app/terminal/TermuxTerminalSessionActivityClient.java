@@ -448,13 +448,18 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         TermuxService service = mActivity.getTermuxService();
         if (service == null) return;
 
+        // Only the session in front is replaced by a neighbour. One that ends in the background (a widget tap whose
+        // session handed over to another one) must not take the view away from the session being shown.
+        TerminalSession shown = mActivity.getCurrentSession();
+        boolean wasShown = shown == null || shown == finishedSession;
+
         int index = service.removeTermuxSession(finishedSession);
 
         int size = service.getTermuxSessionsSize();
         if (size == 0) {
             // There are no sessions to show, so finish the activity.
             mActivity.finishActivityIfNotFinishing();
-        } else {
+        } else if (wasShown) {
             if (index >= size) {
                 index = size - 1;
             }

@@ -173,6 +173,14 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **One Termux window for the session.** A widget tap (`Claude`, `Codex`, `Claude Neu`) opened another Termux session that
+  attached to the same tmux session and only mirrored it, so the list filled with identical entries. Now `rootbridge attach`
+  detaches the Termux sessions that already show the tmux session (they end) and shows it in the new one; the control client
+  of push-to-talk stays. `Claude Neu` still opens a new conversation (a new tmux window). The `Ubuntu` widget is unchanged:
+  each tap is its own shell. The Termux app (`TermuxTerminalSessionActivityClient.removeFinishedSession`) changes the
+  view only when the session that ended was the one in front; otherwise a session that ended in the background
+  would switch Termux to its neighbour (for example the Ubuntu shell). Needs the app of the next release set.
+  Test: `tests/test_rootbridge_shell.sh`.
 * **Reading aloud and voice dictation apart.** The installer asks for each once and installs only what was chosen:
   `--speak` / `--no-speak` (SPEAK: Piper, Articulino, the hooks that read aloud, the voice commands, the widgets
   "Vorlesen" and "Stopp", the speech block in CLAUDE.md) and `--voice` / `--no-voice` (VOICE: the microphone permission,

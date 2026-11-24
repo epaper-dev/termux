@@ -40,6 +40,11 @@ cat > "$T/stubs/tmux" <<'EOF'
 #!/bin/bash
 echo "tmux $*" >> "$STUB_LOG"
 [ "$1" = has-session ] && exit "${STUB_HAS_SESSION:-1}"
+if [ "$1" = list-clients ]; then
+    [ -z "${STUB_LIST_FAIL:-}" ] || { echo "no server running" >&2; exit 1; }
+    [ -z "${STUB_CLIENTS:-}" ] || echo "0 /dev/pts/9"
+    [ -z "${STUB_CONTROL:-}" ] || echo "1 /dev/pts/ctl"
+fi
 exit 0
 EOF
 cat > "$T/stubs/proot-distro" <<'EOF'
@@ -94,6 +99,23 @@ check "attach: hängt sich an"                          1 "$(calls '^tmux attach
 rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" attach
 check "attach bei laufender Sitzung: keine neue Sitzung" 0 "$(calls '^tmux new-session')"
 check "attach bei laufender Sitzung: hängt sich an"    1 "$(calls '^tmux attach -t ubuntu$')"
+
+# --- a Termux session already shows the tmux session: the widget's new one takes over, the old one is detached
+rb env STUB_HAS_SESSION=0 STUB_CLIENTS=1 STUB_CONTROL=1 bash "$T/bin/rootbridge" attach
+check "attach, schon angehängt: Exit 0"                0 "$RC"
+check "attach, schon angehängt: erst anhängen, dann das alte Fenster trennen" 1 "$(calls '^tmux attach -t ubuntu ; detach-client -t /dev/pts/9$')"
+check "attach, schon angehängt: der Steuer-Client bleibt" 0 "$(calls 'detach-client -t /dev/pts/ctl')"
+check "attach, schon angehängt: kein getrenntes Fenster vor dem attach" 0 "$(calls '^tmux detach-client')"
+rb env STUB_HAS_SESSION=0 STUB_CLIENTS=1 bash "$T/bin/rootbridge" attach claude --new
+check "attach --new, schon angehängt: neues Fenster"   1 "$(calls '^tmux new-window -t ubuntu: -n claude-new .*rootbridge-claude --new$')"
+check "attach --new, schon angehängt: Fenster übernimmt" 1 "$(calls '^tmux attach -t ubuntu ; detach-client -t /dev/pts/9$')"
+rb env STUB_HAS_SESSION=0 STUB_CONTROL=1 bash "$T/bin/rootbridge" attach
+check "attach, nur ein Steuer-Client: nichts getrennt"  0 "$(calls 'detach-client')"
+check "attach, nur ein Steuer-Client: hängt sich an"    1 "$(calls '^tmux attach -t ubuntu$')"
+
+rb env STUB_HAS_SESSION=0 STUB_LIST_FAIL=1 bash "$T/bin/rootbridge" attach
+check "attach, Clients nicht lesbar: nichts getrennt, hängt sich an" 1 "$(calls '^tmux attach -t ubuntu$')"
+check "attach, Clients nicht lesbar: Warnung"          1 "$(grep -c 'Clients der Sitzung sind nicht lesbar' "$T/out.txt")"
 
 # --- help text and widget
 check "help nennt: shell startet Claude Code nicht"    1 "$(bash "$T/bin/rootbridge" help 2>&1 | grep -c 'does not start Claude Code')"
