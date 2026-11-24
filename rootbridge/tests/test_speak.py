@@ -52,9 +52,14 @@ class TestSummary(unittest.TestCase):
         self.assertEqual(speak.summary("PR #47 ist gemergt. Tests grün.\nZweiter Absatz."), "PR #47 ist gemergt. Tests grün.")
         self.assertEqual(speak.summary("Eins. Zwei! Drei. Vier. Fünf. Sechs.\nMehr."), "Eins. Zwei! Drei. Vier. Fünf. Sechs.")
 
-    def test_the_last_question_further_down_is_added(self):
+    def test_the_paragraph_of_the_last_question_further_down_is_added_whole(self):
         self.assertEqual(speak.summary("Fertig. Alles grün.\nDetails hier.\nSoll ich A? Oder pushen? Sag Bescheid."),
-                         "Fertig. Alles grün. Oder pushen?")
+                         "Fertig. Alles grün. Soll ich A? Oder pushen? Sag Bescheid.")
+        self.assertEqual(speak.summary("Fertig.\nIch habe es gebaut. Die Tests sind grün.\nSoll ich mergen?"),
+                         "Fertig. Ich habe es gebaut. Die Tests sind grün. Soll ich mergen?")   # alone in its line: the line before too
+        self.assertEqual(speak.summary("Fertig.\nSoll ich mergen?"), "Fertig. Soll ich mergen?")   # the line before is the first one
+        self.assertEqual(speak.summary("Fertig.\nIch habe es gebaut. Soll ich es mergen?\nQuellen: keine."),
+                         "Fertig. Ich habe es gebaut. Soll ich es mergen?")   # the paragraph of the question, not the one after it
 
     def test_a_question_in_the_first_paragraph_is_not_repeated(self):
         self.assertEqual(speak.summary("Soll ich mergen? Dann sag ja.\nDetails."), "Soll ich mergen? Dann sag ja.")
@@ -402,8 +407,8 @@ class TestPlayer(unittest.TestCase):
         r = self.run_speak(["--hook"], json.dumps({"last_assistant_message":
                                                    "**Alles** gut, z. B. hier. Danach Details.\n\nMehr.\n\n- Soll ich pushen?"}))
         self.assertEqual(r.returncode, 0)
-        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "RAW" * 3))   # three sentences
-        self.assertEqual(self.out_file("piper.in"), "Alles gut, z. B. hier. Danach Details. Soll ich pushen?")
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "RAW" * 4))   # four sentences: the first line, the line before the question, the question
+        self.assertEqual(self.out_file("piper.in"), "Alles gut, z. B. hier. Danach Details. Mehr. Soll ich pushen?")
 
     def test_speak_first_leaves_the_command_line_whole(self):
         open(os.path.join(self.bridge, "speak-first"), "w").close()
@@ -461,6 +466,29 @@ class TestPlayer(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "PCM:Der [en]Commit[/en] ist gemörtscht."))
         self.assertIn("-r 24000", self.out_file("play.args"))
         self.assertIsNone(self.out_file("piper.in"))
+
+    def test_the_log_is_rotated_and_never_grows_without_a_limit(self):
+        with open(self.log, "w", encoding="utf-8") as fh:
+            fh.write("x" * 600 + "\n")
+        self.run_speak(["Hallo."], RB_SPEAK_LOG_MAX="500", **self.articulino())
+        self.assertTrue(self.wait_for(lambda: os.path.exists(self.log + ".1")), "kein rotiertes Log")
+        with open(self.log + ".1", encoding="utf-8") as fh:
+            self.assertTrue(fh.read().startswith("x" * 600))        # what was there moved
+        self.assertLess(os.path.getsize(self.log), 600)               # the new log starts small
+
+    def test_the_log_says_where_the_time_to_the_first_sound_went(self):
+        env = self.articulino()
+        self.run_speak(["Hallo Welt."], **env)
+        self.assertTrue(self.wait_for(lambda: self.out_file("play.in") == "PCM:Hallo Welt."))
+        def line():
+            with open(self.log, encoding="utf-8") as fh:
+                return [l for l in fh.read().splitlines() if "Vorlesen:" in l]
+        self.assertTrue(self.wait_for(lambda: len(line()) == 1), "keine Zeitzeile")
+        text = line()[0]
+        for label in ("Warten", "Fokus", "Stimme bereit", "erstes Audio", "bis zum Ton", "zusammen", "Articulino"):
+            self.assertIn(label, text)
+        with open(self.log, encoding="utf-8") as fh:
+            self.assertIn("Articulino gestartet nach", fh.read())   # this reading started the server
 
     def test_articulino_gets_the_language_first_when_it_is_not_german(self):
         env = self.articulino()
@@ -827,6 +855,15 @@ class TestPlayer(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: self.out_file("piper.all") == "Kurz gesagt.\nKurz gesagt.\nDetails hier.\n"),
                         self.out_file("piper.all"))
         self.assertTrue(os.path.exists(first), "einmal ganz: die nächsten Antworten bleiben kurz")
+
+    def test_more_ways_to_say_read_it_whole_and_read_it_again_are_ours(self):
+        for sentence in ("Lese den kompletten Text.", "Lies den ganzen Text vor", "Lies die komplette Antwort vor",
+                         "Read the whole text"):
+            self.assertIn(speak.said(sentence), speak.WHOLE_PHRASES, sentence)
+        for sentence in ("Wiederhole den Text", "Lese nochmal vor", "Lies es noch mal vor", "Lese es nochmal vor"):
+            self.assertIn(speak.said(sentence), speak.REPEAT_TEXT_PHRASES, sentence)
+        r = self.command("Lese den kompletten Text")           # nothing was read yet: it is ours all the same
+        self.assertEqual(json.loads(r.stdout)["reason"], "Es gibt keine Antwort, die ich vorlesen könnte.")
 
     def test_the_newest_answer_of_its_own_window_is_kept_also_when_reading_is_off(self):
         open(os.path.join(self.bridge, "speak-off"), "w").close()

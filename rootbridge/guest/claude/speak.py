@@ -37,7 +37,8 @@ What is read: the text without code blocks, tables, URLs and Markdown marks. The
 speak-english.txt next to this file go to Piper as phonemes ([[...]]) and to Articulino in [en]...[/en], so the German voice
 says them in English, and German forms of English verbs as they are said ("gemergt" as "gemörtscht"). With the file speak-first in the bridge
 directory (`rootbridge voice speak first|all`) the hooks read only a short version of an answer or note: its whole first
-paragraph, and the last question of the text when it stands further down.
+paragraph, and the paragraph of the last question of the text when it stands further down (a question alone in its
+paragraph with the paragraph before it, so that it is heard with what it is about).
 --progress remembers the id of the note it read in speak-progress, so each note is read once. The player reads sentence by
 sentence (the next one is made while one plays) and notes in speak-last the sentences of its text and the one it is at.
 The switch: the file speak-off in the bridge directory (Termux and the guest both see it; `rootbridge voice speak
@@ -120,13 +121,20 @@ RESUME_SENTENCES = ("Lies weiter vor", "Lese weiter vor", "Lies bitte weiter vor
 REPEAT_SENTENCE_SENTENCES = ("Wiederhole den letzten Satz", "Lies den letzten Satz nochmal",
                              "Lies den letzten Satz noch mal", "Repeat the last sentence")
 REPEAT_TEXT_SENTENCES = ("Wiederhole den Text nochmal", "Wiederhole den Text noch mal", "Lies das nochmal vor",
-                         "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text")
+                         "Lies das noch mal vor", "Wiederhole die letzte Ausgabe", "Repeat the last text",
+                         "Wiederhole den Text", "Lies es nochmal vor", "Lese es nochmal vor", "Lies es noch mal vor",
+                         "Lese es noch mal vor", "Lies nochmal vor", "Lese nochmal vor", "Lies noch mal vor",
+                         "Lese noch mal vor")
 # read the newest answer whole now (once; also after its short version was read); read whole answers (without code) or
 # only their short version from now on (speak-first, as `rootbridge voice speak all|first`)
 WHOLE_SENTENCES = ("Lies alles vor", "Lese alles vor", "Lies mir alles vor", "Lese mir alles vor",
                    "Lies die ganze Antwort vor", "Lies mir die ganze Antwort vor", "Lies den gesamten Text vor",
                    "Lies mir den gesamten Text vor", "Lese mir den gesamten Text vor", "Read everything aloud",
-                   "Read the whole answer")
+                   "Read the whole answer",
+                   "Lese den kompletten Text", "Lies den kompletten Text", "Lese den kompletten Text vor",
+                   "Lies den kompletten Text vor", "Lese den ganzen Text", "Lies den ganzen Text",
+                   "Lese den ganzen Text vor", "Lies den ganzen Text vor", "Lies mir den ganzen Text vor",
+                   "Lies die komplette Antwort vor", "Read the whole text")
 ALL_SENTENCES = ("Lies immer alles vor", "Lies mir immer alles vor", "Lese immer alles vor", "Lies ab jetzt alles vor",
                  "Lies ab jetzt immer alles vor", "Always read everything", "Always read the whole answer")
 SHORT_SENTENCES = ("Lies nur die Kurzfassung vor", "Lies immer nur die Kurzfassung vor",
@@ -174,6 +182,7 @@ if not VOICE:
         VOICE = GERMAN_VOICE   # the English voice not loaded yet (install.sh --no-setup): the German one rather than none
 PULSE_COOKIE = "/data/data/com.termux/files/home/.config/pulse/cookie"
 LOG = os.environ.get("RB_SPEAK_LOG", os.path.expanduser("~/.cache/rootbridge-speak.log"))
+LOG_MAX_BYTES = int(os.environ.get("RB_SPEAK_LOG_MAX", 256 * 1024))   # then it moves to rootbridge-speak.log.1
 PROC = os.environ.get("RB_SPEAK_PROC", "/proc")
 ENGLISH = os.environ.get("RB_SPEAK_ENGLISH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "speak-english.txt"))
 ARTICULINO = os.environ.get("RB_SPEAK_ARTICULINO", "/opt/articulino")   # venv of setup-guest.sh, the model in model/
@@ -245,13 +254,17 @@ def sentences(line):
 
 
 def summary(text):
-    """The short version of a speakable text: its first line (paragraph, heading, list item) and the last question of
-    the text when it is not in there (a question at the end must be heard)."""
+    """The short version of a speakable text: its first line (paragraph, heading, list item) and, when it is not in there, the
+    whole line of the last question; when that line is only the question, the line before it too (a question at the
+    end must be heard together with what it is about)."""
     lines = text.split("\n")
     head = sentences(lines[0])
-    questions = [s for line in lines for s in sentences(line) if s.endswith("?")]
-    if questions and questions[-1] not in head:
-        head.append(questions[-1])
+    asked = [i for i, line in enumerate(lines) if any(s.endswith("?") for s in sentences(line))]
+    if asked and asked[-1] != 0:
+        at = asked[-1]
+        if len(sentences(lines[at])) == 1 and at > 1:
+            head += sentences(lines[at - 1])
+        head += sentences(lines[at])
     return " ".join(head)
 
 
@@ -286,9 +299,35 @@ def english(text, articulino=False):
     return re.sub(pattern, replace, text)
 
 
+TIMES = []   # (what, time) of this player on its way to the first sound; log_times writes them as one line
+
+
+def tick(what):
+    if not any(w == what for w, _ in TIMES):
+        TIMES.append((what, time.time()))
+
+
+def log_times(engine):
+    """One line in the log: where the time from the hook to the first sound went (the player notes it once per text)."""
+    labels = {"turn": "Warten", "focus": "Fokus", "voice": "Stimme bereit", "audio": "erstes Audio", "play": "bis zum Ton"}
+    parts, last = [], None
+    for what, moment in TIMES:
+        if last is not None and what in labels:
+            parts.append("%s %.1f s" % (labels[what], moment - last))
+        last = moment
+    total = TIMES[-1][1] - TIMES[0][1] if len(TIMES) > 1 else 0
+    log("Vorlesen: %s; zusammen %.1f s seit dem Hook (%s)" % (", ".join(parts), total, engine))
+    TIMES.clear()
+
+
 def log(message):
     try:
         os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        try:
+            if os.path.getsize(LOG) > LOG_MAX_BYTES:   # one older log stays, the one before it goes: the log never grows past about twice this
+                os.replace(LOG, LOG + ".1")
+        except OSError:
+            pass
         with open(LOG, "a", encoding="utf-8") as fh:
             fh.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
     except OSError:
@@ -525,10 +564,12 @@ def server_connection():
                 server = subprocess.Popen([python, "-I", SERVER, SOCKET, model, VOICE_SAMPLE, str(lock.fileno())],
                                           stdin=subprocess.DEVNULL, stdout=err, stderr=err, start_new_session=True,
                                           pass_fds=(lock.fileno(),))
-            deadline = time.time() + SERVER_START_SECONDS
+            began = time.time()
+            deadline = began + SERVER_START_SECONDS
             while time.time() < deadline and server.poll() is None:
                 conn = connect()
                 if conn:
+                    log("Articulino gestartet nach %.1f s" % (time.time() - began))
                     return conn
                 time.sleep(0.1)
             if server.poll() is None:   # it hangs: it must not keep the lock (and 500 MB)
@@ -688,7 +729,7 @@ def produce(items, parts, first, end, audio, worker, mark):
     items.put(None)
 
 
-def play_parts(items, parts, rate, err, env):
+def play_parts(items, parts, rate, err, env, engine=""):
     """Plays the sentences from items in pieces of CHUNK and notes in speak-last which one plays (after the last one, when
     play has played all of it: the text is done) and which one was heard last. While paused() nothing more goes: play has only what is in its small
     pipe left and then waits in silence, and the reading goes on where it stopped (a stop signal does not hold a process
@@ -696,6 +737,7 @@ def play_parts(items, parts, rate, err, env):
     item = items.get()
     if item is None:
         return 0
+    tick("audio")
     play = subprocess.Popen(play_command(rate), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=err, env=env,
                             bufsize=0)
     try:
@@ -717,6 +759,9 @@ def play_parts(items, parts, rate, err, env):
                 while paused():
                     time.sleep(0.1)
                 play.stdin.write(audio[at:at + CHUNK])
+                if TIMES and not any(w == "play" for w, _ in TIMES):
+                    tick("play")
+                    log_times(engine)
                 if heard != index and at + CHUNK >= min(lag, len(audio)):
                     heard = index
                     remember(parts, index, heard)
@@ -784,15 +829,19 @@ def run(ticket, mark):
     try:
         job = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
         parts, first, end, since, after = job["parts"], job["first"], job["end"], int(job["since"]), int(job["after"])
+        TIMES.append(("hook", since / 1e9))
         if not wait_turn(ticket, mark, since, after):
             return
         if stop_mark() != mark:   # a stop between the check and speak.pid missed this player
             return
+        tick("turn")
         if not focus_allows():
             return
+        tick("focus")
         with tempfile.TemporaryFile() as err:   # what Piper and play say, into the log only on a failure
             engine, rate, worker, audio = "Articulino", SERVER_RATE, None, b""
             conn = server_connection()
+            tick("voice")
             if conn:
                 audio = articulino(conn, parts[first])
                 if not audio:
@@ -803,7 +852,7 @@ def run(ticket, mark):
                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err, env=env)
             items = queue.Queue(maxsize=2)
             threading.Thread(target=produce, args=(items, parts, first, end, audio, worker, mark), daemon=True).start()
-            played = play_parts(items, parts, rate, err, env)
+            played = play_parts(items, parts, rate, err, env, engine)
             made = 0
             if worker:
                 worker.stdin.close()
@@ -1161,7 +1210,10 @@ def transcript_tail(path, tool_use_id):
         except OSError as e:
             log("Zwischenstand: Sitzungsprotokoll nicht lesbar, %s" % e)
             return None
-        if not tool_use_id or tool_use_id.encode() in tail or time.time() >= end:
+        if not tool_use_id or tool_use_id.encode() in tail:
+            return tail
+        if time.time() >= end:
+            log("Zwischenstand: der Aufruf %s stand nach %d s noch nicht im Sitzungsprotokoll" % (tool_use_id[-6:], WAIT_SECONDS))
             return tail
         time.sleep(0.1)
 
@@ -1228,7 +1280,10 @@ def read_note(note, begun, session):
             fh.write(note[0] + "\n")
             fh.flush()
             # switched off or stopped while it waited for the transcript: the note counts as read, nothing starts
-            if not os.path.exists(OFF) and not stopped_since(begun):
+            why = "ausgeschaltet" if os.path.exists(OFF) else "gestoppt" if stopped_since(begun) else ""
+            log("Zwischenstand %s (%d Zeichen, %.1f s nach dem Hook): %s" % (
+                note[0][:8], len(note[1]), time.time() - begun, "nicht gelesen, " + why if why else "wird gelesen"))
+            if not why:
                 speak_answer(note[1], session)
                 # a stop between that check and the ticket missed the player: a new stop ends it before the first sound
                 if os.path.exists(OFF) or stopped_since(begun):

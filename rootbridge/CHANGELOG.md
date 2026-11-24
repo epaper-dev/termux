@@ -179,6 +179,15 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **More spoken sentences for "read it whole" and "read it again".** "Lese den kompletten Text", "Lies den ganzen Text vor",
+  "Lies die komplette Antwort vor", "Read the whole text" read the newest answer whole; "Wiederhole den Text", "Lese nochmal vor",
+  "Lies es noch mal vor" (and the forms with "nochmal" / "noch mal") read the last text again. They are listed in the READMEs; the
+  list of the Termux daemon (input line) is the same. Test: `tests/test_speak.py`.
+* **The short version reads the whole paragraph of the last question.** `speak first` read the first paragraph and the last question sentence alone, which was
+  heard without its context. Now it reads the paragraph of that question; a question alone in its paragraph comes with the paragraph before it.
+* **A line in the log says where the time to the first sound went.** `~/.cache/rootbridge-speak.log` gets one line per text, for example
+  `Vorlesen: Warten 0.3 s, Fokus 0.4 s, Stimme bereit 0.0 s, erstes Audio 1.7 s, bis zum Ton 0.1 s; zusammen 2.5 s seit dem Hook (Articulino)`, and
+  `Articulino gestartet nach 8.8 s` when a text had to start the server. A note between two tool calls writes a line too (`Zwischenstand <id> ...: wird gelesen` or why it was not read). The log is rotated at 256 KB (`rootbridge-speak.log.1` stays, the one before it goes; `RB_SPEAK_LOG_MAX` changes the limit), so it never grows past about 512 KB. Tests: `tests/test_speak.py`.
 * **The pre-commit review says that it starts.** The review takes a while (over 30 s are usual), and Claude Code writes the note before the commit
   into the transcript, from where it is read aloud, only after the hook is done. So the review says "Codex prüft den Commit." (in English
   with the language `en`) when it starts, unless reading aloud is off. It never waits for the sentence and never fails because of it.

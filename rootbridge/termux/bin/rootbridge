@@ -422,7 +422,7 @@ speak_flag() {
 }
 
 # voice_speak: the switches of reading aloud in the bridge directory: speak-off (nothing is read) and speak-first (the hook
-# reads only a short version of an answer: first paragraph, at most 3 sentences, the last question)
+# reads only a short version of an answer: first paragraph and the paragraph of the last question)
 voice_speak() {
     local off="$BRIDGE_DIR/speak-off" first="$BRIDGE_DIR/speak-first"
     case "$1" in
