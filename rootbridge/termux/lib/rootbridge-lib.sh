@@ -326,14 +326,13 @@ rb_prompt_clear() {
         rm -f "$f"
         return 0
     fi
-    # each pane of the Claude Code windows of the session (claude, and claude-new from `rootbridge attach claude --new`;
-    # PTT_TARGET when set): its input box, from the last row with the prompt sign to the frame below it; a draft of more
+    # each pane of the Claude Code window of the session (claude; PTT_TARGET when set): its input box, from the last row with the prompt sign to the frame below it; a draft of more
     # rows is not ours. tmux cannot read and press in one step: what is typed in the few milliseconds between goes as well.
     if ! panes="$("$RB_TMUX" list-panes -s -t "$SESSION" -F '#{window_name} #{pane_id}' 2>/dev/null)"; then
         echo "$(date '+%F %T') Eingabezeile: tmux list-panes -t $SESSION gescheitert" >&2
         return 0                                                  # next round
     fi
-    for pane in $(awk -v t="${PTT_TARGET#*:}" '$1 == "claude" || $1 == "claude-new" || $1 == t { print $2 }' <<< "$panes"); do
+    for pane in $(awk -v t="${PTT_TARGET#*:}" '$1 == "claude" || $1 == t { print $2 }' <<< "$panes"); do
         if ! screen="$("$RB_TMUX" capture-pane -p -t "$pane" 2>/dev/null)"; then
             echo "$(date '+%F %T') Eingabezeile: tmux capture-pane -t $pane gescheitert" >&2
             failed=1

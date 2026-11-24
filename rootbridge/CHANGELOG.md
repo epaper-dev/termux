@@ -179,6 +179,12 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   repository (`api/`). Tests: `tests/test_voice.sh`, `tests/test_speak.py`.
 
 ### Changed
+* **No second Claude window; Codex goes on with its conversation.** The widget `Claude Neu` and `rootbridge attach claude -n/--new` are gone:
+  the new conversation was a window of the session that the Termux window of the open Claude showed, and it needs
+  the performance for the voice (reading aloud and dictation work in one window only). A new conversation starts with `/clear`. An
+  installation that has the widget `Claude Neu` of rootbridge loses it (a copy goes to `~/.rootbridge/backups`). `rootbridge-codex` starts
+  `codex resume --last` when Codex has a saved conversation (`CODEX_HOME/sessions`), as Claude Code starts with `--continue`.
+  Tests: `tests/test_codex.sh`, `tests/test_rootbridge_shell.sh`, `tests/test_widgets.sh`.
 * **Codex in a Termux window of its own.** Codex ran as a window of the same tmux session as Claude Code, so tapping the Codex widget
   took the Termux window of Claude, and when Codex ended that window showed Claude again. Codex now has its own tmux session
   `ubuntu-codex`: its own Termux window, which ends when Codex ends, like the Ubuntu shell. Claude Code keeps `ubuntu` (and ptt and

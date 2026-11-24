@@ -274,8 +274,7 @@ run_shortcut() {  # run_shortcut <home> <command>: execute a shortcut from the i
     env -u TMUX HOME="$home" PATH="$T/stubs:$PATH" bash -i -c "$cmd" > /dev/null 2>&1
     tr '\n' '|' < "$RB_LOG"
 }
-for entry in "ubuntu:shell" "claude:attach claude" "codex:attach codex" \
-             "claude -n:attach claude -n" "claude --new:attach claude --new"; do
+for entry in "ubuntu:shell" "claude:attach claude" "codex:attach codex"; do
     check "Kurzbefehl ${entry%%:*}: richtiger Aufruf" "reload|rootbridge ${entry#*:}|" "$(run_shortcut "$H" "${entry%%:*}")"
 done
 

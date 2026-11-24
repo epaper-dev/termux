@@ -186,10 +186,10 @@ Termux-Konfiguration gespeichert und wird an den Ubuntu-Gast weitergegeben; spä
 Mit `bash install.sh --remote-name boox-max-lumi` setzt oder änderst du ihn ohne Nachfrage. Ohne Terminal wird der vorhandene
 Name beziehungsweise `android` verwendet; bei einer Installation nur mit Codex entfällt die Frage.
 
-**Neue Unterhaltung.** `rootbridge attach claude -n` (oder `--new`) und das Widget **Claude Neu** starten Claude
-ohne `--continue`. Bei laufender tmux-Sitzung entsteht ein zusätzliches Fenster; bestehende Unterhaltungen bleiben
-offen. Beim normalen Start mit `--continue` prüft der Starter zuerst die lokal gespeicherten Unterhaltungen für
-den aktuellen Arbeitsordner. Fehlt eine passende Unterhaltung mit Nachrichten, startet Claude automatisch neu;
+**Fortsetzen und neue Unterhaltung.** Claude Code startet immer mit `--continue`, Codex mit `codex resume --last`
+(nach der ersten gespeicherten Unterhaltung; die allererste startet frisch). Es gibt kein zweites Claude-Fenster und kein
+Widget **Claude Neu** mehr: Eine neue Unterhaltung beginnst du in Claude Code mit `/clear`. Beim Start mit `--continue` prüft
+der Starter zuerst die lokal gespeicherten Unterhaltungen für den aktuellen Arbeitsordner. Fehlt eine passende Unterhaltung mit Nachrichten, startet Claude automatisch neu;
 nach der ersten gespeicherten Unterhaltung wird wieder fortgesetzt. Die Prüfung berücksichtigt `CLAUDE_CONFIG_DIR`
 und benötigt weder eine Anmeldung noch einen API-Aufruf.
 
@@ -339,7 +339,6 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
 |---|---|
 | `rootbridge start` | Daemon + Session; mit `--no-attach` im Hintergrund (Termux:Boot ruft das nach einem Neustart auf) |
 | `claude` / `rootbridge attach claude` | Claude-Code-Sitzung öffnen oder an die laufende Sitzung anhängen (Widget **Claude**) |
-| `claude -n` / `claude --new` | neue Claude-Unterhaltung in einem eigenen Fenster starten |
 | `codex` / `rootbridge attach codex` | an die Codex-Sitzung `ubuntu-codex` anhängen (Widget **Codex**; wird angelegt, wenn sie fehlt), in einem eigenen Termux-Fenster |
 | `ubuntu` / `rootbridge shell` | normale Ubuntu-Shell in diesem Terminal (startet den Daemon für `androidsu`, aber weder Claude Code noch eine tmux-Sitzung; Widget „Ubuntu“) |
 | `rootbridge attach` | Standardprogramm öffnen: Claude Code, bei einer Installation ohne Claude Code stattdessen Codex |

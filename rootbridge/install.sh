@@ -755,7 +755,7 @@ if [ "$DO_WIDGETS" = 1 ]; then
         done
     done
     # a tool that is switched off gets no widget (and our widget of an earlier install goes, with a copy in backups)
-    for pair in "claude:Claude:$USE_CLAUDE" "claude-new:Claude Neu:$USE_CLAUDE" "codex:Codex:$USE_CODEX"; do
+    for pair in "claude:Claude:$USE_CLAUDE" "codex:Codex:$USE_CODEX"; do
         if [ "${pair##*:}" = no ]; then
             w="${pair#*:}"; w="${w%%:*}"
             if [ -f "$SC/$w" ] && grep -q 'rootbridge' "$SC/$w" 2>/dev/null; then
@@ -764,9 +764,14 @@ if [ "$DO_WIDGETS" = 1 ]; then
             fi
         fi
     done
+    # the widget "Claude Neu" is gone (a new conversation starts with /clear): our script of an earlier install goes, with a copy
+    if [ -f "$SC/Claude Neu" ] && grep -q 'rootbridge' "$SC/Claude Neu" 2>/dev/null; then
+        mv "$SC/Claude Neu" "$BRIDGE_DIR/backups/Claude Neu.old-$STAMP"
+        say "  Widget entfernt: Claude Neu (gibt es nicht mehr; Kopie in $BRIDGE_DIR/backups)"
+    fi
     WIDGET_LIST=("ubuntu:Ubuntu")
     [ "$USE_CODEX" = yes ] && WIDGET_LIST+=("codex:Codex")
-    [ "$USE_CLAUDE" = yes ] && WIDGET_LIST+=("claude:Claude" "claude-new:Claude Neu")
+    [ "$USE_CLAUDE" = yes ] && WIDGET_LIST+=("claude:Claude")
     for pair in "${WIDGET_LIST[@]}"; do
         src="${pair%%:*}"; name="${pair#*:}"
         inst "$REPO/termux/shortcuts/$src" "$SC/$name"

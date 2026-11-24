@@ -4,7 +4,7 @@
 #   2. rootbridge-update: claude update and codex update (CLAUDE_UPDATE / CODEX_UPDATE, at most
 #      once every 6 h by default, never blocks the start). Starting Codex also updates Claude Code and the other
 #      way round (rootbridge-claude does the same): the two review each other.
-#   3. Codex, in the working directory
+#   3. Codex, in the working directory, on with its last conversation there (codex resume --last)
 #
 # CODEX_ARGS in /etc/termux-rootbridge.conf adds options, for example CODEX_ARGS="--model gpt-5.5". By default the
 # installer puts --dangerously-bypass-approvals-and-sandbox there (install.sh --codex-bypass, CODEX_BYPASS): under
@@ -35,5 +35,8 @@ fi
 run_maintenance
 
 read -r -a extra <<< "$(conf_get CODEX_ARGS || true)"
-( exec "$codex_bin" "${extra[@]}" )
+# Codex goes on with the last conversation of this folder (as Claude Code does with --continue); the very first start has none
+resume=()
+compgen -G "${CODEX_HOME:-${HOME:-/root}/.codex}/sessions/*/*/*/rollout-*.jsonl" > /dev/null && resume=(resume --last)
+( exec "$codex_bin" ${resume[@]+"${resume[@]}"} "${extra[@]}" )
 after_tool Codex codex "$?"

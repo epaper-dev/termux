@@ -106,9 +106,6 @@ check "attach, schon angehängt: Exit 0"                0 "$RC"
 check "attach, schon angehängt: erst anhängen, dann das alte Fenster trennen" 1 "$(calls '^tmux attach -t =ubuntu ; detach-client -t /dev/pts/9$')"
 check "attach, schon angehängt: der Steuer-Client bleibt" 0 "$(calls 'detach-client -t /dev/pts/ctl')"
 check "attach, schon angehängt: kein getrenntes Fenster vor dem attach" 0 "$(calls '^tmux detach-client')"
-rb env STUB_HAS_SESSION=0 STUB_CLIENTS=1 bash "$T/bin/rootbridge" attach claude --new
-check "attach --new, schon angehängt: neues Fenster"   1 "$(calls '^tmux new-window -t =ubuntu: -n claude-new .*rootbridge-claude --new$')"
-check "attach --new, schon angehängt: Fenster übernimmt" 1 "$(calls '^tmux attach -t =ubuntu ; detach-client -t /dev/pts/9$')"
 rb env STUB_HAS_SESSION=0 STUB_CLIENTS=1 bash "$T/bin/rootbridge" attach codex
 check "attach codex, schon angehängt: nur die Codex-Sitzung" 1 "$(calls '^tmux attach -t =ubuntu-codex ; detach-client -t /dev/pts/9$')"
 check "attach codex: Claudes Sitzung wird nicht angefasst"    0 "$(calls '^tmux .*-t =ubuntu\($\|:\)')"
@@ -127,17 +124,6 @@ rb env PATH="$T/bin:$T/stubs:$PATH" bash "$ROOT/termux/shortcuts/ubuntu"
 check "Widget 'ubuntu': nur proot-distro login"     "proot-distro login ubuntu $ISO" "$(grep '^proot-distro ' "$STUB_LOG")"
 check "Widget 'ubuntu': tmux nie aufgerufen"        0 "$(calls '^tmux ')"
 
-# --new always creates a fresh Claude process, even with an existing tmux session.
-rb bash "$T/bin/rootbridge" attach claude -n
-check "attach -n: neue Sitzung ohne Continue" 1 "$(calls '^tmux new-session .*rootbridge-claude --new$')"
-rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" attach claude --new
-check "attach --new: zusätzliches Fenster" 1 "$(calls '^tmux new-window -t =ubuntu: -n claude-new .*rootbridge-claude --new$')"
-check "attach --new: bestehende Sitzung nicht ersetzt" 0 "$(calls 'kill-\|respawn-\|new-session')"
-rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" attach claude -n
-check "attach -n erneut: wieder ein neues Fenster" 1 "$(calls '^tmux new-window ')"
-rb bash "$T/bin/rootbridge" attach codex --new
-check "Codex --new wird abgewiesen" 1 "$RC"
-check "Codex --new: kein neues Fenster" 0 "$(calls '^tmux new-')"
 
 
 echo

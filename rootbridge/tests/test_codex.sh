@@ -394,14 +394,17 @@ mkdir -p "$T/cpath"; ln -sf "$CB/bashstub" "$T/cpath/bash"
 CLOG="$T/c.log"; CCONF="$T/c.conf"
 crun() {   # crun [VAR=value ...]
     : > "$CLOG"
-    env -i PATH="$T/cpath:$CB" ROOTBRIDGE_CODEX_KEEP_PATH=1 ROOTBRIDGE_CONF="$CCONF" ROOTBRIDGE_GUEST_LIB="$ROOTBRIDGE_GUEST_LIB" ROOTBRIDGE_CODEX_BIN="$CB/codex" STUB_LOG="$CLOG" "$@" \
+    env -i PATH="$T/cpath:$CB" CODEX_HOME="$T/chome" ROOTBRIDGE_CODEX_KEEP_PATH=1 ROOTBRIDGE_CONF="$CCONF" ROOTBRIDGE_GUEST_LIB="$ROOTBRIDGE_GUEST_LIB" ROOTBRIDGE_CODEX_BIN="$CB/codex" STUB_LOG="$CLOG" "$@" \
         "$(command -v bash)" "$CODEXBIN" > "$T/c.out" 2>&1
     CRC=$?
 }
 printf 'WORKDIR=%s\nCODEX_ARGS="--model gpt-test"\n' "$T/cwork" > "$CCONF"
 crun
 check "rootbridge-codex: Exit 0 nach sauberem Ende"        0 "$CRC"
-check "rootbridge-codex: Reihenfolge apt, update, codex"   "apt|update|codex --model gpt-test | cwd=$T/cwork | BROWSER=/usr/local/bin/rootbridge-open" "$(paste -sd'|' "$CLOG")"
+check "rootbridge-codex: erster Start ohne Unterhaltung: Codex ohne resume" "apt|update|codex --model gpt-test | cwd=$T/cwork | BROWSER=/usr/local/bin/rootbridge-open" "$(paste -sd'|' "$CLOG")"
+mkdir -p "$T/chome/sessions/2026/11/24"; : > "$T/chome/sessions/2026/11/24/rollout-2026-11-24T10-00-00-abc.jsonl"
+crun
+check "rootbridge-codex: mit früherer Unterhaltung: Codex macht dort weiter" "apt|update|codex resume --last --model gpt-test | cwd=$T/cwork | BROWSER=/usr/local/bin/rootbridge-open" "$(paste -sd'|' "$CLOG")"
 check "rootbridge-codex: kein 'bash -l' nach sauberem Ende" 0 "$(count "$CLOG" '^bash')"
 crun STUB_CODEX_RC=130
 check "rootbridge-codex: Ctrl+C beendet das Fenster"       "0 0" "$CRC $(count "$CLOG" '^bash')"
@@ -415,7 +418,7 @@ if [ -d /root ] && [ -x /root ]; then
     check "rootbridge-codex: fehlender Arbeitsordner: Rückfall auf /root" "ja" "$(grep -q '^codex' "$CLOG" && echo ja || echo nein)"
 fi
 printf 'WORKDIR=%s\n' "$T/cwork" > "$CCONF"
-check "rootbridge-codex: Codex-Argumente leer ohne CODEX_ARGS" "codex  | cwd=$T/cwork | BROWSER=/usr/local/bin/rootbridge-open" "$(crun; grep '^codex' "$CLOG")"
+check "rootbridge-codex: Codex-Argumente leer ohne CODEX_ARGS" "codex resume --last | cwd=$T/cwork | BROWSER=/usr/local/bin/rootbridge-open" "$(crun; grep '^codex' "$CLOG")"
 mv "$CB/codex" "$CB/codex.off"; crun ROOTBRIDGE_CODEX_BIN="$CB/gibt-es-nicht"
 check "rootbridge-codex ohne codex: Hinweis und Shell"     "1 1" "$(count "$T/c.out" 'codex nicht gefunden') $(count "$CLOG" '^bash -l')"
 mv "$CB/codex.off" "$CB/codex"
@@ -759,12 +762,17 @@ ROOTBRIDGE_GUEST_HOME=/root irun --setup
 check "Gast komplett: setup-guest.sh läuft nicht"          0 "$(grep -c 'setup-guest.sh' "$ILOG" | head -n 1)"
 rm -rf "${GROOT:?}/usr/bin" "${GROOT:?}/root"
 
-# The new-conversation widget is installed and removed together with Claude.
+# The widget "Claude Neu" is gone: ours of an earlier install is removed (with a copy), a script of the user stays.
 irun --claude --codex
-check "Claude Neu: Widget vorhanden" ja "$(has "$H/.shortcuts/Claude Neu")"
-check "Claude Neu: startet explizit neu" 1 "$(grep -c 'rootbridge attach claude --new' "$H/.shortcuts/Claude Neu")"
-irun --no-claude
-check "Claude Neu: bei --no-claude entfernt" nein "$(has "$H/.shortcuts/Claude Neu")"
+printf '#!/usr/bin/env bash\nexec rootbridge attach claude --new\n' > "$H/.shortcuts/Claude Neu"
+irun --claude --codex
+check "Claude Neu: das alte Widget wird entfernt" nein "$(has "$H/.shortcuts/Claude Neu")"
+check "Claude Neu: Kopie in den Sicherungen" 1 "$(ls "$H/.rootbridge/backups"/"Claude Neu".old-* 2>/dev/null | wc -l | tr -d ' ')"
+check "Claude Neu: kein neues Widget" nein "$(has "$H/.shortcuts/Claude Neu")"
+printf '#!/bin/sh\necho mein eigenes\n' > "$H/.shortcuts/Claude Neu"
+irun --claude --codex
+check "Claude Neu: ein eigenes Skript des Nutzers bleibt" ja "$(has "$H/.shortcuts/Claude Neu")"
+rm -f "$H/.shortcuts/Claude Neu"
 
 # uninstall: the Codex widget and its default icon go (a stub rootbridge: uninstall.sh calls `rootbridge stop`)
 irun --claude --codex
