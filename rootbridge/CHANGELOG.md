@@ -180,6 +180,10 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   about (a long run on one commit needed over 25 rounds for edge cases); everything else, real edge cases too, comes as up to
   five notes after `ALLOW`. Every blocking finding carries a concrete fix, and the message to Claude says to weigh Codex's
   suggestions when fixing. Test: `tests/test_codex_precommit.py`.
+* **The voice is ready when the answer comes.** Measured on the A9: after its 30 minutes idle the Articulino server needs about 9 s to load,
+  so the first text after a pause came late. Sending a prompt now starts the server in the background (`speak.py --warm`, started by the
+  hook of the prompt, nothing waits) or touches a running one, which starts its idle time again; not while reading is off, not for
+  the spoken commands. Tests: `tests/test_speak.py`.
 * **One Termux window for the session.** A widget tap (`Claude`, `Codex`, `Claude Neu`) opened another Termux session that
   attached to the same tmux session and only mirrored it, so the list filled with identical entries. Now `rootbridge attach`
   detaches the Termux sessions that already show the tmux session (they end) and shows it in the new one; the control client
