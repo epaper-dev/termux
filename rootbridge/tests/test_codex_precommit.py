@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -109,6 +110,49 @@ class HookTest(unittest.TestCase):
             return []
 
     # ------------------------------------------------------------------ what is reviewed
+    def speak_stub(self):
+        """A stand-in for speak.py: it writes its arguments into a file; the bridge directory is the temp dir."""
+        stub = os.path.join(self.tmp, "speak.py")
+        with open(stub, "w") as fh:
+            fh.write("import os, sys\nopen(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'said.txt'), 'a').write(' '.join(sys.argv[1:]) + '\\n')\n")
+        return stub, os.path.join(self.tmp, "said.txt")
+
+    def said(self, path):
+        for _ in range(100):
+            if os.path.exists(path):
+                with open(path) as fh:
+                    return fh.read().splitlines()
+            time.sleep(0.05)
+        return []
+
+    def test_the_review_says_a_short_sentence_when_it_starts(self):
+        stub, said = self.speak_stub()
+        r = self.run_hook(CODEX_PRECOMMIT_SPEAK=stub, RB_SPEAK_DIR=self.tmp)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(self.said(said), ["Codex prüft den Commit."])
+
+    def test_the_sentence_is_english_with_the_language_en(self):
+        stub, said = self.speak_stub()
+        with open(os.path.join(self.tmp, "language"), "w") as fh:
+            fh.write("en\n")
+        self.run_hook(CODEX_PRECOMMIT_SPEAK=stub, RB_SPEAK_DIR=self.tmp)
+        self.assertEqual(self.said(said), ["Codex is reviewing the commit."])
+
+    def test_no_sentence_when_reading_aloud_is_off_or_nothing_is_reviewed(self):
+        stub, said = self.speak_stub()
+        open(os.path.join(self.tmp, "speak-off"), "w").close()
+        self.assertEqual(self.run_hook(CODEX_PRECOMMIT_SPEAK=stub, RB_SPEAK_DIR=self.tmp).returncode, 0)
+        os.remove(os.path.join(self.tmp, "speak-off"))
+        self.run_hook(command="ls -la", CODEX_PRECOMMIT_SPEAK=stub, RB_SPEAK_DIR=self.tmp)       # no commit
+        self.run_hook(CODEX_PRECOMMIT="off", CODEX_PRECOMMIT_SPEAK=stub, RB_SPEAK_DIR=self.tmp)   # emergency switch
+        time.sleep(0.5)
+        self.assertFalse(os.path.exists(said))
+
+    def test_a_missing_speak_py_never_fails_the_review(self):
+        r = self.run_hook(CODEX_PRECOMMIT_SPEAK=os.path.join(self.tmp, "gibt-es-nicht.py"), RB_SPEAK_DIR=self.tmp)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(self.node_calls(), 1)
+
     def test_other_commands_are_not_reviewed(self):
         r = self.run_hook(command="ls -la")
         self.assertEqual(r.returncode, 0)

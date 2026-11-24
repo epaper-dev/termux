@@ -188,6 +188,10 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
 * **A line in the log says where the time to the first sound went.** `~/.cache/rootbridge-speak.log` gets one line per text, for example
   `Vorlesen: Warten 0.3 s, Fokus 0.4 s, Stimme bereit 0.0 s, erstes Audio 1.7 s, bis zum Ton 0.1 s; zusammen 2.5 s seit dem Hook (Articulino)`, and
   `Articulino gestartet nach 8.8 s` when a text had to start the server. A note between two tool calls writes a line too (`Zwischenstand <id> ...: wird gelesen` or why it was not read). The log is rotated at 256 KB (`rootbridge-speak.log.1` stays, the one before it goes; `RB_SPEAK_LOG_MAX` changes the limit), so it never grows past about 512 KB. Tests: `tests/test_speak.py`.
+* **The pre-commit review says that it starts.** The review takes a while (over 30 s are usual), and Claude Code writes the note before the commit
+  into the transcript, from where it is read aloud, only after the hook is done. So the review says "Codex prüft den Commit." (in English
+  with the language `en`) when it starts, unless reading aloud is off. It never waits for the sentence and never fails because of it.
+  Test: `tests/test_codex_precommit.py`.
 * **No second Claude window; Codex goes on with its conversation.** The widget `Claude Neu` and `rootbridge attach claude -n/--new` are gone:
   the new conversation was a window of the session that the Termux window of the open Claude showed, and it needs
   the performance for the voice (reading aloud and dictation work in one window only). A new conversation starts with `/clear`. An

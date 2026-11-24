@@ -174,6 +174,31 @@ def private_state_dir():
         pass
 
 
+# speak.py of the installation and the bridge directory of Termux (where the switch speak-off lives): the review says one short
+# sentence aloud when it starts, because it takes a while and the note before the commit is only written to the transcript
+# (and read aloud) after this hook is done.
+SPEAK_PY = os.environ.get("CODEX_PRECOMMIT_SPEAK", "/usr/local/lib/termux-rootbridge/speak.py")
+BRIDGE_DIR = os.environ.get("RB_SPEAK_DIR", "/data/data/com.termux/files/home/.rootbridge")
+
+
+def announce():
+    """Says "Codex prüft den Commit." (in English with the installed language en) unless reading aloud is switched off or not
+    installed. It never waits and never fails the review."""
+    try:
+        if not os.path.exists(SPEAK_PY) or os.path.exists(os.path.join(BRIDGE_DIR, "speak-off")):
+            return
+        try:
+            with open(os.path.join(os.path.dirname(SPEAK_PY), "language"), encoding="ascii") as fh:
+                english = fh.read().strip() == "en"
+        except OSError:
+            english = False
+        text = "Codex is reviewing the commit." if english else "Codex prüft den Commit."
+        subprocess.Popen([sys.executable, "-I", SPEAK_PY, text], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception as exc:
+        trace(f"Ansage nicht gestartet: {exc}")
+
+
 def trace(msg):
     try:
         private_state_dir()
@@ -769,6 +794,7 @@ def main():
         return fail("Codex-Plugin oder node nicht gefunden.")
 
     note("Codex prüft den Stand vor dem Commit ...")
+    announce()
     result = None
     deadline = START + TIMEOUT_S      # das Budget läuft ab Hook-Start, git und Vorbereitung eingeschlossen
     for attempt in range(1, ATTEMPTS + 1):

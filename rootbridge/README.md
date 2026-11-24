@@ -289,7 +289,7 @@ a new window.
   `git add`, the untracked files it can bring in (they are in no diff).
   Codex blocks only for security (a hole, a secret), privacy (data or logins sent where they should not go) and stability
   (a crash, a hang, data loss, broken functionality, a swallowed error), and only when it is confident; everything else, real
-  edge cases too, comes as notes after `ALLOW`. Codex's suggested fixes go to Claude with the block and are weighed when fixing. The review sees the working tree as it is when the command
+  edge cases too, comes as notes after `ALLOW`. Codex's suggested fixes go to Claude with the block and are weighed when fixing. When the review starts it says "Codex prüft den Commit" aloud (not with reading aloud off): it takes a while, and the note before the commit is read only after it. The review sees the working tree as it is when the command
   starts: what the same command changes before the commit (`sed -i … && git commit -a`, a build script) is not covered.
   Codex reviews at effort `high` within a budget of 1500 s from the start of the hook (the hook timeout of 1560 s stays
   above it, because Claude Code's own cut-off ends a hook without a verdict). Every `git` call has a time limit and a size
