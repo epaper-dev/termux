@@ -175,6 +175,7 @@ if not VOICE:
         VOICE = GERMAN_VOICE   # the English voice not loaded yet (install.sh --no-setup): the German one rather than none
 PULSE_COOKIE = "/data/data/com.termux/files/home/.config/pulse/cookie"
 LOG = os.environ.get("RB_SPEAK_LOG", os.path.expanduser("~/.cache/rootbridge-speak.log"))
+LOG_MAX_BYTES = int(os.environ.get("RB_SPEAK_LOG_MAX", 256 * 1024))   # then it moves to rootbridge-speak.log.1
 PROC = os.environ.get("RB_SPEAK_PROC", "/proc")
 ENGLISH = os.environ.get("RB_SPEAK_ENGLISH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "speak-english.txt"))
 ARTICULINO = os.environ.get("RB_SPEAK_ARTICULINO", "/opt/articulino")   # venv of setup-guest.sh, the model in model/
@@ -315,6 +316,11 @@ def log_times(engine):
 def log(message):
     try:
         os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        try:
+            if os.path.getsize(LOG) > LOG_MAX_BYTES:   # one older log stays, the one before it goes: the log never grows past about twice this
+                os.replace(LOG, LOG + ".1")
+        except OSError:
+            pass
         with open(LOG, "a", encoding="utf-8") as fh:
             fh.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), message))
     except OSError:

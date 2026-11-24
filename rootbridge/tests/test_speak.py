@@ -467,6 +467,15 @@ class TestPlayer(unittest.TestCase):
         self.assertIn("-r 24000", self.out_file("play.args"))
         self.assertIsNone(self.out_file("piper.in"))
 
+    def test_the_log_is_rotated_and_never_grows_without_a_limit(self):
+        with open(self.log, "w", encoding="utf-8") as fh:
+            fh.write("x" * 600 + "\n")
+        self.run_speak(["Hallo."], RB_SPEAK_LOG_MAX="500", **self.articulino())
+        self.assertTrue(self.wait_for(lambda: os.path.exists(self.log + ".1")), "kein rotiertes Log")
+        with open(self.log + ".1", encoding="utf-8") as fh:
+            self.assertTrue(fh.read().startswith("x" * 600))        # what was there moved
+        self.assertLess(os.path.getsize(self.log), 600)               # the new log starts small
+
     def test_the_log_says_where_the_time_to_the_first_sound_went(self):
         env = self.articulino()
         self.run_speak(["Hallo Welt."], **env)
