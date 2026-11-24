@@ -32,6 +32,14 @@ secret   guest  root/.config/git/credentials
 secret   guest  root/.config/git/config
 secret   guest  root/.config/gh
 secret   guest  root/.ssh                  # SSH keys, config and known hosts of the guest
+# the plugins of Claude Code, so that they run again after a restore: what is installed and from where, their files and state,
+# and whatever logins they keep. Not the copies of the marketplaces (plugins/marketplaces, about 100 MB): Claude Code loads
+# them again from known_marketplaces.json.
+secret   guest  root/.claude/plugins/installed_plugins.json
+secret   guest  root/.claude/plugins/known_marketplaces.json
+secret   guest  root/.claude/plugins/cache
+secret   guest  root/.claude/plugins/data
+secret   guest  root/.claude/plugins/store
 secret   guest  root/.claude/.credentials.json
 secret   guest  root/.claude.json
 secret   guest  root/.codex/auth.json
