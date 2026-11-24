@@ -94,27 +94,30 @@ check "shell bei laufender Sitzung: eigene Shell"      1 "$(calls '^proot-distro
 rb bash "$T/bin/rootbridge" attach
 check "attach: Exit 0"                                 0 "$RC"
 check "attach: legt die Sitzung mit rootbridge-claude an" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-claude$')"
-check "attach: hängt sich an"                          1 "$(calls '^tmux attach -t ubuntu$')"
+check "attach: hängt sich an"                          1 "$(calls '^tmux attach -t =ubuntu$')"
 
 rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" attach
 check "attach bei laufender Sitzung: keine neue Sitzung" 0 "$(calls '^tmux new-session')"
-check "attach bei laufender Sitzung: hängt sich an"    1 "$(calls '^tmux attach -t ubuntu$')"
+check "attach bei laufender Sitzung: hängt sich an"    1 "$(calls '^tmux attach -t =ubuntu$')"
 
 # --- a Termux session already shows the tmux session: the widget's new one takes over, the old one is detached
 rb env STUB_HAS_SESSION=0 STUB_CLIENTS=1 STUB_CONTROL=1 bash "$T/bin/rootbridge" attach
 check "attach, schon angehängt: Exit 0"                0 "$RC"
-check "attach, schon angehängt: erst anhängen, dann das alte Fenster trennen" 1 "$(calls '^tmux attach -t ubuntu ; detach-client -t /dev/pts/9$')"
+check "attach, schon angehängt: erst anhängen, dann das alte Fenster trennen" 1 "$(calls '^tmux attach -t =ubuntu ; detach-client -t /dev/pts/9$')"
 check "attach, schon angehängt: der Steuer-Client bleibt" 0 "$(calls 'detach-client -t /dev/pts/ctl')"
 check "attach, schon angehängt: kein getrenntes Fenster vor dem attach" 0 "$(calls '^tmux detach-client')"
 rb env STUB_HAS_SESSION=0 STUB_CLIENTS=1 bash "$T/bin/rootbridge" attach claude --new
-check "attach --new, schon angehängt: neues Fenster"   1 "$(calls '^tmux new-window -t ubuntu: -n claude-new .*rootbridge-claude --new$')"
-check "attach --new, schon angehängt: Fenster übernimmt" 1 "$(calls '^tmux attach -t ubuntu ; detach-client -t /dev/pts/9$')"
+check "attach --new, schon angehängt: neues Fenster"   1 "$(calls '^tmux new-window -t =ubuntu: -n claude-new .*rootbridge-claude --new$')"
+check "attach --new, schon angehängt: Fenster übernimmt" 1 "$(calls '^tmux attach -t =ubuntu ; detach-client -t /dev/pts/9$')"
+rb env STUB_HAS_SESSION=0 STUB_CLIENTS=1 bash "$T/bin/rootbridge" attach codex
+check "attach codex, schon angehängt: nur die Codex-Sitzung" 1 "$(calls '^tmux attach -t =ubuntu-codex ; detach-client -t /dev/pts/9$')"
+check "attach codex: Claudes Sitzung wird nicht angefasst"    0 "$(calls '^tmux .*-t =ubuntu\($\|:\)')"
 rb env STUB_HAS_SESSION=0 STUB_CONTROL=1 bash "$T/bin/rootbridge" attach
 check "attach, nur ein Steuer-Client: nichts getrennt"  0 "$(calls 'detach-client')"
-check "attach, nur ein Steuer-Client: hängt sich an"    1 "$(calls '^tmux attach -t ubuntu$')"
+check "attach, nur ein Steuer-Client: hängt sich an"    1 "$(calls '^tmux attach -t =ubuntu$')"
 
 rb env STUB_HAS_SESSION=0 STUB_LIST_FAIL=1 bash "$T/bin/rootbridge" attach
-check "attach, Clients nicht lesbar: nichts getrennt, hängt sich an" 1 "$(calls '^tmux attach -t ubuntu$')"
+check "attach, Clients nicht lesbar: nichts getrennt, hängt sich an" 1 "$(calls '^tmux attach -t =ubuntu$')"
 check "attach, Clients nicht lesbar: Warnung"          1 "$(grep -c 'Clients der Sitzung sind nicht lesbar' "$T/out.txt")"
 
 # --- help text and widget
@@ -128,7 +131,7 @@ check "Widget 'ubuntu': tmux nie aufgerufen"        0 "$(calls '^tmux ')"
 rb bash "$T/bin/rootbridge" attach claude -n
 check "attach -n: neue Sitzung ohne Continue" 1 "$(calls '^tmux new-session .*rootbridge-claude --new$')"
 rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" attach claude --new
-check "attach --new: zusätzliches Fenster" 1 "$(calls '^tmux new-window -t ubuntu: -n claude-new .*rootbridge-claude --new$')"
+check "attach --new: zusätzliches Fenster" 1 "$(calls '^tmux new-window -t =ubuntu: -n claude-new .*rootbridge-claude --new$')"
 check "attach --new: bestehende Sitzung nicht ersetzt" 0 "$(calls 'kill-\|respawn-\|new-session')"
 rb env STUB_HAS_SESSION=0 bash "$T/bin/rootbridge" attach claude -n
 check "attach -n erneut: wieder ein neues Fenster" 1 "$(calls '^tmux new-window ')"

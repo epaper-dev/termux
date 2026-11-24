@@ -157,7 +157,7 @@ Optionen: `--no-setup`, `--no-guest`, `--no-boot`, `--no-migrate`, `--no-colors`
 `--apt-upgrade 6h|<N>h|daily|always|off`, `--no-apt-upgrade`, `--claude-update 6h|<N>h|daily|always|off`, `--no-claude-update`, `--codex-update 6h|<N>h|daily|always|off`, `--no-codex-update`, `--no-claude`, `--no-codex` (`--claude` / `--codex` schalten ein Programm wieder an, siehe [Codex neben Claude Code](#codex-neben-claude-code)). Der Installer ist idempotent, sichert Geändertes und migriert die
 alte v1-Popup-Bridge.
 
-**Widgets.** Mit der App Termux:Widget gibt es drei Verknüpfungen: **Claude** (an die Claude-Code-Sitzung anhängen), **Codex** (das Codex-Fenster, siehe
+**Widgets.** Mit der App Termux:Widget gibt es drei Verknüpfungen: **Claude** (an die Claude-Code-Sitzung anhängen), **Codex** (eigenes Termux-Fenster mit eigener tmux-Sitzung `ubuntu-codex`, siehe
 [Codex neben Claude Code](#codex-neben-claude-code)) und **Ubuntu** (normale Ubuntu-Shell). Der Installer legt sie zusammen
 mit dem Widget-Icon in `~/.shortcuts` ab (`termux/shortcuts/icons/widget.png`, kopiert nach `~/.shortcuts/icons/<Name>.png`,
 für alle dasselbe; `tools/make-widget-icon.py` erzeugt es aus dem Logo `termux/shortcuts/icons/logo.png`). Das bunte Icon der
@@ -340,7 +340,7 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
 | `rootbridge start` | Daemon + Session; mit `--no-attach` im Hintergrund (Termux:Boot ruft das nach einem Neustart auf) |
 | `claude` / `rootbridge attach claude` | Claude-Code-Sitzung öffnen oder an die laufende Sitzung anhängen (Widget **Claude**) |
 | `claude -n` / `claude --new` | neue Claude-Unterhaltung in einem eigenen Fenster starten |
-| `codex` / `rootbridge attach codex` | an das Codex-Fenster anhängen (Widget **Codex**; die Session wird angelegt, wenn sie fehlt) |
+| `codex` / `rootbridge attach codex` | an die Codex-Sitzung `ubuntu-codex` anhängen (Widget **Codex**; wird angelegt, wenn sie fehlt), in einem eigenen Termux-Fenster |
 | `ubuntu` / `rootbridge shell` | normale Ubuntu-Shell in diesem Terminal (startet den Daemon für `androidsu`, aber weder Claude Code noch eine tmux-Sitzung; Widget „Ubuntu“) |
 | `rootbridge attach` | Standardprogramm öffnen: Claude Code, bei einer Installation ohne Claude Code stattdessen Codex |
 | `rootbridge status` | Daemon, Session, Gast-Installation, letzte Audit-Zeilen |

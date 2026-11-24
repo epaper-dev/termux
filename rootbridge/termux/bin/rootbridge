@@ -87,7 +87,20 @@ guest_login() {   # guest_login <command...>
     proot-distro login "$DISTRO" $(rb_login_opts) -- "$@"
 }
 
-session_exists() { tmux has-session -t "$SESSION" 2>/dev/null; }
+# The tmux session of a tool: Claude Code lives in SESSION (windows claude and claude-new), Codex in a session of its own, so
+# that each has its own Termux window (as the Ubuntu shell has), and ptt and the input line stay with Claude's session.
+# (Targets are written "=name": tmux would otherwise take "ubuntu" for "ubuntu-codex" when only that one runs.) A Codex of an
+# earlier installation still runs as a window of SESSION: it stays there until it ends, then the next one gets its own session.
+session_of() {
+    if [ "${1:-}" != codex ]; then printf '%s' "$SESSION"; return; fi
+    if ! tmux has-session -t "=$SESSION-codex" 2>/dev/null \
+            && tmux list-windows -t "=$SESSION" -F '#W' 2>/dev/null | grep -qx codex; then
+        printf '%s' "$SESSION"
+    else
+        printf '%s-codex' "$SESSION"
+    fi
+}
+session_exists() { tmux has-session -t "=$(session_of "${1:-claude}")" 2>/dev/null; }
 
 # The tool a bare `attach` / `start` opens: Claude Code, or Codex on an installation without Claude Code.
 default_tool() { if [ "$TOOL_CLAUDE" = on ]; then echo claude; else echo codex; fi; }
@@ -115,15 +128,15 @@ session_create() {
     local tool="${1:-}"
     [ -n "$tool" ] || tool="$(default_tool)"
     command -v tmux >/dev/null 2>&1 || die "tmux fehlt (pkg install tmux)"
-    session_exists && return 0
-    tmux new-session -d -s "$SESSION" -n "$tool" "$(tool_cmd "$tool" "${2:-}")"
+    session_exists "$tool" && return 0
+    tmux new-session -d -s "$(session_of "$tool")" -n "$tool" "$(tool_cmd "$tool" "${2:-}")"
 }
 
-# window_ensure <tool>: the window of that tool in the running session (a tool that ended cleanly has
-# closed its window; the other tool's window keeps the session alive)
+# window_ensure <tool>: the window of that tool in its running session (Claude Code ended cleanly has closed its window
+# while a claude-new window keeps the session alive)
 window_ensure() {
-    tmux list-windows -t "$SESSION" -F '#W' 2>/dev/null | grep -qx "$1" \
-        || tmux new-window -d -t "$SESSION:" -n "$1" "$(tool_cmd "$1")"
+    tmux list-windows -t "=$(session_of "$1")" -F '#W' 2>/dev/null | grep -qx "$1" \
+        || tmux new-window -d -t "=$(session_of "$1"):" -n "$1" "$(tool_cmd "$1")"
 }
 
 cmd_attach() {
@@ -139,33 +152,35 @@ cmd_attach() {
     [ "$new" = 0 ] || [ "$tool" = claude ] || die "--new ist nur für Claude Code verfügbar"
     daemon_start
     extras_start
-    if session_exists; then
+    local session
+    session="$(session_of "$tool")"
+    if session_exists "$tool"; then
         if [ "$new" = 1 ]; then
             # Select a new window, never respawn or replace an existing conversation.
-            tmux new-window -t "$SESSION:" -n claude-new "$(tool_cmd "$tool" --new)"
+            tmux new-window -t "=$session:" -n claude-new "$(tool_cmd "$tool" --new)"
         else
             window_ensure "$tool"
-            tmux select-window -t "$SESSION:$tool" 2>/dev/null || true
+            tmux select-window -t "=$session:$tool" 2>/dev/null || true
         fi
     else
         if [ "$new" = 1 ]; then session_create "$tool" --new
         else session_create "$tool"; fi
     fi
     if [ -n "${TMUX:-}" ]; then
-        tmux switch-client -t "$SESSION"
+        tmux switch-client -t "=$session"
     else
         # Every widget tap opens another Termux session: the ones that already show this tmux session would only
-        # mirror it. They are detached (and end), this one shows it. Not the control client of ptt (it has no terminal).
+        # mirror it (Codex has a session of its own, so it never takes the window of Claude). They are detached (and end), this one shows it. Not the control client of ptt (it has no terminal).
         # The detaching is chained behind the attach: the session is never without a client (destroy-unattached).
         local ctl name clients detach=()
-        if clients="$(tmux list-clients -t "$SESSION" -F '#{client_control_mode} #{client_name}' 2>&1)"; then
+        if clients="$(tmux list-clients -t "=$session" -F '#{client_control_mode} #{client_name}' 2>&1)"; then
             while read -r ctl name; do
                 [ "$ctl" = 0 ] && detach+=(';' detach-client -t "$name")
             done <<< "$clients"
         else
             echo "Warnung: die Clients der Sitzung sind nicht lesbar, ältere Termux-Fenster bleiben ($clients)" >&2
         fi
-        tmux attach -t "$SESSION" ${detach[@]+"${detach[@]}"}
+        tmux attach -t "=$session" ${detach[@]+"${detach[@]}"}
     fi
 }
 
@@ -181,7 +196,7 @@ cmd_start() {
     daemon_start
     extras_start
     [ "$attach" = 1 ] && [ -t 0 ] && [ -t 1 ] || { session_create "$tool"; return 0; }
-    if ! session_exists; then
+    if ! session_exists "$tool"; then
         local label="Claude Code"; [ "$tool" = codex ] && label="Codex"
         printf '%s startet in %ss - beliebige Taste für die Termux-Shell ' "$label" "$AUTOSTART_DELAY"
         if read -r -s -n 1 -t "$AUTOSTART_DELAY" _; then
@@ -203,7 +218,8 @@ cmd_shell() {
 }
 
 cmd_stop() {
-    session_exists && tmux kill-session -t "$SESSION"
+    local t
+    for t in claude codex; do session_exists "$t" && tmux kill-session -t "=$(session_of "$t")"; done
     daemon_stop
     echo "Session und Daemon gestoppt."
 }
@@ -481,7 +497,9 @@ cmd_status() {
     else
         echo "Daemon:       gestoppt"
     fi
-    if session_exists; then echo "Session:      '$SESSION' läuft"; else echo "Session:      keine"; fi
+    local t shown=""
+    for t in claude codex; do session_exists "$t" && shown="$shown '$(session_of "$t")'"; done
+    if [ -n "$shown" ]; then echo "Session:     $shown läuft"; else echo "Session:      keine"; fi
     if [ "$GUEST_ISOLATE" = on ]; then echo "Gast:         abgeschottet (nur ~/.rootbridge sichtbar)"; else echo "Gast:         NICHT abgeschottet (GUEST_ISOLATE=off): Root-Dialog umgehbar"; fi
     if root="$(guest_root)"; then
         echo "Gast ($DISTRO):"
@@ -605,7 +623,7 @@ cmd_theme() {
     sed 's/\("base"[[:space:]]*:[[:space:]]*"\)'"$cur"'"/\1'"$new"'"/' "$f" > "$tmp" && mv -f "$tmp" "$f" \
         || { rm -f "$tmp"; return 1; }
     if [ "$THEME_RESTART" = on ] && session_exists; then
-        tmux respawn-pane -k -t "$SESSION:claude" \
+        tmux respawn-pane -k -t "=$SESSION:claude" \
             "proot-distro login $DISTRO $(rb_login_opts) -- $GUEST_BIN/rootbridge-claude --continue" 2>/dev/null || true
     fi
 }

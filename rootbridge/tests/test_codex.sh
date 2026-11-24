@@ -453,7 +453,10 @@ EOF
 cat > "$T/stubs/tmux" <<'EOF'
 #!/bin/bash
 echo "tmux $*" >> "$STUB_LOG"
-[ "$1" = has-session ] && exit "${STUB_HAS_SESSION:-1}"
+if [ "$1" = has-session ]; then   # STUB_HAS_ONLY=<name>: only that session runs
+    [ -z "${STUB_HAS_ONLY:-}" ] || { [ "$3" = "=$STUB_HAS_ONLY" ] && exit 0 || exit 1; }
+    exit "${STUB_HAS_SESSION:-1}"
+fi
 [ "$1" = list-windows ] && { printf '%s\n' ${STUB_WINDOWS:-}; exit 0; }
 exit 0
 EOF
@@ -482,21 +485,27 @@ ISO="--isolated --bind $T/bridge:$T/bridge"
 rb bash "$T/bin/rootbridge" attach
 check "attach (beide Tools): Standard ist Claude Code"     1 "$(calls '^tmux new-session -d -s ubuntu -n claude proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-claude$')"
 rb bash "$T/bin/rootbridge" attach codex
-check "attach codex ohne Sitzung: erstes Fenster ist Codex" 1 "$(calls '^tmux new-session -d -s ubuntu -n codex proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-codex$')"
-check "attach codex ohne Sitzung: hängt sich an"           1 "$(calls '^tmux attach -t ubuntu$')"
+check "attach codex ohne Sitzung: erstes Fenster ist Codex" 1 "$(calls '^tmux new-session -d -s ubuntu-codex -n codex proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-codex$')"
+check "attach codex ohne Sitzung: hängt sich an die eigene Sitzung an" 1 "$(calls '^tmux attach -t =ubuntu-codex$')"
+check "attach codex ohne Sitzung: Claudes Sitzung bleibt unberührt" 0 "$(calls 'tmux .*-t =ubuntu\($\|:\)')"
 rb env STUB_HAS_SESSION=0 STUB_WINDOWS=claude bash "$T/bin/rootbridge" attach codex
-check "attach codex bei laufender Sitzung: neues Fenster"  1 "$(calls '^tmux new-window -d -t ubuntu: -n codex proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-codex$')"
+check "attach codex bei laufender Sitzung: neues Fenster"  1 "$(calls '^tmux new-window -d -t =ubuntu-codex: -n codex proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-codex$')"
 check "attach codex bei laufender Sitzung: keine neue Sitzung" 0 "$(calls '^tmux new-session')"
-check "attach codex bei laufender Sitzung: Fenster wird gewählt" 1 "$(calls '^tmux select-window -t ubuntu:codex$')"
+check "attach codex bei laufender Sitzung: Fenster wird gewählt" 1 "$(calls '^tmux select-window -t =ubuntu-codex:codex$')"
+rb env STUB_HAS_ONLY=ubuntu STUB_WINDOWS="claude codex" bash "$T/bin/rootbridge" attach codex
+check "attach codex: ein Codex-Fenster der alten Installation bleibt, wo es läuft" 1 "$(calls '^tmux select-window -t =ubuntu:codex$')"
+check "attach codex (alte Installation): keine neue Sitzung" 0 "$(calls '^tmux new-session')"
+rb env STUB_HAS_ONLY=ubuntu-codex STUB_WINDOWS="claude" bash "$T/bin/rootbridge" attach claude
+check "attach claude: läuft nur ubuntu-codex, bekommt Claude eine eigene Sitzung" 1 "$(calls '^tmux new-session -d -s ubuntu -n claude ')"
 rb env STUB_HAS_SESSION=0 STUB_WINDOWS="claude codex" bash "$T/bin/rootbridge" attach codex
 check "attach codex: Fenster da, kein zweites"             0 "$(calls '^tmux new-window')"
 rb env STUB_HAS_SESSION=0 STUB_WINDOWS=codex bash "$T/bin/rootbridge" attach claude
-check "attach claude: fehlendes Claude-Fenster kommt dazu" 1 "$(calls '^tmux new-window -d -t ubuntu: -n claude proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-claude$')"
+check "attach claude: fehlendes Claude-Fenster kommt dazu" 1 "$(calls '^tmux new-window -d -t =ubuntu: -n claude proot-distro login ubuntu '"$ISO"' -- /usr/local/bin/rootbridge-claude$')"
 rb bash "$T/bin/rootbridge" attach vim
 check "attach vim: Fehler"                                 1 "$RC"
 check "attach vim: Meldung"                                1 "$(grep -c 'unbekanntes Programm' "$T/out.txt")"
 rb bash "$T/bin/rootbridge" start --no-attach codex
-check "start --no-attach codex: Sitzung mit Codex"         1 "$(calls '^tmux new-session -d -s ubuntu -n codex ')"
+check "start --no-attach codex: Sitzung mit Codex"         1 "$(calls '^tmux new-session -d -s ubuntu-codex -n codex ')"
 
 printf 'TOOL_CODEX=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach codex
@@ -507,11 +516,11 @@ rb bash "$T/bin/rootbridge" codex-login
 check "TOOL_CODEX=off: codex-login lehnt ab"               1 "$RC"
 printf 'TOOL_CLAUDE=off\n' > "$RBC"
 rb bash "$T/bin/rootbridge" attach
-check "TOOL_CLAUDE=off: attach ohne Argument öffnet Codex" 1 "$(calls '^tmux new-session -d -s ubuntu -n codex ')"
+check "TOOL_CLAUDE=off: attach ohne Argument öffnet Codex" 1 "$(calls '^tmux new-session -d -s ubuntu-codex -n codex ')"
 rb bash "$T/bin/rootbridge" attach claude
 check "TOOL_CLAUDE=off: attach claude lehnt ab"            1 "$RC"
 rb bash "$T/bin/rootbridge" start --no-attach
-check "TOOL_CLAUDE=off: start startet Codex"               1 "$(calls '^tmux new-session -d -s ubuntu -n codex ')"
+check "TOOL_CLAUDE=off: start startet Codex"               1 "$(calls '^tmux new-session -d -s ubuntu-codex -n codex ')"
 : > "$RBC"
 
 rb bash "$T/bin/rootbridge" codex-login
