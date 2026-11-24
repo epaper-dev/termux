@@ -287,8 +287,9 @@ a new window.
   behind `sudo` / `env` / `time`, inside `bash -c '…'` and `$(…)`); text in quotes or heredocs does not count. Git aliases
   (`git ci`) and scripts that commit are not recognised, and the review looks at the whole working tree (staged and unstaged, binary changes included) plus, when the same command runs
   `git add`, the untracked files it can bring in (they are in no diff).
-  Codex blocks only for high severity (a bug that breaks something, a security hole, a secret, data loss, a swallowed
-  error); smaller findings come as notes after `ALLOW`. The review sees the working tree as it is when the command
+  Codex blocks only for security (a hole, a secret), privacy (data or logins sent where they should not go) and stability
+  (a crash, a hang, data loss, broken functionality, a swallowed error), and only when it is confident; everything else, real
+  edge cases too, comes as notes after `ALLOW`. Codex's suggested fixes go to Claude with the block and are weighed when fixing. The review sees the working tree as it is when the command
   starts: what the same command changes before the commit (`sed -i … && git commit -a`, a build script) is not covered.
   Codex reviews at effort `high` within a budget of 1500 s from the start of the hook (the hook timeout of 1560 s stays
   above it, because Claude Code's own cut-off ends a hook without a verdict). Every `git` call has a time limit and a size

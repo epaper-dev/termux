@@ -203,6 +203,21 @@ class HookTest(unittest.TestCase):
         with open(self.prompt_file) as fh:
             return fh.read()
 
+    def test_the_prompt_blocks_only_security_privacy_and_stability(self):
+        self.run_hook(reply="ALLOW: fine")
+        text = self.prompt()
+        for word in ("security:", "privacy:", "stability:"):
+            self.assertIn(word, text)
+        self.assertIn("edge cases", text)                 # real but minor: a note after ALLOW, no block
+        self.assertIn("- [note] file:line", text)
+        self.assertIn("concrete, minimal fix", text)      # Codex's suggestion is part of the finding
+
+    def test_a_block_tells_claude_to_weigh_codexs_suggestions(self):
+        r = self.run_hook(reply="BLOCK: bad\n- [high] a.py:1 - problem; fix: do x")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("Lösungsvorschläge von Codex", r.stderr)
+        self.assertIn("fix: do x", r.stderr)
+
     def test_a_binary_change_is_reviewed_not_skipped(self):
         with open(os.path.join(self.repo, "blob.bin"), "wb") as fh:
             fh.write(b"\xff\xfe\x00\x80 binary")
