@@ -154,7 +154,18 @@ cmd_attach() {
     if [ -n "${TMUX:-}" ]; then
         tmux switch-client -t "$SESSION"
     else
-        tmux attach -t "$SESSION"
+        # Every widget tap opens another Termux session: the ones that already show this tmux session would only
+        # mirror it. They are detached (and end), this one shows it. Not the control client of ptt (it has no terminal).
+        # The detaching is chained behind the attach: the session is never without a client (destroy-unattached).
+        local ctl name clients detach=()
+        if clients="$(tmux list-clients -t "$SESSION" -F '#{client_control_mode} #{client_name}' 2>&1)"; then
+            while read -r ctl name; do
+                [ "$ctl" = 0 ] && detach+=(';' detach-client -t "$name")
+            done <<< "$clients"
+        else
+            echo "Warnung: die Clients der Sitzung sind nicht lesbar, ältere Termux-Fenster bleiben ($clients)" >&2
+        fi
+        tmux attach -t "$SESSION" ${detach[@]+"${detach[@]}"}
     fi
 }
 
