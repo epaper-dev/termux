@@ -5,6 +5,9 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **The plugins of Claude Code in the backup.** The base list takes `~/.claude/plugins/` (the lists of installed plugins and marketplaces, `cache/`,
+  `data/`, `store/`) into `k.enc`, so that they run again after a restore, logins they keep included. The copies of the marketplaces
+  (`marketplaces/`, about 100 MB) stay out: Claude Code loads them again. The chat history (`projects/`) is not saved. Test: `tests/test_backup.py`.
 * **`rootbridge backup` and `rootbridge restore`.** Settings and logins of Termux and the guest into
   `/sdcard/backup/termux` (`a.tgz`, `k.enc` encrypted with your password by openssl (also the settings of git, Claude Code and Codex), `h` checksums, `m` a seal: HMAC
   over the checksums with a key from your password; the earlier backup script's backups stay readable) and back; the

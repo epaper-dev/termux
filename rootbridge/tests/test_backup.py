@@ -108,6 +108,24 @@ class TestBackup(unittest.TestCase):
             self.assertEqual(os.stat(path).st_mode & 0o777, mode, name)
         self.assertEqual(os.stat(os.path.join(guest, "root/.ssh")).st_mode & 0o777, 0o700)
 
+    def test_plugins_come_back_with_their_files_but_not_the_marketplaces(self):
+        for rel in ("installed_plugins.json", "known_marketplaces.json", "cache/m/p/1.0/.mcp.json", "data/p-m/state/x",
+                    "store/b.json", "marketplaces/m/big.txt"):
+            self.write(self.guest, "root/.claude/plugins/" + rel, "PLUGIN-MARKER " + rel)
+        self.backup()
+        with open(os.path.join(self.out, "k.enc"), "rb") as fh:
+            self.assertNotIn(b"PLUGIN-MARKER", fh.read())
+        with tarfile.open(os.path.join(self.out, "a.tgz")) as tar:
+            self.assertFalse([n for n in tar.getnames() if "plugins" in n], "not in the settings")
+        home, guest = self.fresh()
+        r = self.run_tool(["restore", self.out, "--yes"], home, guest)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for rel in ("installed_plugins.json", "known_marketplaces.json", "cache/m/p/1.0/.mcp.json", "data/p-m/state/x",
+                    "store/b.json"):
+            with open(os.path.join(guest, "root/.claude/plugins", rel)) as fh:
+                self.assertEqual(fh.read(), "PLUGIN-MARKER " + rel)
+        self.assertFalse(os.path.exists(os.path.join(guest, "root/.claude/plugins/marketplaces")))
+
     def test_the_checksums_of_the_own_backup_count(self):
         self.backup()
         r = self.run_tool(["restore", self.out, "--yes"], self.home, self.guest)
