@@ -189,6 +189,7 @@ SERVER_RATE = 24000         # what speak-server.py sends
 SERVER_START_SECONDS = float(os.environ.get("RB_SPEAK_SERVER_START", 30))   # loading takes about 5 s on the A9
 RECORD_SECONDS = 12         # Articulino uses the first 8 s after the silence
 MIN_VOICE_SECONDS = 3
+WARM_ARG = "--warm"   # started by the hook of a prompt: Articulino loads in the background
 PIPER_WORKER_ARG = "--piper-worker"   # speak.py with the Python of Piper: the voice loaded once, the audio sentence by sentence
 FRAME = struct.Struct(">I")          # what --piper-worker writes before the audio of a sentence: its length
 NO_MICROPHONE = os.environ.get("RB_SPEAK_NO_MICROPHONE",   # install-guest.sh puts it there for reading aloud only
@@ -465,12 +466,38 @@ def connect():
         return None
 
 
+def articulino_installed():
+    """Articulino, its model, your voice and the server script are there."""
+    return (os.path.exists(os.path.join(ARTICULINO, "bin", "python3")) and os.path.isdir(os.path.join(ARTICULINO, "model"))
+            and os.path.exists(VOICE_SAMPLE) and os.path.exists(SERVER))
+
+
+def warm_server():
+    """For the hook of a prompt: has speak-server.py loaded by the time the answer comes (loading takes about 9 s on the A9,
+    and after its idle time it has ended). --warm does it in the background and nothing waits here, not even for a
+    connection: it touches a running server (its idle time starts again) or starts a missing one."""
+    try:   # best effort: a failure here must never reject the prompt (command() answers an error with a block)
+        if os.path.exists(OFF) or not articulino_installed():
+            return
+        subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), WARM_ARG], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception as e:
+        log("Articulino lässt sich nicht vorwärmen: %s" % e)
+
+
+def warm():
+    """--warm: the server is there when this ends (a start under its lock, as for a text)."""
+    conn = server_connection()
+    if conn:
+        conn.close()
+
+
 def server_connection():
     """A connection to speak-server.py (Articulino with your voice), which is started when none answers. None without
     Articulino or the voice, or when the server does not come up within SERVER_START_SECONDS: then Piper reads."""
     python = os.path.join(ARTICULINO, "bin", "python3")
     model = os.path.join(ARTICULINO, "model")
-    if not (os.path.exists(python) and os.path.isdir(model) and os.path.exists(VOICE_SAMPLE) and os.path.exists(SERVER)):
+    if not articulino_installed():
         return None
     conn = connect()
     if conn:
@@ -1036,6 +1063,7 @@ def command():
             replay, reason = again(sentence)   # in place of what is read now: the texts that wait come afterwards
             high = replay is not None
         else:
+            warm_server()   # a prompt for Claude: the answer comes in a while, the voice is ready by then
             return
     except OSError as e:
         log("Schalter: %s" % e)
@@ -1222,6 +1250,8 @@ def main(argv):
         command()
     elif argv[:1] == [RUN_ARG] and len(argv) == 4 and argv[1].isdigit() and argv[3] == PAUSES_ARG:
         run(argv[1], argv[2])
+    elif argv[:1] == [WARM_ARG]:
+        warm()
     elif argv[:1] == [PIPER_WORKER_ARG] and len(argv) == 2:
         return piper_worker(argv[1])
     elif argv[:1] == ["--record"]:

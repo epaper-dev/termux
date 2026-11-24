@@ -53,6 +53,8 @@ def serve(path, model, voice, lock_fd=None):
                 if not chunk:
                     break
                 text += chunk
+            if not text:
+                return   # a touch of the hook of a prompt (speak.py warm_server): it only keeps the server alive
             try:
                 mtime = os.stat(voice).st_mtime
                 if mtime != voice_mtime:

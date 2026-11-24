@@ -273,6 +273,9 @@ try:
             if not chunk:
                 break
             data += chunk
+        if not data:   # the touch of the hook of a prompt, like the real server
+            conn.close()
+            continue
         if not os.environ.get("STUB_SERVER_SILENT") and os.environ.get("STUB_SERVER_MUTE", "-").encode() not in data:
             conn.sendall(b"PCM:" + data)
         conn.close()
@@ -720,6 +723,46 @@ class TestPlayer(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: not os.path.exists(self.pidfile())), "speak.pid bleibt liegen")
         out = subprocess.run(["pgrep", "-g", str(pid)], capture_output=True)
         self.assertEqual(out.stdout, b"", "ein Kind des Abspielers läuft noch")
+
+    def test_a_prompt_warms_the_server_up_in_the_background(self):
+        env = self.articulino()
+        r = self.command("Bitte mach das Feature fertig.", **env)
+        self.assertEqual((r.returncode, r.stdout), (0, b""))   # nothing goes to Claude, nothing waits
+        self.assertTrue(self.wait_for(lambda: os.path.exists(os.path.join(self.tmp.name, "s.sock"))), "kein Server")
+        self.assertEqual(len((self.out_file("server.starts") or "").splitlines()), 1)
+        self.command("Und noch ein Prompt.", **env)            # it runs: only touched, not started again
+        time.sleep(0.5)
+        self.assertEqual(len(self.out_file("server.starts").splitlines()), 1)
+        self.assertIsNone(self.out_file("play.in"))
+
+    def test_a_prompt_does_not_warm_the_server_while_reading_is_off(self):
+        env = self.articulino()
+        open(os.path.join(self.bridge, "speak-off"), "w").close()
+        self.command("Bitte mach das Feature fertig.", **env)
+        time.sleep(0.5)
+        self.assertIsNone(self.out_file("server.starts"))
+
+    def test_a_prompt_without_articulino_starts_nothing(self):
+        r = self.command("Bitte mach das Feature fertig.")
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, b"", b""))
+        self.assertIsNone(self.out_file("server.starts"))
+
+    def test_a_failing_warm_up_never_rejects_the_prompt(self):
+        from unittest import mock
+        logged = []
+        with mock.patch.object(speak, "articulino_installed", return_value=True), \
+                mock.patch.object(speak, "connect", side_effect=AssertionError("the hook must not connect")), \
+                mock.patch.object(speak.subprocess, "Popen", side_effect=OSError(24, "Too many open files")), \
+                mock.patch.object(speak, "log", side_effect=logged.append):
+            speak.warm_server()                             # no exception: command() would answer it with a block
+        self.assertEqual(len(logged), 1)
+        self.assertIn("vorwärmen", logged[0])
+
+    def test_a_stop_sentence_does_not_warm_the_server_up(self):
+        env = self.articulino()
+        self.command("Beende die Sprachausgabe.", **env)
+        time.sleep(0.5)
+        self.assertIsNone(self.out_file("server.starts"))
 
     def command(self, prompt, **extra):
         return self.run_speak(["--command"], json.dumps({"prompt": prompt, "session_id": "s1"}), **extra)
