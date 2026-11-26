@@ -13,6 +13,8 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIDEKEY = os.path.join(HERE, "..", "termux", "bin", "sidekey-ptt")
 HEADSET_READER = os.path.join(HERE, "..", "termux", "bin", "headset-ptt")
+KEYREADER = os.path.join(HERE, "..", "termux", "lib", "keyreader.py")
+A9 = os.path.join(HERE, "..", "devices", "hisense-hlte556n.conf")
 READERS = {"side": (SIDEKEY, "SIDEKEY"), "headset": (HEADSET_READER, "HEADSET")}
 
 # writes the events of argv ("code:value:pause", ...) as struct input_event, each followed by a SYN, then waits a bit;
@@ -49,6 +51,13 @@ class ReaderTest(unittest.TestCase):
         with open(self.ptt, "w") as fh:
             fh.write("#!/bin/sh\necho \"$1\" >> %s\n" % self.log)
         os.chmod(self.ptt, 0o755)
+        # the config the readers find device.conf next to (none written: the defaults of the Hisense A9)
+        self.config = os.path.join(self.tmp.name, "config")
+
+    def device(self, text):
+        """Write device.conf next to the config."""
+        with open(os.path.join(self.tmp.name, "device.conf"), "w") as fh:
+            fh.write(text)
 
 
 class TestKeys(ReaderTest):
@@ -57,7 +66,7 @@ class TestKeys(ReaderTest):
         path, p = READERS[reader]
         cmd = " ".join([sys.executable, "-I", self.events] + list(events))
         env = dict(os.environ, **{p + "_CMD": cmd, p + "_PTT": self.ptt, p + "_ONCE": "1", p + "_LONG": "0.2",
-                                  p + "_CACHE": self.tmp.name}, PASSED_LOG=self.passed)
+                                  p + "_CACHE": self.tmp.name}, PASSED_LOG=self.passed, ROOTBRIDGE_CONFIG=self.config)
         subprocess.run([sys.executable, "-I", path], env=env, timeout=30, check=True)
         try:
             with open(self.log) as fh:
@@ -115,6 +124,16 @@ class TestKeys(ReaderTest):
     def test_a_headset_recording_is_left_to_its_next_key(self):
         # in tap mode a stop is one more press: it would start a new recording after an Esc
         self.assertEqual(self.press("%d:1:0.5" % HEADSET, "%d:0:0" % HEADSET, reader="headset"), ["toggle"])
+
+    def test_the_key_code_of_the_device_file(self):
+        self.device("SIDEKEY_DEVICE=/dev/input/event5\nSIDEKEY_CODE=%d\n" % VOLUME)
+        self.assertEqual(self.press("%d:1:0.5" % SIDE, "%d:0:0.1" % SIDE, "%d:1:0.5" % VOLUME, "%d:0:0" % VOLUME),
+                         ["start", "stop"])
+
+    def test_a_short_press_of_the_headset_key_of_the_device_file_goes_to_android(self):
+        self.device("HEADSET_DEVICE_NAME=Jack\nHEADSET_CODE=%d\n" % VOLUME)
+        self.press("%d:1:0.05" % VOLUME, "%d:0:0" % VOLUME, reader="headset")
+        self.assertEqual(self.passed_on(), ["%d 1" % VOLUME, "%d 0" % VOLUME])
 
     def test_the_stream_ends_while_talking(self):
         self.assertEqual(self.press("%d:1:0.5" % SIDE), ["start", "stop"])
@@ -174,19 +193,21 @@ class TestSources(ReaderTest):
             fh.write("#!/bin/sh\nexit 1\n")
         os.chmod(os.path.join(bindir, "su"), 0o755)
         env = dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"], HEADSET_PTT=self.ptt, HEADSET_ONCE="1",
-                   HEADSET_CACHE=self.tmp.name)
+                   HEADSET_CACHE=self.tmp.name, ROOTBRIDGE_CONFIG=self.config)
         env.pop("HEADSET_CMD", None)
         subprocess.run([sys.executable, "-I", HEADSET_READER], env=env, timeout=30, check=True)
         with open(os.path.join(self.tmp.name, "headset-ptt.log")) as fh:
-            self.assertIn("Headset-Suche fehlgeschlagen: su Exit 1", fh.read())
+            self.assertIn("Suche nach 'Button Jack' fehlgeschlagen: su Exit 1", fh.read())
 
     def sources(self, reader, path):
-        """What the reader reads (its commands), with su on PATH stubbed out."""
+        """What the reader reads (its commands, None when it knows no device), with su on PATH stubbed out."""
         return subprocess.run([sys.executable, "-I", "-c",
-                               "import runpy; m = runpy.run_path(%r, run_name='x'); r = m[%r]();"
-                               "print([r.command(d) for d in r.devices()])" % (reader, path)],
+                               "import runpy; m = runpy.run_path(%r, run_name='x'); r = m[%r](); d = r.devices();"
+                               "print(None if d is None else [r.command(x) for x in d])" % (reader, path)],
                               capture_output=True, text=True, check=True,
-                              env=dict(os.environ, PATH=self.bindir + os.pathsep + os.environ["PATH"])).stdout.strip()
+                              env=dict(os.environ, PATH=self.bindir + os.pathsep + os.environ["PATH"],
+                                       ROOTBRIDGE_CONFIG=self.config, SIDEKEY_CACHE=self.tmp.name,
+                                       HEADSET_CACHE=self.tmp.name)).stdout.strip()
 
     def stub_su(self, output):
         self.bindir = os.path.join(self.tmp.name, "bin")
@@ -208,9 +229,65 @@ class TestSources(ReaderTest):
 
     def test_the_headset_is_looked_up_as_root(self):
         out = subprocess.run([sys.executable, "-I", "-c",
-                              "import runpy; m = runpy.run_path(%r, run_name='x'); print(m['FIND_HEADSET'])" % HEADSET_READER],
-                             capture_output=True, text=True, check=True).stdout
-        self.assertIn('*"Button Jack"*) echo "/dev/input/${d##*/}"', out)
+                              "import runpy; m = runpy.run_path(%r, run_name='x'); print(m['find_command']('Button Jack'))"
+                              % KEYREADER], capture_output=True, text=True, check=True).stdout
+        self.assertIn("*'Button Jack'*) echo \"/dev/input/${d##*/}\"", out)
+
+    def test_the_side_key_of_the_device_file(self):
+        self.stub_su("/dev/input/event9")
+        self.device("SIDEKEY_DEVICE=/dev/input/event5\nSIDEKEY_CODE=115\n")
+        self.assertEqual(self.sources(SIDEKEY, "SideKey"), "[['su', '-c', 'echo $$; exec cat /dev/input/event5']]")
+
+    def test_the_side_key_found_by_the_name_in_the_device_file(self):
+        self.stub_su("/dev/input/event7")
+        self.device("SIDEKEY_DEVICE_NAME=gpio-keys\n")
+        self.assertEqual(self.sources(SIDEKEY, "SideKey"), "[['su', '-c', 'echo $$; exec cat /dev/input/event7']]")
+
+    def test_a_key_the_device_file_does_not_describe_is_not_read(self):
+        self.stub_su("/dev/input/event2")
+        self.device("HEADSET_DEVICE_NAME=Button Jack\n")
+        self.assertEqual(self.sources(SIDEKEY, "SideKey"), "None")
+
+    def test_the_headset_key_of_the_device_file_is_passed_to_its_root_reader(self):
+        self.stub_su("/dev/input/event3")
+        self.device("HEADSET_DEVICE_NAME=Jack\nHEADSET_CODE=115\n")
+        self.assertEqual(self.sources(HEADSET_READER, "HeadsetKey"),
+                         "[['su', '-c', 'echo $$; exec %s -I %s --grab /dev/input/event3 115']]"
+                         % (sys.executable, os.path.realpath(HEADSET_READER)))
+
+    def test_the_a9_file_gives_the_defaults(self):
+        # the device file of the Hisense A9 says what the readers do without one
+        self.stub_su("/dev/input/event2")
+        with open(A9) as src:
+            self.device(src.read())
+        self.assertEqual(self.sources(SIDEKEY, "SideKey"), "[['su', '-c', 'echo $$; exec cat /dev/input/event2']]")
+        self.assertEqual(self.sources(HEADSET_READER, "HeadsetKey"),
+                         "[['su', '-c', 'echo $$; exec %s -I %s --grab /dev/input/event2']]"
+                         % (sys.executable, os.path.realpath(HEADSET_READER)))
+
+
+class TestDeviceFile(unittest.TestCase):
+    def check(self, text):
+        with tempfile.NamedTemporaryFile("w", suffix=".conf", delete=False) as fh:
+            fh.write(text)
+        self.addCleanup(os.unlink, fh.name)
+        r = subprocess.run([sys.executable, "-I", KEYREADER, "--check", fh.name], capture_output=True, text=True,
+                           check=True)
+        return r.stdout.splitlines(), r.stderr
+
+    def test_the_a9_file_is_valid(self):
+        with open(A9) as src:
+            out, err = self.check(src.read())
+        self.assertEqual(err, "")
+        self.assertIn("SIDEKEY_CODE=766", out)
+        self.assertIn("HEADSET_DEVICE_NAME=Button Jack", out)
+        self.assertIn("LABEL=Hisense A9", out)
+
+    def test_unknown_keys_and_values_that_do_not_fit_are_left_out(self):
+        out, err = self.check("SIDEKEY_CODE=766\nSIDEKEY_DEVICE=/dev/input/../../etc/passwd\nEVIL=$(reboot)\n"
+                              "HEADSET_DEVICE_NAME=a'b\nHOMEKEY_METHOD=assistant\n")
+        self.assertEqual(out, ["SIDEKEY_CODE=766", "HOMEKEY_METHOD=assistant"])
+        self.assertEqual(err.count("übergangen"), 3)
 
 
 if __name__ == "__main__":

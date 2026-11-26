@@ -181,7 +181,8 @@ außerhalb unseres Blocks) wird nie ersetzt, der Installer nennt dann nur die Ta
 Leiste legt Termux fest, sie lassen sich von hier aus nicht ändern.
 
 **Gerätename in Claude.** Der Installer fragt in einer interaktiven Termux-Shell einmal nach dem Namen für
-Claude Remote Control, etwa `boox-max-lumi`; Enter übernimmt den Vorschlag `android`. Der Name bleibt in der
+Claude Remote Control, etwa `boox-max-lumi`; Enter übernimmt den Vorschlag: den `NAME` der Gerätedatei (`hisense-a9`), sonst
+`<hersteller>-<modell>` aus den Angaben des Geräts, sonst `android`. Der Name bleibt in der
 Termux-Konfiguration gespeichert und wird an den Ubuntu-Gast weitergegeben; spätere Läufe fragen nicht mehr.
 Mit `bash install.sh --remote-name boox-max-lumi` setzt oder änderst du ihn ohne Nachfrage. Ohne Terminal wird der vorhandene
 Name beziehungsweise `android` verwendet; bei einer Installation nur mit Codex entfällt die Frage.
@@ -440,6 +441,18 @@ Seitentaste (`--sidekey`, Standard nein), langer Druck auf Home (`--home-key`, S
 Die Antwort steht danach in der Konfig (`SIDEKEY`, `HOMEKEY`, `HEADSET`), spätere Läufe fragen nicht mehr; die `--no-…`-Formen schalten ab.
 Der Installer richtet im selben Lauf alles ein: je einen Tasten-Leser für Seiten- und Headset-Taste und die Assistenten-Rolle für Home (Root;
 bei jedem Lauf neu, falls „Beenden erzwingen“ sie genommen hat). Ohne Terminal fragt er nicht und nennt den Befehl für Home.
+
+**Gerätedatei** (`--device ID|none`): Wo eine Taste liegt, hängt vom Gerät ab. Der Installer nimmt es deshalb aus einer Datei in
+[devices/](devices/README.md), benannt nach Hersteller und Modell der Vendor-Partition (`devices/hisense-hlte556n.conf` für das
+Hisense A9; ein eigenes System-Image meldet in `ro.product.*` eigene Namen). Auf einem Terminal fragt er einmal, ob er die gefundene
+Datei verwenden soll (gespeichert als `DEVICE`), und legt ihre gültigen Zeilen als `~/.config/termux-rootbridge/device.conf` ab. Dort
+lesen `sidekey-ptt` und `headset-ptt` Eingabegerät und Tastencode. Die Fragen nach den Tasten bleiben; nach einer Taste, die die Datei
+nicht beschreibt, wird nicht gefragt. Für ein Gerät ohne Datei nennt der Installer den Namen der Datei, die man anlegen kann. Ohne
+Gerätedatei nehmen die Leser die Werte des Hisense A9.
+
+**Leistungsprüfung:** Vor den Fragen misst der Installer Kerne, Takt, Arbeitsspeicher, freien Platz und einen kurzen Rechentest in
+Bash. `rootbridge perf` zeigt das jederzeit, mit einer Einschätzung für das Vorlesen, den S1-Router und Sprachbefehle mit Skejja. Auf
+einem zu schwachen Gerät schlägt er beim Vorlesen Nein vor (Ja geht trotzdem).
 
 **Seitentaste des Hisense A9** (`--sidekey`, standardmäßig aus, gespeichert als `SIDEKEY`): Seitentaste halten = aufnehmen, loslassen = stoppen. Der Installer legt
 `sidekey-ptt` nach `$PREFIX/bin`; es hält ein root-`cat` auf `/dev/input/event2` (die Taste, Scancode 766) und ruft `ptt start` / `ptt stop`.

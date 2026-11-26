@@ -5,6 +5,20 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Device files.** `devices/<manufacturer>-<model>.conf` describes the keys of a device: the input device and code of the side key
+  and of the headset key, how a long press on Home arrives, the long press time, a label and a suggested name. `install.sh` reads
+  manufacturer and model from the vendor partition first (a GSI like the one on the Hisense A9 reports `QUALCOMM` in `ro.product.*`),
+  asks once whether to use the file it found (`DEVICE`, `--device ID|none`) and installs its valid lines as `device.conf` next to the
+  config; `keyreader.py --check` leaves out every other line. `sidekey-ptt` and `headset-ptt` read device and code from it (a name is
+  looked up as root, as for the headset before); without a device file they keep the values of the Hisense A9, the first file
+  (`devices/hisense-hlte556n.conf`). The questions about the keys stay; a key the file does not describe is not asked for and gets no
+  reader, and the assistant role for Home is set only with `HOMEKEY_METHOD=assistant`. The Remote Control name question suggests the
+  `NAME` of the file, else `<manufacturer>-<model>`. `device.conf` is in the backup, so a restore brings the keys back with `DEVICE`.
+  Tests: `tests/test_device.sh`, `tests/test_sidekey.py`, `tests/test_backup.py`
+* **Performance check.** Before the questions the installer measures cores, the highest clock, memory, free space, the dot product
+  of the CPU and a short count in bash (`rb_perf`, bash only: python3 may not be there yet) and judges reading aloud, the S1 router and
+  Skejja voice commands; on a device that is too weak, reading aloud is suggested as no. `rootbridge perf` shows it. Tests:
+  `tests/test_perf.sh`, `tests/test_device.sh`
 * **The plugins of Claude Code in the backup.** The base list takes `~/.claude/plugins/` (the lists of installed plugins and marketplaces, `cache/`,
   `data/`, `store/`) into `k.enc`, so that they run again after a restore, logins they keep included. The copies of the marketplaces
   (`marketplaces/`, about 100 MB) stay out: Claude Code loads them again. The chat history (`projects/`) is not saved. Test: `tests/test_backup.py`.

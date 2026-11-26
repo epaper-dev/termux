@@ -15,6 +15,7 @@
 #   rootbridge voice start|stop|status|grant   microphone for /voice: PulseAudio, source, Android permission
 #   rootbridge voice assistant [on|off|status]   Termux push to talk as Android's digital assistant (long press on Home; root)
 #   rootbridge phantom-killer [off|on|status]   Android's phantom process killer (it ends tmux and the sessions; root)
+#   rootbridge perf                  the device's cores, memory and space, and what suits it (reading aloud, S1, Skejja)
 #   rootbridge backup|restore [DIR]   settings and secrets of Termux and the guest into /sdcard/backup/termux, and back
 #   rootbridge voice speak [on|off|toggle|stop|first|all|status]   reading Claude's answers aloud (off also ends what is being
 #                        read; first = a short version: the first paragraph, at most 3 sentences, and the last
@@ -701,6 +702,18 @@ cmd_phantom_killer() {
     esac
 }
 
+# cmd_perf: what rb_perf measured, and its verdict for each use that needs computing power on the device
+cmd_perf() {
+    local out
+    out="$(rb_perf)"
+    perf_line() { printf '%-30s %s\n' "$1" "$(sed -n "s/^$2=//p" <<< "$out")"; }
+    perf_line "Leistung:" SUMMARY
+    perf_line "Vorlesen (Piper, Articulino):" TEXT_SPEAK
+    perf_line "S1-Router (Effort-Wahl):" TEXT_S1
+    perf_line "Skejja (Sprachbefehle):" TEXT_SKEJJA
+    echo "effort-router: rechnet nicht auf dem Gerät, kostet 1-3 s je Anfrage."
+}
+
 case "${1:-}" in
     start)        shift; cmd_start "$@" ;;
     attach)       shift; cmd_attach "$@" ;;
@@ -716,10 +729,11 @@ case "${1:-}" in
     theme)        shift; cmd_theme "$@" ;;
     voice)        shift; cmd_voice "$@" ;;
     phantom-killer) shift; cmd_phantom_killer "$@" ;;
+    perf)         cmd_perf ;;
     backup|restore) exec python3 -I "${lib%/*}/rootbridge-backup.py" "$@" ;;
     daemon-start) daemon_start; echo "Daemon läuft." ;;
     daemon-stop)  daemon_stop; echo "Daemon gestoppt." ;;
     version|--version) echo "rootbridge $VERSION" ;;
-    ""|help|-h|--help) sed -n '2,19p' "$self" | sed 's/^# \{0,1\}//' ;;
+    ""|help|-h|--help) sed -n '2,20p' "$self" | sed 's/^# \{0,1\}//' ;;
     *) die "unbekannter Befehl: $1 (rootbridge help)" ;;
 esac

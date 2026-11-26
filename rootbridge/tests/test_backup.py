@@ -27,6 +27,7 @@ class TestBackup(unittest.TestCase):
         self.write(self.guest, "root/keys/a", "k1")
         self.write(self.guest, "root/keys/skip", "k2")
         self.write(self.home, ".termux/termux.properties", "x=1")
+        self.write(self.home, ".config/termux-rootbridge/device.conf", "SIDEKEY_CODE=115\n")
         self.write(self.home, "real-ssh-keys", "ssh-ed25519 AAAA")
         os.makedirs(os.path.join(self.home, ".ssh"))
         os.symlink(os.path.join(self.home, "real-ssh-keys"), os.path.join(self.home, ".ssh/authorized_keys"))
@@ -75,7 +76,8 @@ class TestBackup(unittest.TestCase):
         r = self.run_tool(["restore", self.out, "--yes"], home, guest)
         self.assertEqual(r.returncode, 0, r.stderr)
         for root, rel in ((guest, "root/.claude/settings.json"), (guest, "root/.claude/projects/p1/memory/n.md"),
-                          (guest, "root/.codex/auth.json"), (guest, "root/keys/a"), (home, ".termux/termux.properties")):
+                          (guest, "root/.codex/auth.json"), (guest, "root/keys/a"), (home, ".termux/termux.properties"),
+                          (home, ".config/termux-rootbridge/device.conf")):
             self.assertTrue(os.path.isfile(os.path.join(root, rel)), rel)
         self.assertFalse(os.path.exists(os.path.join(guest, "root/keys/skip")), "exclude")
         self.assertFalse(os.path.lexists(os.path.join(home, ".ssh/authorized_keys")), "a link is not followed")

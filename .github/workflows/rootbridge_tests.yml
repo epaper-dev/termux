@@ -56,6 +56,10 @@ jobs:
         run: bash tests/test_guest_lib.sh
       - name: Guest stays small (old Claude Code / Codex versions pruned, uutils copies become GNU links; fake folders, staged root)
         run: bash tests/test_guest_slim.sh
+      - name: Device file (found by the vendor partition, asked once, device.conf, key questions, name suggestion; stub getprop)
+        run: bash tests/test_device.sh
+      - name: Performance check (cores, clock, memory, space, verdicts; made-up /proc and /sys)
+        run: bash tests/test_perf.sh
       - name: ShellCheck
         run: |
           sudo apt-get install -y shellcheck

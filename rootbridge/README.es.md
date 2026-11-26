@@ -415,6 +415,19 @@ respuesta se guarda en la configuración (`SIDEKEY`, `HOMEKEY`, `HEADSET`) y las
 desactivan una tecla. La misma ejecución lo deja todo listo: un lector para la tecla lateral y otro para la del auricular y el rol de asistente para
 Inicio (root; en cada ejecución, por si «Forzar detención» lo quitó). Sin terminal no pregunta y nombra la orden para Inicio.
 
+**Archivo del dispositivo** (`--device ID|none`): dónde está una tecla depende del dispositivo, así que el instalador lo toma de un
+archivo en [devices/](devices/README.md), con el nombre del fabricante y el modelo de la partición vendor (`devices/hisense-hlte556n.conf`
+para el Hisense A9; una imagen de sistema propia informa nombres propios en `ro.product.*`). En una terminal pregunta una vez si usar el
+archivo encontrado (se guarda como `DEVICE`) e instala sus líneas válidas como `~/.config/termux-rootbridge/device.conf`, donde
+`sidekey-ptt` y `headset-ptt` leen el dispositivo de entrada y el código de la tecla. Las preguntas por las teclas se mantienen; no
+pregunta por una tecla que el archivo no describe. Para un dispositivo sin archivo nombra el archivo que se puede crear. Sin archivo del
+dispositivo, los lectores usan los valores del Hisense A9. Cuando pregunta el nombre para Remote Control, propone el `NAME` del archivo
+(`hisense-a9`), si no `<fabricante>-<modelo>` del dispositivo, si no `android`.
+
+**Prueba de rendimiento:** antes de las preguntas el instalador mide núcleos, frecuencia, memoria, espacio libre y un breve conteo en
+bash. `rootbridge perf` lo muestra de nuevo, con una valoración para la lectura en voz alta, el router S1 y los comandos de voz con
+Skejja. En un dispositivo demasiado débil propone «no» para la lectura en voz alta (se puede decir que sí igualmente).
+
 **Tecla lateral del Hisense A9** (`--sidekey`, desactivada por defecto, se guarda como `SIDEKEY`): mantener la tecla lateral = grabar, soltar = parar. El instalador coloca
 `sidekey-ptt` en `$PREFIX/bin`; mantiene un `cat` de root sobre `/dev/input/event2` (la tecla, código 766) y llama a `ptt start` / `ptt stop`.
 La pulsación corta y la doble siguen con la app E-Ink; ajusta su pulsación larga a «Nothing». `rootbridge start|attach` arrancan el lector (una instancia),

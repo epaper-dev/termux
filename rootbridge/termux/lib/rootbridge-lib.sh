@@ -509,3 +509,82 @@ rb_speak_focus_tell() {
 rb_audio_focus() {
     timeout 2 "$RB_ASK_CMD" AudioFocus --es action "$1" 2>/dev/null < /dev/null | head -n 1 | tr -d '[:space:]'
 }
+
+# rb_perf: what this device has and whether that suits what needs computing power on it: reading aloud (Piper and
+# Articulino, about 230 MB of models), the S1 router (a 183 MB ONNX classifier; 14-26 ms on server CPUs, its model card)
+# and Skejja (voice commands; about 200 MB of memory and 0.2 s on a Raspberry Pi 4, its model card). Prints KEY=VALUE lines:
+# CORES (online), MHZ (the highest clock), MEM_MB, FREE_MB (memory available), DISK_MB (free under $PREFIX), DOTPROD (yes|no:
+# the int8 dot product of the CPU), SCORE (a count in bash per millisecond; the Hisense A9 makes about 140), SUMMARY, and per
+# use FIT_<USE> (yes | tight | no) and TEXT_<USE> (the verdict in words, with the reason). A value that cannot be read is
+# left out of the verdict. Bash only: install.sh measures before python3 is there.
+# Test hooks (environment): RB_PROC_DIR, RB_SYS_DIR, RB_PERF_SCORE (instead of the count).
+rb_perf() {
+    local cpu="${RB_SYS_DIR:-/sys}/devices/system/cpu" cores=0 mhz=0 mem=0 free=0 disk=0 dot=no score="" f k v x part i t0 t1
+    if read -r v 2>/dev/null < "$cpu/online"; then
+        for part in ${v//,/ }; do
+            [[ "$part" =~ ^([0-9]+)(-([0-9]+))?$ ]] || continue
+            cores=$((cores + ${BASH_REMATCH[3]:-${BASH_REMATCH[1]}} - BASH_REMATCH[1] + 1))
+        done
+    fi
+    [ "$cores" -gt 0 ] || { cores="$(nproc 2>/dev/null)" && [[ "$cores" =~ ^[0-9]+$ ]]; } || cores=0
+    for f in "$cpu"/cpu[0-9]*/cpufreq/cpuinfo_max_freq; do
+        if read -r v 2>/dev/null < "$f" && [[ "$v" =~ ^[0-9]+$ ]] && [ $((v / 1000)) -gt "$mhz" ]; then mhz=$((v / 1000)); fi
+    done
+    if [ -r "$RB_PROC_DIR/meminfo" ]; then
+        while read -r k v x; do
+            [[ "$v" =~ ^[0-9]+$ ]] || continue
+            case "$k" in MemTotal:) mem=$((v / 1024)) ;; MemAvailable:) free=$((v / 1024)) ;; esac
+        done < "$RB_PROC_DIR/meminfo"
+    fi
+    { read -r x; read -r x x x v x; } < <(df -Pk "${PREFIX:-/}" 2>/dev/null) && [[ "${v:-}" =~ ^[0-9]+$ ]] && disk=$((v / 1024))
+    grep -qw asimddp "$RB_PROC_DIR/cpuinfo" 2>/dev/null && dot=yes
+    score="${RB_PERF_SCORE:-}"
+    if [ -z "$score" ] && [ -n "${EPOCHREALTIME:-}" ]; then
+        t0="${EPOCHREALTIME//[!0-9]/}"
+        for ((i = 0; i < 50000; i++)); do :; done
+        t1="${EPOCHREALTIME//[!0-9]/}"
+        if [ "$t1" -gt "$t0" ]; then score=$((50000 * 1000 / (t1 - t0))); fi
+    fi
+    printf 'CORES=%s\nMHZ=%s\nMEM_MB=%s\nFREE_MB=%s\nDISK_MB=%s\nDOTPROD=%s\nSCORE=%s\n' \
+        "$cores" "$mhz" "$mem" "$free" "$disk" "$dot" "$score"
+    v=""
+    [ "$cores" -gt 0 ] && v+="$cores Kerne"
+    [ "$mhz" -gt 0 ] && v+=" bis $((mhz / 1000)),$((mhz % 1000 / 100)) GHz"
+    [ "$mem" -gt 0 ] && v+="${v:+, }$(rb_gb "$mem") GB RAM"
+    [ "$free" -gt 0 ] && v+=" ($(rb_gb "$free") GB frei)"
+    [ "$disk" -gt 0 ] && v+="${v:+, }$(rb_gb "$disk") GB Platz"
+    [ -n "$score" ] && v+="${v:+, }Rechentest $score"
+    printf 'SUMMARY=%s\n' "${v:-nicht messbar}"
+    #           use    cores  free MB  disk MB  score (0: not judged)
+    rb_perf_fit SPEAK  4      1024     1024     60
+    rb_perf_fit S1     4      1024     512      60
+    rb_perf_fit SKEJJA 2      512      512      0
+}
+
+# rb_gb <MB>: gigabytes with one decimal, German style (2,3)
+rb_gb() { printf '%d,%d' $(($1 / 1024)) $(($1 % 1024 * 10 / 1024)); }
+
+# rb_perf_fit <use> <cores> <free MB> <disk MB> <score>: the verdict of rb_perf for one use (reads its measured values). Below
+# a value: tight; below half the cores or the memory, or below the space: no.
+rb_perf_fit() {
+    local why="" fit=yes text
+    if [ "$cores" -gt 0 ] && [ "$cores" -lt "$2" ]; then
+        why+="${why:+, }$cores Kerne (empfohlen $2)"; [ $((cores * 2)) -ge "$2" ] || fit=no
+    fi
+    if [ "$free" -gt 0 ] && [ "$free" -lt "$3" ]; then
+        why+="${why:+, }$(rb_gb "$free") GB RAM frei (empfohlen $(rb_gb "$3"))"; [ $((free * 2)) -ge "$3" ] || fit=no
+    fi
+    if [ "$disk" -gt 0 ] && [ "$disk" -lt "$4" ]; then
+        why+="${why:+, }$(rb_gb "$disk") GB Platz (empfohlen $(rb_gb "$4"))"; fit=no
+    fi
+    if [ "$5" -gt 0 ] && [ -n "$score" ] && [ "$score" -lt "$5" ]; then
+        why+="${why:+, }langsam (Rechentest $score, empfohlen $5)"
+    fi
+    if [ "$fit" = yes ] && [ -n "$why" ]; then fit=tight; fi
+    case "$fit" in
+        yes) text=geeignet ;;
+        tight) text="knapp: $why" ;;
+        *) text="nicht geeignet: $why" ;;
+    esac
+    printf 'FIT_%s=%s\nTEXT_%s=%s\n' "$1" "$fit" "$1" "$text"
+}

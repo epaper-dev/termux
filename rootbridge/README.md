@@ -238,7 +238,9 @@ installer writes
 `CLAUDE_ARGS="--remote-control android --continue"`. `--remote-control NAME` turns Remote Control on and titles the
 session in the Remote Control view. That Remote Control session is reused across restarts and `/clear` and keeps its
 name, also one you set with `/rename`. For another name a single `/rename NAME` is enough. There is deliberately no
-`--name`: it would also show the name in the frame of the input field in the Claude Code window.
+`--name`: it would also show the name in the frame of the input field in the Claude Code window. When the installer asks for
+the name on a terminal, it suggests the `NAME` of the device file (`hisense-a9`), else `<manufacturer>-<model>` read from the
+device, else `android`.
 
 ## Codex next to Claude Code
 
@@ -407,6 +409,18 @@ no), a long press on Home (`--home-key`, default yes) and the headset key (`--he
 (`SIDEKEY`, `HOMEKEY`, `HEADSET`) and later runs do not ask again; the `--no-…` forms switch a key off. The same run sets everything up:
 a key reader each for the side and the headset key and the assistant role for Home (root; on every run, in case "Force stop" took it away).
 Without a terminal it asks nothing and names the command for Home.
+
+**Device file** (`--device ID|none`): where a key is depends on the device, so the installer takes it from a file in
+[devices/](devices/README.md), named after the manufacturer and the model on the vendor partition (`devices/hisense-hlte556n.conf`
+for the Hisense A9; a custom system image reports names of its own in `ro.product.*`). On a terminal it asks once whether to use the
+file it found (stored as `DEVICE`) and installs its valid lines as `~/.config/termux-rootbridge/device.conf`, where `sidekey-ptt` and
+`headset-ptt` read the input device and the key code. The questions about the keys stay; a key the file does not describe is not asked
+for. A device without a file gets a note with the name of the file to add. Without a device file the readers use the values of the
+Hisense A9.
+
+**Performance check:** before the questions the installer measures cores, clock, memory, free space and a short count in bash.
+`rootbridge perf` shows it again, with a verdict for reading aloud, the S1 router and Skejja voice commands. On a device that is too
+weak, reading aloud is suggested as no (you can still say yes).
 
 **Side key of the Hisense A9** (`--sidekey`, off by default, stored as `SIDEKEY`): hold the side key to record, let go to stop. The installer puts
 `sidekey-ptt` into `$PREFIX/bin`; it keeps a root `cat` on `/dev/input/event2` (the key, scan code 766) and calls `ptt start` / `ptt stop`.

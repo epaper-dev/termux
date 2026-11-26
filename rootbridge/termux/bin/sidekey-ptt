@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""sidekey-ptt - the side key of the Hisense A9 as push to talk: `ptt start` on the long press, `ptt stop` on release.
+"""sidekey-ptt - the side key of the device as push to talk: `ptt start` on the long press, `ptt stop` on release.
 
-BRIDGE until the E-Ink app (hisense-a9/patching) and the Termux app do this themselves. It keeps a root `cat` on
-/dev/input/event2 (gpio-keys, scan code 766 = 0x2fe) alive and reads nothing else (keyreader.py). Short and double presses
-are ignored: they stay with the E-Ink app. Set the long press of the E-Ink app to "Nothing", or its menu opens as well.
+BRIDGE until the E-Ink app (hisense-a9/patching) and the Termux app do this themselves. It keeps a root `cat` on the input
+device of the side key alive and reads nothing else (keyreader.py). Device and key come from the device file
+(SIDEKEY_DEVICE or SIDEKEY_DEVICE_NAME, SIDEKEY_CODE); without one those of the Hisense A9: /dev/input/event2 (gpio-keys),
+scan code 766 = 0x2fe. Short and double presses are ignored: they stay with the E-Ink app. Set the long press of the E-Ink
+app to "Nothing", or its menu opens as well.
 The key of a wired headset has a reader of its own: headset-ptt.
 
 Installed by `install.sh` when the side key is chosen (SIDEKEY=on in the rootbridge config) and started by
@@ -21,10 +23,8 @@ import keyreader  # noqa: E402  (installed next to rootbridge-lib.sh, in the rep
 
 class SideKey(keyreader.Reader):
     name, prefix, key = "sidekey-ptt", "SIDEKEY", 766   # KEY 0x2fe
+    device_path = "/dev/input/event2"
     talking = False
-
-    def devices(self):
-        return ["/dev/input/event2"]
 
     def on_long(self, proc):
         self.talking = True
