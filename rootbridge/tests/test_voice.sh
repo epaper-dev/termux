@@ -1073,7 +1073,7 @@ articulino_present
 gs() {   # gs [args]: setup-guest.sh with everything present except what the test removes
     : > "$ILOG"
     env -i PATH="$T/gstubs:$T/gbin" HOME="$T/ghome" ROOTBRIDGE_GUEST_HOME="$T/ghome" ROOTBRIDGE_CA_BUNDLE="$T/ca.crt" STUB_LOG="$ILOG" \
-        PIPER_DIR="$PIPER" STUB_PIPER="$PIPER" ARTICULINO_DIR="$ART" STUB_ENSUREPIP="${STUB_ENSUREPIP:-0}" STUB_PIP_RC="${STUB_PIP_RC:-0}" \
+        PIPER_DIR="$PIPER" STUB_PIPER="$PIPER" ARTICULINO_DIR="$ART" STUB_NO_VENV="${STUB_NO_VENV:-}" STUB_PIP_RC="${STUB_PIP_RC:-0}" \
         STUB_VOICE_RC="${STUB_VOICE_RC:-0}" bash "$SETUP" "$@" > "$T/setup.log" 2>&1
     SRC_RC=$?
 }
@@ -1092,13 +1092,13 @@ check "setup-guest --voice maybe: abgelehnt"               1 "$SRC_RC"
 printf '#!/bin/bash\nexit 0\n' > "$T/gstubs/rec"; chmod +x "$T/gstubs/rec"
 gs --codex no
 check "setup-guest: Piper und Stimme da, nichts zu tun"   "0 0 1" "$SRC_RC $(count "$ILOG" '.') $(count "$T/setup.log" 'piper ist schon installiert')"
-# no Piper: a venv, pip install piper-tts, then the voice. python3 is a stub: ensurepip as STUB_ENSUREPIP says, -m venv makes pip and python3
+# no Piper: a venv, pip install piper-tts, then the voice. python3 is a stub: -m venv fails with STUB_NO_VENV, else makes pip and python3
 cat > "$T/gstubs/python3" <<'EOF'
 #!/bin/bash
 echo "python3 $*" >> "$STUB_LOG"
 case "$*" in
-    *"import ensurepip"*) exit "${STUB_ENSUREPIP:-0}" ;;
-    "-m venv "*) mkdir -p "$3/bin"
+    "-m venv "*) [ -z "${STUB_NO_VENV:-}" ] || exit 1   # Debian without python3-venv: "ensurepip is not available"
+        mkdir -p "$3/bin"
         printf '#!/bin/bash\necho "pip $*" >> "$STUB_LOG"\nprintf "#!/bin/bash\\n" > "$STUB_PIPER/bin/piper"; chmod +x "$STUB_PIPER/bin/piper"\nexit "${STUB_PIP_RC:-0}"\n' > "$3/bin/pip"
         cat > "$3/bin/python3" <<'VPY'
 #!/bin/bash
@@ -1120,14 +1120,14 @@ gs --codex no
 check "setup-guest ohne Piper: venv, pip install piper-tts" "0 1 1" "$SRC_RC $(count "$ILOG" "^python3 -m venv $PIPER$") $(count "$ILOG" '^pip install -q piper-tts$')"
 check "setup-guest ohne Piper: lädt die Stimme kerstin-medium in einen Zwischenordner" 1 "$(count "$ILOG" "^venv-python3 -m piper.download_voices --download-dir $PIPER/voices/.download de_DE-kerstin-medium$")"
 check "setup-guest: die Stimme liegt danach an ihrem Platz, ohne Zwischenordner" "ja ja nein" "$(has "$PIPER/voices/de_DE-kerstin-medium.onnx") $(has "$PIPER/voices/de_DE-kerstin-medium.onnx.json") $(has "$PIPER/voices/.download")"
-check "setup-guest: venv geht (ensurepip da): kein apt"   0 "$(count "$ILOG" '^apt-get')"
+check "setup-guest: venv geht: kein apt"                    0 "$(count "$ILOG" '^apt-get')"
 rm -rf "$PIPER"
 gs --codex no --voice no
 check "setup-guest --voice no: kein Piper"                 "0 0" "$SRC_RC $(count "$ILOG" 'venv')"
 gs --claude no --codex yes
 check "setup-guest ohne Claude Code: kein Piper"           0 "$(count "$ILOG" 'venv')"
-STUB_ENSUREPIP=1 gs --codex no
-check "setup-guest ohne ensurepip: apt-get install python3-venv" 1 "$(count "$ILOG" '^apt-get install -y --no-install-recommends python3-venv$')"
+STUB_NO_VENV=1 gs --codex no
+check "setup-guest ohne venv (Debian): apt-get install python3-venv" 1 "$(count "$ILOG" '^apt-get install -y --no-install-recommends python3-venv$')"
 rm -rf "$PIPER"
 STUB_PIP_RC=1 gs --codex no
 check "setup-guest: pip scheitert, Fehler mit Hinweis"     "1 1" "$SRC_RC $(count "$T/setup.log" 'Piper ließ sich nicht installieren')"

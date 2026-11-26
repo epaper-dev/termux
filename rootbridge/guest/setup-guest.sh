@@ -93,8 +93,9 @@ if [ "$CLAUDE_ON" = yes ] && { [ "$VOICE_ON" = yes ] || [ "$SPEAK_ON" = yes ]; }
     guest_has rec || pkgs="$pkgs sox libsox-fmt-pulse"   # rec records for /voice, play reads aloud
 fi
 if [ "$CLAUDE_ON" = yes ] && [ "$SPEAK_ON" = yes ]; then
-    # Piper goes into a venv; Ubuntu's python3 makes one only with python3-venv (ensurepip)
-    if [ ! -x "$PIPER_DIR/bin/piper" ] && ! python3 -I -c 'import ensurepip' >/dev/null 2>&1; then
+    # Piper goes into a venv; the python3 of Ubuntu and Debian makes one only with python3-venv. Tried for real: Debian's
+    # python3 has the ensurepip module, but without the package its venv fails ("ensurepip is not available")
+    if [ ! -x "$PIPER_DIR/bin/piper" ] && ! python3 -m venv "$TMPDIR_SETUP/venv-probe" >/dev/null 2>&1; then
         pkgs="$pkgs python3-venv"
     fi
 fi
