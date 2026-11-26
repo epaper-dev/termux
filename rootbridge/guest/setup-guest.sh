@@ -196,10 +196,12 @@ if [ "$CLAUDE_ON" = yes ] && [ "$SPEAK_ON" = yes ]; then
         # an interrupted download never looks like a model
         say "  lade Articulino ($ARTICULINO_REPO, int8, etwa 230 MB)"
         stage="$ARTICULINO_DIR/.download"
+        # plain HTTPS downloads, not the Xet client of huggingface_hub: on the A9 it failed under proot ("CAS Client
+        # Error: error sending request") where Piper's download from the same hub went through
         if { [ -x "$ARTICULINO_DIR/bin/python3" ] || python3 -m venv "$ARTICULINO_DIR"; } \
             && "$ARTICULINO_DIR/bin/pip" install -q huggingface_hub \
             && rm -rf "$stage" \
-            && HF_HUB_DISABLE_PROGRESS_BARS=1 "$ARTICULINO_DIR/bin/python3" -I -c 'import sys
+            && HF_HUB_DISABLE_PROGRESS_BARS=1 HF_HUB_DISABLE_XET=1 "$ARTICULINO_DIR/bin/python3" -I -c 'import sys
 from huggingface_hub import snapshot_download
 snapshot_download(sys.argv[1], revision=sys.argv[2], local_dir=sys.argv[3], allow_patterns=[
     "config.json", "pyproject.toml", "README.md", "LICENSE", "NOTICE", "SHA256SUMS", "int8/*", "articulino_onnx/**"])' \

@@ -2,6 +2,7 @@
 
 A fake Termux home and guest root in a temp dir; BKPW is the password, RB_GUEST_ROOT the guest.
 """
+import contextlib
 import io
 import os
 import shutil
@@ -1028,6 +1029,42 @@ class TestBackup(unittest.TestCase):
         r = self.run_tool(["restore", self.out, "--yes"], home, guest, BKPW="falsch")
         self.assertEqual(r.returncode, 1)
         self.assertIn("Passwort falsch", r.stderr)
+
+
+class TestPassword(unittest.TestCase):
+    """The password prompt: an empty answer (an Enter typed ahead during the install) asks again, three empty ones stop."""
+
+    def setUp(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("rbbackup_pw", TOOL)
+        self.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mod)
+        self.env = os.environ.pop("BKPW", None)
+
+    def tearDown(self):
+        if self.env is not None:
+            os.environ["BKPW"] = self.env
+
+    def answers(self, *given):
+        it = iter(given)
+        self.mod.ask_password = lambda prompt: next(it)
+
+    def test_empty_answer_asks_again(self):
+        self.answers("", "geheim")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.mod.password(False), "geheim")
+
+    def test_three_empty_answers_stop(self):
+        self.answers("", "", "")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self.mod.password(False)
+
+    def test_twice_must_match(self):
+        self.answers("geheim", "anders")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self.mod.password(True)
 
 
 if __name__ == "__main__":

@@ -45,6 +45,7 @@ import os
 import re
 import shutil
 import subprocess
+import termios
 import sys
 import tarfile
 import fnmatch
@@ -449,13 +450,27 @@ def pack(entries, kind, roots):
     return buf.getvalue()
 
 
+def ask_password(prompt):
+    # a key pressed while the installer was busy (Enter during a long download) waits in the terminal: not the answer
+    try:
+        with open("/dev/tty") as tty:
+            termios.tcflush(tty, termios.TCIFLUSH)
+    except (OSError, termios.error):
+        pass
+    return getpass.getpass(prompt)
+
+
 def password(twice):
     if os.environ.get("BKPW"):
         return os.environ["BKPW"]
-    first = getpass.getpass("Passwort der Sicherung: ")
-    if not first:
+    for _ in range(3):
+        first = ask_password("Passwort der Sicherung: ")
+        if first:
+            break
+        say("  leer; bitte das Passwort eingeben")
+    else:
         die("ohne Passwort keine Sicherung")
-    if twice and getpass.getpass("Noch einmal: ") != first:
+    if twice and ask_password("Noch einmal: ") != first:
         die("die beiden Passwörter sind verschieden")
     return first
 
