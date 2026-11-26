@@ -130,6 +130,19 @@ con tu contraseña (otras apps pueden escribir en el almacenamiento compartido; 
 "ja"; un sello ausente, vacío o ilegible se rechaza; una copia antigua sin sello solo con `--legacy`), muestra qué va dónde, pregunta y luego copia, nunca a través de un enlace; no se ejecuta nada de la carpeta. En una instalación nueva con copia, el instalador pregunta junto
 con las demás preguntas si debe restaurarla al final.
 
+**Qué vuelve** lo eliges tú: `rootbridge restore` numera lo que restauraría, pregunta si se lleva la configuración del
+dispositivo (archivo del dispositivo, fila de teclas de Termux y, en la configuración, el dispositivo, sus teclas, el
+phantom process killer y el nombre en Remote Control; en otro dispositivo di que no: vuelven los accesos y el dispositivo
+conserva la suya) y qué números se quedan fuera. `--no-device` deja fuera la configuración del dispositivo sin preguntar.
+
+**Ubuntu o Debian como invitado** (`--distro ubuntu|debian`): en un dispositivo sin invitado el instalador pregunta una
+vez (Enter: Ubuntu) y guarda `DISTRO` cuando el invitado ya está; el widget y el alias llevan su nombre (`ubuntu` y
+`debian` abren ambos la shell del invitado). Con un invitado instalado, `--distro` cambia: las sesiones terminan, el
+invitado anterior se queda (se vuelve con `--distro` y su nombre, se elimina con `proot-distro remove NOMBRE`) y en una
+terminal el instalador ofrece llevarse sus ajustes y accesos (una copia en `/sdcard/backup/termux-NOMBRE`, restaurada en
+el nuevo invitado, con la selección de arriba) y la carpeta de trabajo (copiada si en el nuevo invitado está vacía). En
+un invitado sin uutils (Debian) los paquetes de coreutils no se retienen en las actualizaciones.
+
 **Preguntas al principio.** El instalador hace todas sus preguntas al empezar, antes de instalar nada; después sigue
 sin preguntar. En una shell interactiva de Termux cada pregunta aparece una sola vez: la respuesta queda en la
 configuración de Termux y su opción la cambia después: Claude Code (`--claude`/`--no-claude`), Codex

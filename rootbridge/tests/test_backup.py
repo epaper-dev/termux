@@ -914,6 +914,86 @@ class TestBackup(unittest.TestCase):
         self.assertIn("root/.claude/settings.json ->", r.stdout)
         self.assertFalse(os.path.exists(os.path.join(guest, "root/.claude")))
 
+    def device_backup(self):
+        """A backup of an A9 (device file, keys, name), restored onto a fresh home that is another device."""
+        self.write(self.home, ".config/termux-rootbridge/config",
+                   "DISTRO=ubuntu\nDEVICE=hisense-hlte556n\nSIDEKEY=on\nREMOTE_NAME=a9\nLANGUAGE=en\n")
+        self.write(self.guest, "etc/termux-rootbridge.conf", 'CLAUDE_ARGS="--remote-control a9 --continue"\n')
+        self.backup()
+        home, guest = self.fresh()
+        self.write(home, ".config/termux-rootbridge/config", "DISTRO=ubuntu\nDEVICE=none\nREMOTE_NAME=boox\n")
+        return home, guest
+
+    def config_of(self, home):
+        with open(os.path.join(home, ".config/termux-rootbridge/config")) as fh:
+            return fh.read().split()
+
+    def test_restore_without_the_device_configuration(self):
+        home, guest = self.device_backup()
+        r = self.run_tool(["restore", self.out], home, guest, stdin="n\n\nj\n")   # device: n, numbers: none, restore: j
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Gerätekonfiguration der Sicherung übernehmen", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(home, ".config/termux-rootbridge/device.conf")))
+        self.assertFalse(os.path.exists(os.path.join(home, ".termux/termux.properties")))
+        config = self.config_of(home)
+        self.assertIn("LANGUAGE=en", config)                       # the rest of the config comes back
+        self.assertIn("REMOTE_NAME=boox", config)                  # the keys of this device stay
+        self.assertIn("DEVICE=none", config)
+        self.assertNotIn("SIDEKEY=on", config)
+        self.assertTrue(os.path.isfile(os.path.join(guest, "root/.codex/auth.json")))   # the logins come back
+        with open(os.path.join(guest, "etc/termux-rootbridge.conf")) as fh:   # the name Claude uses is this device's
+            self.assertIn('CLAUDE_ARGS="--remote-control boox --continue"', fh.read())
+
+    def test_restore_with_the_device_configuration(self):
+        home, guest = self.device_backup()
+        r = self.run_tool(["restore", self.out], home, guest, stdin="\n\nj\n")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(home, ".config/termux-rootbridge/device.conf")))
+        self.assertIn("REMOTE_NAME=a9", self.config_of(home))
+
+    def test_no_device_option(self):
+        home, guest = self.device_backup()
+        r = self.run_tool(["restore", self.out, "--yes", "--no-device"], home, guest)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(home, ".config/termux-rootbridge/device.conf")))
+        self.assertIn("REMOTE_NAME=boox", self.config_of(home))
+
+    def test_the_uutils_hold_stays_out_of_a_guest_without_uutils(self):
+        self.write(self.guest, "etc/termux-rootbridge.conf",
+                   "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils\nWORKDIR=/root/work\n")
+        self.backup()
+        for uutils, kept in ((False, False), (True, True)):
+            home, guest = self.fresh()
+            if uutils:
+                os.makedirs(os.path.join(guest, "usr/lib/cargo/bin/coreutils"))
+            r = self.run_tool(["restore", self.out, "--yes"], home, guest)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(guest, "etc/termux-rootbridge.conf")) as fh:
+                text = fh.read()
+            self.assertEqual("APT_HOLD=rust-coreutils" in text, kept, text)
+            self.assertIn("WORKDIR=/root/work", text)
+            shutil.rmtree(guest)
+            shutil.rmtree(home)
+
+    def test_restore_leaves_out_numbers(self):
+        self.backup()
+        home, guest = self.fresh()
+        listing = self.run_tool(["restore", self.out], home, guest, stdin="").stdout   # aborts at the question
+        number = [line.split()[0] for line in listing.splitlines() if " root/.codex/auth.json ->" in line][0]
+        r = self.run_tool(["restore", self.out], home, guest, stdin="\n%s\nj\n" % number)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("bleibt in der Sicherung: root/.codex/auth.json", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(guest, "root/.codex/auth.json")))
+        self.assertTrue(os.path.isfile(os.path.join(guest, "root/.claude/settings.json")))
+
+    def test_a_number_not_in_the_list_restores_nothing(self):
+        self.backup()
+        home, guest = self.fresh()
+        r = self.run_tool(["restore", self.out], home, guest, stdin="\n99\nj\n")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("keine Nummer aus der Liste: 99", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(guest, "root/.claude")))
+
     def test_without_a_guest_first_termux(self):
         self.backup()
         home = self.make_home("home3")

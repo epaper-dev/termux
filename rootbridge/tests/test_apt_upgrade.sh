@@ -72,7 +72,7 @@ run_apt() {   # run_apt [VAR=value ...]: one run of rootbridge-apt; exit code in
     : > "$STUB_LOG"
     env PATH="$T/stubs:$PATH" ROOTBRIDGE_APT_KEEP_PATH=1 ROOTBRIDGE_APT_ALLOW_NONROOT=1 \
         ROOTBRIDGE_CONF="$CONF" ROOTBRIDGE_APT_STATE_DIR="$T/state" ROOTBRIDGE_APT_LOG="$T/apt.log" \
-        STUB_INSTALLED="$ALL_PKGS" "$@" bash "$APT" > "$T/out.txt" 2>&1
+        ROOTBRIDGE_APT_UU_DIR="${UU_DIR-$T}" STUB_INSTALLED="$ALL_PKGS" "$@" bash "$APT" > "$T/out.txt" 2>&1
     RC=$?
 }
 reset_state() { rm -rf "$T/state" "$T/apt.log" "$STUB_HOLDS"; mkdir -p "$T/state"; }
@@ -252,6 +252,9 @@ check "schon auf hold: die anderen drei schon"        3 "$(calls '^apt-mark hold
 reset_state; mkconf "APT_UPGRADE=daily" "APT_HOLD="
 run_apt
 check "APT_HOLD leer: kein hold"                      0 "$(calls '^apt-mark hold')"
+reset_state; mkconf "APT_UPGRADE=daily"
+UU_DIR="$T/no-uutils" run_apt
+check "Ohne uutils, ohne APT_HOLD (Debian): kein hold" 0 "$(calls '^apt-mark hold')"
 check "APT_HOLD leer: upgrade läuft"                  1 "$(calls 'apt-get .* upgrade$')"
 
 reset_state; mkconf "APT_UPGRADE=daily" 'APT_HOLD="foo bar"'
@@ -305,11 +308,20 @@ ginstall() {  # ginstall <stage> [args...]
 cbak() { find "$1/etc" -name 'termux-rootbridge.conf.bak-*' 2>/dev/null | wc -l | tr -d ' '; }
 
 S="$T/g1"
+mkdir -p "$S/usr/lib/cargo/bin/coreutils"   # a guest with uutils (Ubuntu 26.04)
 ginstall "$S"
 check "Gast ohne Option: Installer läuft"             0 "$?"
 check "Gast: APT_UPGRADE=6h als Standard"             "APT_UPGRADE=6h" "$(gval "$S" APT_UPGRADE)"
 check "Gast: APT_TIMEOUT=600"                          "APT_TIMEOUT=600" "$(gval "$S" APT_TIMEOUT)"
-check "Gast: APT_HOLD mit den coreutils-Paketen"      "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" "$(gval "$S" APT_HOLD)"
+check "Gast: kein APT_HOLD geschrieben (rootbridge-apt entscheidet)" "" "$(gval "$S" APT_HOLD)"
+S0="$T/g0"
+ginstall "$S0"
+echo 'APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils' >> "$(gconf "$S0")"   # an earlier installer's
+ginstall "$S0"
+check "Gast: die frühere Standardliste geht"          "" "$(gval "$S0" APT_HOLD)"
+echo 'APT_HOLD=foo' >> "$(gconf "$S0")"
+ginstall "$S0"
+check "Gast: eine eigene Liste bleibt"                "APT_HOLD=foo" "$(gval "$S0" APT_HOLD)"
 check "Gast: rootbridge-apt installiert"              ja "$([ -x "$S/usr/local/bin/rootbridge-apt" ] && echo ja || echo nein)"
 check "Gast: rootbridge-apt hat Gast-Shebang"         "#!/bin/bash" "$(head -n 1 "$S/usr/local/bin/rootbridge-apt")"
 check "Gast: rootbridge-claude ruft run_maintenance"  1 "$(grep -c '^run_maintenance$' "$S/usr/local/bin/rootbridge-claude")"

@@ -5,6 +5,18 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Ubuntu or Debian as the guest, also as a switch.** `--distro ubuntu|debian`; on a device without a guest the installer
+  asks once (Enter: Ubuntu) and stores `DISTRO` once the guest is there (a new config no longer writes `DISTRO=ubuntu`).
+  The widget of the guest shell is named after it, and `debian` opens it like `ubuntu`. With an installed guest
+  `--distro` switches: the sessions stop, the old guest stays (back with `--distro`, `proot-distro remove` names it), and
+  on a terminal the installer offers a backup of the old guest (`/sdcard/backup/termux-<old>`), restored into the new one,
+  and the work folder, copied into an empty one. A failed backup switches nothing. The guest installer holds the coreutils
+  packages back from upgrades only in a guest with uutils: in Debian the hold would keep coreutils from its security
+  updates. Tests: `tests/test_distro.sh`, `tests/test_apt_upgrade.sh`
+* **`rootbridge restore` asks what comes back.** It numbers what it would restore, asks whether to take the device
+  configuration (device file, Termux keys row, and in the config `DEVICE`, the keys, the phantom process killer and the
+  Remote Control name; on another device: no, and the config keeps this device's lines) and which numbers to leave out.
+  `--no-device` leaves the device configuration out without asking. Test: `tests/test_backup.py`
 * **Device files.** `devices/<manufacturer>-<model>.conf` describes the keys of a device: the input device and code of the side key
   and of the headset key, how a long press on Home arrives, the long press time, a label and a suggested name. `install.sh` reads
   manufacturer and model from the vendor partition first (a GSI like the one on the Hisense A9 reports `QUALCOMM` in `ro.product.*`),

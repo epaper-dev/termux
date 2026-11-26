@@ -136,6 +136,19 @@ schreiben; ein fehlendes, leeres oder unlesbares Siegel wird abgewiesen, eine ä
 zurück, nie durch einen Link hindurch; aus dem Ordner wird nichts ausgeführt. Bei einer neuen Installation mit Sicherung fragt der Installer mit den anderen Fragen, ob er sie am Ende
 wiederherstellen soll.
 
+**Was zurückkommt,** wählst du selbst: `rootbridge restore` nummeriert, was es zurückspielen würde, fragt, ob die
+Gerätekonfiguration mitkommt (Gerätedatei, Termux-Tastenleiste und in der Konfig das Gerät, seine Tasten, der Phantom
+Process Killer und der Name in Remote Control; auf einem anderen Gerät Nein sagen: dann kommen die Zugangsdaten, das
+Gerät behält seine eigene), und welche Nummern wegbleiben. `--no-device` lässt die Gerätekonfiguration ohne Frage weg.
+
+**Ubuntu oder Debian als Gast** (`--distro ubuntu|debian`): Auf einem Gerät ohne Gast fragt der Installer einmal (Enter:
+Ubuntu) und speichert `DISTRO`, sobald der Gast da ist; Widget und Alias heißen wie der Gast (`ubuntu` und `debian`
+öffnen beide die Gast-Shell). Mit installiertem Gast wechselt `--distro`: Die Sitzungen enden, der alte Gast bleibt
+(zurück mit `--distro` und seinem Namen, entfernen mit `proot-distro remove NAME`), und auf einem Terminal bietet der
+Installer an, seine Einstellungen und Zugangsdaten mitzunehmen (eine Sicherung nach `/sdcard/backup/termux-NAME`, im
+neuen Gast zurückgespielt, mit der Auswahl oben) und den Arbeitsordner (kopiert, wenn er im neuen Gast leer ist). In
+einem Gast ohne uutils (Debian) werden die coreutils-Pakete nicht von Upgrades zurückgehalten.
+
 **Fragen am Anfang.** Alle Fragen stellt der Installer gleich zu Beginn, bevor er etwas installiert; danach läuft er
 ohne Rückfrage durch. Jede Frage kommt in einer interaktiven Termux-Shell nur einmal, die Antwort steht danach in der
 Termux-Konfiguration, und die passende Option ändert sie später: Claude Code (`--claude`/`--no-claude`), Codex
