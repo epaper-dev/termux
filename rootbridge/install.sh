@@ -1494,7 +1494,7 @@ say
 say "Fertig. Weiter:"
 say "  rootbridge status        # Zustand prüfen"
 say "  source ~/.bashrc         # Kurzbefehle in dieser Termux-Shell laden (oder ein neues Fenster öffnen)"
-say "  $GUEST_ALIAS                   # Shell im Gast öffnen (auch Widget '$GUEST_WIDGET')"
+say "  $GUEST_ALIAS                   # $GUEST_WIDGET-Shell öffnen (auch Widget '$GUEST_WIDGET')"
 if [ "$USE_CLAUDE" = yes ]; then
     say "  claude                   # Claude-Code-Sitzung öffnen (legt sie an; auch Widget 'Claude')"
     say "  claude -n                # neue Claude-Unterhaltung in einem eigenen Fenster starten"
