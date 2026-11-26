@@ -11,6 +11,7 @@
 #                   [--guidelines | --no-guidelines]
 #                   [--voice | --no-voice] [--speak | --no-speak] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
 #                   [--headset | --no-headset] [--phantom-killer-off | --phantom-killer-on] [--language de|en]
+#                   [--device ID|none]
 #
 # Questions: all of them come first, before anything is installed; then the installation runs through. On a terminal each
 # one is asked once (Claude Code, Codex, the language, reading aloud, dictation, the device name for Claude Remote Control,
@@ -87,6 +88,13 @@
 #   tmux with the sessions among them. Off switches that off as root (`rootbridge phantom-killer off`, on every run on a
 #   terminal: an Android update may set it back); on gives Android's defaults back. Asked once (default off), stored as
 #   PHANTOM_KILLER. Without root: Developer options, "Disable child process restrictions".
+# --device ID|none: the device file devices/ID.conf describes the keys of the device (where the side key and the key of a
+#   wired headset are read, how a long press on Home arrives; devices/README.md). The installer looks for the file of the
+#   device it runs on (<manufacturer>-<model> from the vendor partition) and asks once whether to use it; stored as DEVICE,
+#   installed as device.conf next to the Termux config. The questions about the keys stay; a key the file does not
+#   describe is not asked for. Its NAME is the suggestion for the Remote Control name (else the id read from the device).
+# Performance: before the questions the installer measures cores, clock, memory and free space (`rootbridge perf` shows it
+#   again); what does not suit the device is suggested as no (reading aloud).
 #
 # Claude Code starts in /root/work in the guest (WORKDIR; the installer creates the folder).
 #
@@ -145,7 +153,9 @@ HOMEKEY_OFF_OPT=0   # --no-home-key given: the assistant role is taken back in a
 USE_BYPASS=yes; USE_BYPASS_SET=0   # Codex without its own sandbox
 USE_GUIDE=yes; USE_GUIDE_SET=0     # code quality guidelines in CLAUDE.md / AGENTS.md
 USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=0   # switch Android's phantom process killer off (root)
+DEVICE=""; DEVICE_SET=0            # the device file in devices/ (its id) or none
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+DEVICE_RE='^[a-z0-9][a-z0-9._-]{0,63}$'
 APT_RE='^(always|off|daily|[1-9][0-9]{0,2}h)$'
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -198,6 +208,9 @@ while [ $# -gt 0 ]; do
         --phantom-killer-off) USE_PHANTOM_OFF=yes; USE_PHANTOM_OFF_SET=1 ;;
         --phantom-killer-on) USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=1 ;;
         --no-headset) USE_HEADSET=no; USE_HEADSET_SET=1 ;;
+        --device)
+            [ $# -ge 2 ] || { echo "--device braucht die Kennung einer Gerätedatei (devices/) oder none" >&2; exit 2; }
+            DEVICE="$2"; DEVICE_SET=1; shift ;;
         --model)
             [ $# -ge 2 ] || { echo "--model braucht einen Namen oder none" >&2; exit 2; }
             MODEL="$2"; MODEL_SET=1; shift ;;
@@ -215,6 +228,12 @@ esac
 MODEL_RE='^(none|[A-Za-z0-9][]A-Za-z0-9._:[-]{0,63})$'
 if [ "$MODEL_SET" = 1 ] && ! [[ "$MODEL" =~ $MODEL_RE ]]; then
     echo "--model: ungültiger Name '$MODEL' (erlaubt: Buchstaben, Ziffern, . _ : - [ ]; max. 64 Zeichen; oder none)" >&2
+    exit 2
+fi
+
+if [ "$DEVICE_SET" = 1 ] && [ "$DEVICE" != none ] \
+        && ! { [[ "$DEVICE" =~ $DEVICE_RE ]] && [ -f "$REPO/devices/$DEVICE.conf" ]; }; then
+    echo "--device: keine Gerätedatei devices/$DEVICE.conf (erlaubt: none oder eine Datei aus devices/)" >&2
     exit 2
 fi
 
@@ -347,6 +366,7 @@ AUTOSTART_DELAY=3
 # HOMEKEY=off           # on | off: long press on Home as push to talk (Termux is the assistant); install.sh --home-key / --no-home-key
 # HEADSET=off           # on | off: long press on the key of a wired headset as push to talk; install.sh --headset / --no-headset
 # PHANTOM_KILLER=off    # off: Android's phantom process killer switched off (root, on every install); install.sh --phantom-killer-off / -on
+# DEVICE=none           # the device file in devices/ (its id) or none; installed as device.conf next to this file; install.sh --device
 # PTT_TARGET=ubuntu:claude   # `ptt`: tmux window it presses its key in (default <SESSION>:claude)
 # PTT_KEY=M-k           # `ptt`: tmux key name (Claude Code: voice:pushToTalk is bound to meta+k)
 # PTT_MODE=auto         # `ptt`: auto (the mode of Claude Code's /voice, read from its settings) | hold (repeat the key until stop) | tap (one press each); PTT_INTERVAL=50 (ms), PTT_WARMUP=1200 (ms before the first repeat), PTT_MAX=120 (s), PTT_BEEP=on (high beep: recording, low: ended)
@@ -372,10 +392,10 @@ ask_key() {
 }
 # onoff <yes|no>: the config spelling of a choice
 onoff() { if [ "$1" = yes ]; then echo on; else echo off; fi; }
-# cfg_get KEY: the value stored in the Termux config (quotes stripped; empty if there is none)
+# cfg_get KEY [FILE]: the value stored in the Termux config, or in FILE (quotes stripped; empty if there is none)
 cfg_get() {
     local v
-    v="$(sed -n "s/^$1=//p" "$CFG" | tail -n 1)"
+    v="$(sed -n "s/^$1=//p" "${2:-$CFG}" | tail -n 1)"
     v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
     printf '%s' "$v"
 }
@@ -399,6 +419,59 @@ if grep -qx 'WORKDIR=/root/workspace' "$CFG"; then
         say "  WORKDIR: /root/workspace -> /root/work (der alte Standardordner wurde nie angelegt)"
     fi
 fi
+# The device: its file in devices/ describes its keys (devices/README.md). The id is <manufacturer>-<model> as the vendor
+# partition reports them (a custom system image reports names of its own in ro.product.*). An option wins, else the stored
+# choice, else asked once on a terminal (stored as DEVICE: the id or none). Without a terminal nothing is chosen.
+dev_prop() {   # dev_prop <field>: the first of ro.product.vendor.<field>, ro.product.odm.<field>, ro.product.<field>
+    local p v
+    for p in "ro.product.vendor.$1" "ro.product.odm.$1" "ro.product.$1"; do
+        v="$(getprop "$p" 2>/dev/null)" || continue
+        if [ -n "$v" ]; then printf '%s' "$v"; return 0; fi
+    done
+    return 1
+}
+DEV_MAKER="$(dev_prop manufacturer || true)"; DEV_MODEL="$(dev_prop model || true)"
+DEV_FOUND=""   # the id of this device (empty: unknown)
+if [ -n "$DEV_MAKER" ] && [ -n "$DEV_MODEL" ]; then
+    DEV_FOUND="$(printf '%s-%s' "$DEV_MAKER" "$DEV_MODEL" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9._-' '-')"
+    DEV_FOUND="${DEV_FOUND#-}"; DEV_FOUND="${DEV_FOUND%-}"
+    [[ "$DEV_FOUND" =~ $DEVICE_RE ]] || DEV_FOUND=""
+fi
+if [ "$DEVICE_SET" != 1 ]; then
+    DEVICE="$(cfg_get DEVICE)"
+    if [ -n "$DEVICE" ] && [ "$DEVICE" != none ] && ! { [[ "$DEVICE" =~ $DEVICE_RE ]] && [ -f "$REPO/devices/$DEVICE.conf" ]; }; then
+        say "  Gerätedatei devices/$DEVICE.conf gibt es nicht (mehr); ändern mit --device ID|none"
+        DEVICE=""
+    fi
+fi
+if [ -z "$DEVICE" ] && [ -n "$DEV_FOUND" ] && [ -f "$REPO/devices/$DEV_FOUND.conf" ]; then
+    label="$(cfg_get LABEL "$REPO/devices/$DEV_FOUND.conf")"
+    if [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; then
+        printf '%s ' "${label:-$DEV_FOUND} erkannt ($DEV_MAKER $DEV_MODEL): Gerätedatei devices/$DEV_FOUND.conf verwenden (wo die Tasten des Geräts liegen)? [J/n]"
+        if IFS= read -r answer; then
+            case "$answer" in n|N|nein|Nein|NEIN|no) DEVICE=none ;; *) DEVICE="$DEV_FOUND" ;; esac
+            DEVICE_SET=1
+        else
+            echo
+        fi
+    else
+        say "  Gerät: ${label:-$DEV_FOUND} (devices/$DEV_FOUND.conf); verwenden mit --device $DEV_FOUND"
+    fi
+elif [ -z "$DEVICE" ] && [ -n "$DEV_FOUND" ]; then
+    say "  Gerät: $DEV_MAKER $DEV_MODEL (keine Gerätedatei; eigene anlegen: devices/$DEV_FOUND.conf, siehe devices/README.md)"
+fi
+if [ "$DEVICE_SET" = 1 ]; then cfg_set DEVICE "$DEVICE" "Gerät: $DEVICE"; fi
+DEV_SRC=""; DEV_LABEL=""   # the device file in use, and its name
+if [ -n "$DEVICE" ] && [ "$DEVICE" != none ]; then
+    DEV_SRC="$REPO/devices/$DEVICE.conf"
+    DEV_LABEL="$(cfg_get LABEL "$DEV_SRC")"
+    label_re='^[A-Za-z0-9 ._()+-]{1,64}$'
+    [[ "$DEV_LABEL" =~ $label_re ]] || DEV_LABEL="$DEVICE"
+fi
+# dev_key <SIDEKEY|HEADSET>: the device file in use describes that key (without a device file: as before, yes)
+dev_key() { [ -z "$DEV_SRC" ] || grep -Eq "^$1_(DEVICE|DEVICE_NAME)=" "$DEV_SRC"; }
+# dev_home: a long press on Home starts Android's assistant on this device (without a device file: as before, yes)
+dev_home() { [ -z "$DEV_SRC" ] || [ "$(cfg_get HOMEKEY_METHOD "$DEV_SRC")" = assistant ]; }
 if [ "$APT_MODE_SET" = 1 ]; then
     # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
     cfg_set APT_UPGRADE "$APT_MODE" "apt-Modus gespeichert: $APT_MODE"
@@ -494,8 +567,18 @@ LANGUAGE="${LANGUAGE:-$sys_lang}"   # stored at the end, once the guest has it (
 if [ "$USE_SPEAK_SET" != 1 ] && [ "$(cfg_get SPEAK)" = off ]; then
     USE_SPEAK=no; say "  Vorlesen: abgewählt (aus der Konfig; wieder an mit --speak)"
 fi
+# the performance of the device (rb_perf in rootbridge-lib.sh, bash only: python3 may not be there yet): what does not suit
+# it is suggested as no
+PERF="$( . "$REPO/termux/lib/rootbridge-lib.sh" && rb_perf )" || PERF=""
+perf_get() { sed -n "s/^$1=//p" <<< "$PERF" | tail -n 1; }
+[ -z "$PERF" ] || say "  Leistung: $(perf_get SUMMARY)"
+speak_default=yes
+if [ "$USE_CLAUDE" = yes ] && [ "$(perf_get FIT_SPEAK)" != yes ] && [ -n "$(perf_get FIT_SPEAK)" ]; then
+    say "  Vorlesen auf diesem Gerät: $(perf_get TEXT_SPEAK)"
+    [ "$(perf_get FIT_SPEAK)" = tight ] || speak_default=no
+fi
 if [ "$USE_CLAUDE" = yes ]; then
-    ask_key USE_SPEAK USE_SPEAK_SET SPEAK yes "Vorlesen: Claudes Antworten vorlesen lassen (Piper, auf Wunsch mit deiner eigenen Stimme)?"
+    ask_key USE_SPEAK USE_SPEAK_SET SPEAK "$speak_default" "Vorlesen: Claudes Antworten vorlesen lassen (Piper, auf Wunsch mit deiner eigenen Stimme)?"
     ask_key USE_VOICE USE_VOICE_SET VOICE yes "Spracheingabe: Claude Code per Mikrofon diktieren (/voice, Push to Talk)?"
 fi
 # reading aloud undecided (a config from before it, no terminal): as voice dictation, which it was part of
@@ -515,6 +598,9 @@ if [ "$REMOTE_NAME_SET" != 1 ]; then
         REMOTE_NAME="$v"
         say "  Remote-Control-Name: $REMOTE_NAME (aus der Konfig; ändern mit --remote-name NAME)"
     elif [ "$USE_CLAUDE" = yes ] && [ -t 0 ]; then
+        # the suggestion: NAME of the device file, else the id read from the device, else android
+        v="$( [ -z "$DEV_SRC" ] || cfg_get NAME "$DEV_SRC" )"
+        if [[ "$v" =~ $NAME_RE ]]; then REMOTE_NAME="$v"; elif [ -n "$DEV_FOUND" ]; then REMOTE_NAME="$DEV_FOUND"; fi
         say "Wie soll dieses Gerät in Claude Remote Control heißen?"
         say "  Erlaubt: Buchstaben, Ziffern, Punkt, _ und -; maximal 64 Zeichen (z. B. boox-max-lumi)."
         while true; do
@@ -543,14 +629,29 @@ if [ "$USE_HEADSET_SET" != 1 ]; then
     esac
 fi
 OLD_HOMEKEY="$(cfg_get HOMEKEY)"   # on before this run: --no-home-key takes the assistant role back
-# the keys for push to talk work only with voice dictation
+# the keys for push to talk work only with voice dictation; a key the device file does not describe is not asked for
 if [ "$USE_VOICE" = yes ] && [ "$USE_CLAUDE" = yes ]; then
-    ask_key USE_SIDEKEY USE_SIDEKEY_SET SIDEKEY no \
-        "Seitentaste als Push to Talk (halten = sprechen; nur Hisense A9, braucht Root)?"
-    ask_key USE_HOMEKEY USE_HOMEKEY_SET HOMEKEY yes \
-        "Langer Druck auf Home startet und stoppt die Spracheingabe (Termux wird digitaler Assistent, braucht Root)?"
-    ask_key USE_HEADSET USE_HEADSET_SET HEADSET yes \
-        "Langer Druck auf die Taste eines Kabel-Headsets startet und stoppt die Spracheingabe (braucht Root)?"
+    if [ -z "$DEV_SRC" ]; then
+        ask_key USE_SIDEKEY USE_SIDEKEY_SET SIDEKEY no \
+            "Seitentaste als Push to Talk (halten = sprechen; nur Hisense A9, braucht Root)?"
+    elif dev_key SIDEKEY; then
+        ask_key USE_SIDEKEY USE_SIDEKEY_SET SIDEKEY yes \
+            "Seitentaste des $DEV_LABEL als Push to Talk (halten = sprechen, braucht Root)?"
+    else
+        say "  Seitentaste: $DEV_LABEL hat laut Gerätedatei keine"
+    fi
+    if dev_home; then
+        ask_key USE_HOMEKEY USE_HOMEKEY_SET HOMEKEY yes \
+            "Langer Druck auf Home startet und stoppt die Spracheingabe (Termux wird digitaler Assistent, braucht Root)?"
+    else
+        say "  Home-Taste: bei $DEV_LABEL kommt ein langer Druck nicht beim Assistenten an (Gerätedatei)"
+    fi
+    if dev_key HEADSET; then
+        ask_key USE_HEADSET USE_HEADSET_SET HEADSET yes \
+            "Langer Druck auf die Taste eines Kabel-Headsets startet und stoppt die Spracheingabe (braucht Root)?"
+    else
+        say "  Headset-Taste: $DEV_LABEL hat laut Gerätedatei keine"
+    fi
 fi
 if [ "$USE_SIDEKEY_SET" = 1 ]; then
     cfg_set SIDEKEY "$(onoff "$USE_SIDEKEY")" "Seitentaste: $USE_SIDEKEY"
@@ -657,6 +758,22 @@ fi
 say "== 2/5 Konfiguration"
 TMP_SNIP="$(mktemp)"; cp "$REPO/termux/tmux.conf.snippet" "$TMP_SNIP"
 set_block "$HOME/.tmux.conf" "$TMP_SNIP"; rm -f "$TMP_SNIP"
+# device_conf: the valid lines of the device file as device.conf next to the config (keyreader.py checks each one); with
+# DEVICE=none it goes (also run again after a restore, whose device.conf may belong to another choice)
+DEV_CONF="$(dirname "$CFG")/device.conf"
+device_conf() {
+    local tmp
+    if [ -n "$DEV_SRC" ]; then
+        tmp="$(mktemp)"
+        python3 -I "$REPO/termux/lib/keyreader.py" --check "$DEV_SRC" > "$tmp" || die "Gerätedatei $DEV_SRC ließ sich nicht lesen"
+        put_data "$tmp" "$DEV_CONF" 644 || true
+        rm -f "$tmp"
+    elif [ "$DEVICE" = none ] && [ -e "$DEV_CONF" ]; then
+        backup "$DEV_CONF"; rm -f "$DEV_CONF"
+        say "  entfernt: $DEV_CONF (ohne Gerätedatei)"
+    fi
+}
+device_conf
 
 say "== 3/5 Farben, Shell-Block, Widgets"
 if [ "$DO_COLORS" = 1 ]; then
@@ -952,7 +1069,7 @@ fi
 # when the key was on before this run, or always with --no-home-key (also without voice, also a role set by hand), and when
 # voice goes off (HOMEKEY stays on: voice on again sets the role again).
 role=""
-if [ "$USE_HOMEKEY" = yes ] && [ "$VOICE_ON" = yes ]; then
+if [ "$USE_HOMEKEY" = yes ] && [ "$VOICE_ON" = yes ] && dev_home; then
     role=on
 elif [ "$USE_HOMEKEY" = no ] && { [ "$OLD_HOMEKEY" = on ] || [ "$HOMEKEY_OFF_OPT" = 1 ]; }; then
     role=off
@@ -999,8 +1116,9 @@ key_reader() {
         say "  $label: ohne die Sprachsteuerung nicht eingerichtet"
     fi
 }
-key_reader sidekey-ptt "$USE_SIDEKEY" Seitentaste
-key_reader headset-ptt "$USE_HEADSET" Headset-Taste
+# a key the device file does not describe gets no reader (one of an earlier install goes)
+if dev_key SIDEKEY; then key_reader sidekey-ptt "$USE_SIDEKEY" Seitentaste; else key_reader sidekey-ptt no Seitentaste; fi
+if dev_key HEADSET; then key_reader headset-ptt "$USE_HEADSET" Headset-Taste; else key_reader headset-ptt no Headset-Taste; fi
 
 # Android's phantom process killer: off on every run on a terminal (an Android update may set it back); on again only when
 # it was off before this run. Root: only on a terminal, where the root manager can ask you.
@@ -1135,7 +1253,7 @@ if [ "$DO_GUEST" = 1 ]; then
         key="${line%%=*}"; val="${line#*=}"
         val="${val%\"}"; val="${val#\"}"; val="${val%\'}"; val="${val#\'}"
         case "$key" in
-            APT_UPGRADE|CLAUDE_UPDATE|CODEX_UPDATE|CODEX_BYPASS|GUIDELINES|LANGUAGE|PHANTOM_KILLER|REMOTE_NAME|SPEAK_SHORT)
+            APT_UPGRADE|CLAUDE_UPDATE|CODEX_UPDATE|CODEX_BYPASS|DEVICE|GUIDELINES|LANGUAGE|PHANTOM_KILLER|REMOTE_NAME|SPEAK_SHORT)
                 [[ "$val" =~ ^[A-Za-z0-9_.:@,+-]*$ ]] ;;
             *)
                 probe="$(mktemp "$STAGE_DIR/probe.XXXXXX")"   # in the private folder, not in TMPDIR
@@ -1202,6 +1320,7 @@ if [ "$DO_GUEST" = 1 ]; then
             rm -f "$THIS_RUN"
         fi
         extra_keys   # the restored termux.properties may lack our keys block
+        device_conf  # the restored device.conf may belong to another device file than this run's DEVICE
         # the Codex sandbox as the restored config has it, unless an option of this run said otherwise (the guest
         # argument was built before the restore)
         # (the Termux or the restored guest config says CODEX_BYPASS=off, or the guest config has CODEX_ARGS without the bypass flag)

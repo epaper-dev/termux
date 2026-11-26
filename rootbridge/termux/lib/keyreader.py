@@ -4,12 +4,19 @@ Each device gets a root reader of its own, a `su -c 'echo $$; exec <reader> DEV'
 shell starts readers in the background); the first line is the pid of the root reader. When one stream ends, the others
 are ended (the root readers by that pid) and the reader starts over. One instance per reader (flock).
 
+Which device and key a reader reads comes from the device file (devices/<id>.conf of the repository, installed by
+install.sh as device.conf next to the rootbridge config): <P>_DEVICE or <P>_DEVICE_NAME, <P>_CODE and LONG_PRESS. Without
+the file a reader takes its own defaults (those of the Hisense A9). `python3 -I keyreader.py --check FILE` prints the valid
+lines of a device file and a note on stderr for each other one (install.sh installs that output).
+
 Test hooks (environment, <P> is the prefix of the reader, SIDEKEY or HEADSET): <P>_CMD (event sources instead of su, one
 command per line; each prints the pid of its reader on the first line, which is then ended without su), <P>_PTT (ptt
-binary), <P>_LONG (seconds), <P>_ONCE=1 (leave at the end of the event stream), <P>_CACHE (log and lock directory).
+binary), <P>_LONG (seconds), <P>_ONCE=1 (leave at the end of the event stream), <P>_CACHE (log and lock directory);
+ROOTBRIDGE_CONFIG (the config, device.conf is read next to it).
 """
 import fcntl
 import os
+import re
 import select
 import shlex
 import signal
@@ -23,18 +30,78 @@ EV_KEY = 1
 # a root reader that is still running (a case pattern): a `cat` of an input device, or a reader's own (`<script> --grab DEV`)
 ROOT_READER = '"cat /dev/input/event"*|*" --grab /dev/input/event"*'
 
+# the keys of a device file and the pattern each value has to match (devices/README.md)
+_INPUT_DEVICE, _INPUT_NAME, _CODE = r"/dev/input/event[0-9]{1,3}", r"[A-Za-z0-9 ._-]{1,64}", r"[0-9]{1,4}"
+DEVICE_KEYS = {
+    "LABEL": r"[A-Za-z0-9 ._()+-]{1,64}",
+    "NAME": r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}",
+    "SIDEKEY_DEVICE": _INPUT_DEVICE, "SIDEKEY_DEVICE_NAME": _INPUT_NAME, "SIDEKEY_CODE": _CODE,
+    "HEADSET_DEVICE": _INPUT_DEVICE, "HEADSET_DEVICE_NAME": _INPUT_NAME, "HEADSET_CODE": _CODE,
+    "HOMEKEY_METHOD": r"assistant|none",
+    "LONG_PRESS": r"[0-9](\.[0-9]{1,2})?",
+}
+
+
+def device_file():
+    """The installed device file: device.conf next to the rootbridge config."""
+    config = os.environ.get("ROOTBRIDGE_CONFIG") or os.path.join(os.path.expanduser("~"), ".config", "termux-rootbridge",
+                                                                  "config")
+    return os.path.join(os.path.dirname(config), "device.conf")
+
+
+def read_device(path):
+    """The valid KEY=VALUE lines of a device file as a dict, and a note for each other line (comments and empty lines
+    aside). Raises OSError when the file cannot be read."""
+    conf, notes = {}, []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for number, line in enumerate(fh, 1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            key, eq, value = line.partition("=")
+            key, value = key.strip(), value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            if eq and key in DEVICE_KEYS and re.fullmatch(DEVICE_KEYS[key], value):
+                conf[key] = value
+            else:
+                notes.append("Zeile %d übergangen: %s" % (number, line[:80]))
+    return conf, notes
+
+
+def find_command(name):
+    """Shell, run as root: the input devices whose name has NAME (event numbers depend on the kernel; apps may not read
+    /sys/class/input). Exit 1 when the list cannot be read at all; a device that is not there finds nothing (exit 0)."""
+    return ('ls /sys/class/input/event0 >/dev/null || exit 1; '
+            'for d in /sys/class/input/event*; do case "$(cat "$d/device/name" 2>/dev/null)" in '
+            '*%s*) echo "/dev/input/${d##*/}" ;; esac; done' % shlex.quote(name))
+
 
 class Reader:
-    """One key read from root readers. A script sets `name`, `prefix` and `key` and overrides what it needs."""
+    """One key read from root readers. A script sets `name`, `prefix`, `key` and its default device (`device_path` or
+    `device_name`, used without a device file) and overrides what it needs."""
     name = prefix = ""
     key = 0
+    device_path = device_name = None
 
     def __init__(self):
         env = os.environ
         self.cache = env.get(self.prefix + "_CACHE", os.path.join(os.path.expanduser("~"), ".cache"))
         self.log_file = os.path.join(self.cache, self.name + ".log")
         self.ptt_bin = env.get(self.prefix + "_PTT", "ptt")
-        self.long = float(env.get(self.prefix + "_LONG", "0.4"))   # Android's long press timeout (long_press_timeout 400)
+        try:
+            self.device, _ = read_device(device_file())
+        except OSError:
+            self.device = None       # no device file: the defaults of the script
+        conf = self.device or {}
+        if conf.get(self.prefix + "_DEVICE") or conf.get(self.prefix + "_DEVICE_NAME"):
+            self.device_path = conf.get(self.prefix + "_DEVICE")
+            self.device_name = None if self.device_path else conf[self.prefix + "_DEVICE_NAME"]
+        elif self.device is not None:
+            self.device_path = self.device_name = None   # the device file knows no such key on this device
+        self.key = int(conf.get(self.prefix + "_CODE", self.key))
+        # Android's long press timeout (long_press_timeout 400)
+        self.long = float(env.get(self.prefix + "_LONG", conf.get("LONG_PRESS", "0.4")))
         self.test_cmds = [shlex.split(line) for line in env.get(self.prefix + "_CMD", "").splitlines() if line.strip()]
         self.once = env.get(self.prefix + "_ONCE") == "1"
         self.procs = []
@@ -42,7 +109,29 @@ class Reader:
     # --- what a script overrides
     def devices(self):
         """The devices to read; None when they cannot be known now (the reader starts over)."""
-        return []
+        if self.device_path:
+            return [self.device_path]
+        if self.device_name:
+            return self.lookup(self.device_name)
+        self.log("%s beschreibt diese Taste nicht" % device_file())
+        return None
+
+    def lookup(self, name):
+        """The input devices whose name has NAME, looked up as root; None when there is none or the lookup failed."""
+        try:
+            r = subprocess.run(["su", "-c", find_command(name)], stdin=subprocess.DEVNULL, capture_output=True,
+                               text=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            self.log("Suche nach %r fehlgeschlagen: %s" % (name, e))
+            return None
+        if r.returncode != 0:
+            self.log("Suche nach %r fehlgeschlagen: su Exit %d" % (name, r.returncode))
+            return None
+        devices = [d for d in r.stdout.split() if d.startswith("/dev/input/event")]
+        if not devices:
+            self.log("kein Eingabegerät %r gefunden" % name)
+            return None
+        return devices
 
     def command(self, dev):
         """The root reader of one device: it prints its pid on the first line, then the events of the device."""
@@ -208,3 +297,16 @@ class Reader:
                      % (lasted, delay))
             time.sleep(delay)
             delay = 2 if lasted > 10 else min(60, delay * 2)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3 or sys.argv[1] != "--check":
+        sys.exit("keyreader.py --check FILE")
+    try:
+        valid, skipped = read_device(sys.argv[2])
+    except OSError as e:
+        sys.exit("%s: %s" % (sys.argv[2], e))
+    for note in skipped:
+        print("%s: %s" % (sys.argv[2], note), file=sys.stderr)
+    for key, value in valid.items():
+        print("%s=%s" % (key, value))

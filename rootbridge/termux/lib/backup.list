@@ -5,6 +5,7 @@
 
 # --- Termux (@config: the active config, also with ROOTBRIDGE_CONFIG)
 secret   termux @config
+settings termux .config/termux-rootbridge/device.conf   # the keys of the device (devices/), read by the key readers
 settings termux .termux/termux.properties
 settings termux .ssh/authorized_keys
 settings termux .termux/colors.properties
