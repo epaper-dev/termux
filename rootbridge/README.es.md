@@ -140,7 +140,8 @@ vez (Enter: Ubuntu) y guarda `DISTRO` cuando el invitado ya está; el widget y e
 `debian` abren ambos la shell del invitado). Con un invitado instalado, `--distro` cambia: las sesiones terminan, el
 invitado anterior se queda (se vuelve con `--distro` y su nombre, se elimina con `proot-distro remove NOMBRE`) y en una
 terminal el instalador ofrece llevarse sus ajustes y accesos (una copia en `/sdcard/backup/termux-NOMBRE`, restaurada en
-el nuevo invitado, con la selección de arriba) y la carpeta de trabajo (copiada si en el nuevo invitado está vacía). En
+el nuevo invitado, con la selección de arriba) y la carpeta de trabajo (copiada si en el nuevo invitado está vacía) con las conversaciones de Claude Code (las que
+faltan en el nuevo invitado, con la misma ruta de la carpeta de trabajo). En
 un invitado sin uutils (Debian) los paquetes de coreutils no se retienen en las actualizaciones.
 
 **Preguntas al principio.** El instalador hace todas sus preguntas al empezar, antes de instalar nada; después sigue

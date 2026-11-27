@@ -524,7 +524,7 @@ if [ "$DO_GUEST" = 1 ] && [ "$DISTRO" != "$OLD_DISTRO" ] && OLD_GROOT="$(find_gu
     if [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; then
         printf '%s ' "Einstellungen und Zugangsdaten aus dem $OLD_DISTRO-Gast mitnehmen (Sicherung und Wiederherstellung, fragt ein Passwort und was davon)? [J/n]"
         if IFS= read -r answer; then case "$answer" in n|N|nein|Nein|NEIN|no) ;; *) SWITCH_BACKUP=yes ;; esac; else echo; fi
-        printf '%s ' "Arbeitsordner aus dem $OLD_DISTRO-Gast mitnehmen (kopiert, wenn er im neuen Gast leer ist)? [J/n]"
+        printf '%s ' "Arbeitsordner und Claude-Unterhaltungen aus dem $OLD_DISTRO-Gast mitnehmen (der Ordner, wenn er im neuen Gast leer ist)? [J/n]"
         if IFS= read -r answer; then case "$answer" in n|N|nein|Nein|NEIN|no) ;; *) SWITCH_WORK=yes ;; esac; else echo; fi
     else
         say "  ohne Terminal: nichts mitgenommen (Sicherung: rootbridge backup, dann im neuen Gast rootbridge restore)"
@@ -1476,6 +1476,27 @@ if [ "$DO_GUEST" = 1 ]; then
             say "  Arbeitsordner: $w aus dem $SWITCH_FROM-Gast nach $nw kopiert"
         else
             say "  Hinweis: der Arbeitsordner ließ sich nicht ganz kopieren (von Hand: $OLD_GROOT$w)"
+        fi
+        # Claude Code's conversations (/resume, claude --continue): those the new guest does not have yet, nothing there
+        # is overwritten. Only under the same work folder path (the folders and the transcripts name it), and without the
+        # private notes (PROJECT/memory): those come with the restore, as chosen there.
+        copy_talks() {
+            tar -C "$1" --anchored --exclude='./*/memory' -cf - . | tar -C "$2" --skip-old-files -xf - \
+                && [ "${PIPESTATUS[0]}" = 0 ]
+        }
+        c=/root/.claude/projects
+        if [ ! -d "$OLD_GROOT$c" ]; then
+            :
+        elif [ "$w" != "$nw" ]; then
+            say "  Unterhaltungen: der Arbeitsordner ist im $DISTRO-Gast $nw statt $w, nicht kopiert (Claude Code fände sie dort nicht)"
+        elif ! no_link "$OLD_GROOT" "$c" || ! no_link "$GROOT" "$c" \
+                || [ -n "$(find "$GROOT$c" -type l -exec test -d {} \; -print -quit 2>/dev/null)" ]; then
+            # (a link to a folder inside the new guest's conversations: tar would write through it)
+            say "  Unterhaltungen: auf dem Weg zu $c liegt ein Link, nicht kopiert (von Hand: $OLD_GROOT$c)"
+        elif mkdir -p "$GROOT$c" && copy_talks "$OLD_GROOT$c" "$GROOT$c" && own_files "$GROOT$c"; then
+            say "  Unterhaltungen von Claude Code aus dem $SWITCH_FROM-Gast übernommen"
+        else
+            say "  Hinweis: die Unterhaltungen ließen sich nicht ganz kopieren (von Hand: $OLD_GROOT$c)"
         fi
     fi
     # the guest is set up (and what came along is there): from now on the launchers, backup and restore use it; a run that

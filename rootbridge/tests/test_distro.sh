@@ -93,6 +93,9 @@ ln -s "$L2S/.l2s.pack" "$L2S/.l2s.pack0001"
 ln -s "$L2S/.l2s.pack0001" "$ROOTFS/ubuntu/rootfs/root/src/proj/p.pack"
 ln -s a.txt "$ROOTFS/ubuntu/rootfs/root/src/proj/b.txt"
 echo private > "$T/private"
+# a conversation of Claude Code in the old guest: its work folder is /root/src, the new guest's /root/work
+mkdir -p "$ROOTFS/ubuntu/rootfs/root/.claude/projects/-root-src"
+echo alt > "$ROOTFS/ubuntu/rootfs/root/.claude/projects/-root-src/s1.jsonl"
 ln -s "$T/private" "$L2S/.l2s.out0001"
 ln -s "$L2S/.l2s.out0001" "$ROOTFS/ubuntu/rootfs/root/src/proj/o.txt"
 echo 'WORKDIR=/root/src' > "$ROOTFS/ubuntu/rootfs/etc/termux-rootbridge.conf"
@@ -116,6 +119,8 @@ NW="$ROOTFS/debian/rootfs/root/work/proj"
 check "Wechsel: proot-Hardlink wird eine eigene Datei, ein Link des Projekts bleibt" "pack nein ja" \
       "$(cat "$NW/p.pack" 2>/dev/null) $(islink "$NW/p.pack") $(islink "$NW/b.txt")"
 check "Wechsel: ein Link aus /.l2s hinaus wird nicht kopiert" ja "$(islink "$NW/o.txt")"
+check "Wechsel: anderer Arbeitsordner, Unterhaltungen bleiben" "nein 1" \
+      "$(has "$ROOTFS/debian/rootfs/root/.claude/projects/-root-src/s1.jsonl") $(grep -c 'Unterhaltungen: der Arbeitsordner ist im debian-Gast /root/work statt /root/src' "$T/install.log")"
 check "Wechsel: alter Gast bleibt"                  ja "$(has "$ROOTFS/ubuntu/rootfs/root/src/proj/a.txt")"
 check "Wechsel: Widget Debian mit dem Icon, Ubuntu weg" "ja nein mine" \
       "$(has "$H/.shortcuts/Debian") $(has "$H/.shortcuts/Ubuntu") $(cat "$H/.shortcuts/icons/Debian.png" 2>/dev/null)"
@@ -168,6 +173,27 @@ dinst $'n\n' --distro ubuntu
 dinst $'n\n\n' --distro debian
 check "Link: nichts kopiert"                        "nein 1" \
       "$(has "$ROOTFS/debian/rootfs/root/work/private.txt") $(grep -c 'liegt ein Link, nicht kopiert' "$T/install.log")"
+
+# --- the same work folder in both guests: the conversations come along, those there stay, the private notes do not
+H="$T/home-talks"; mkdir -p "$H"; rm -rf "$ROOTFS"
+OP="$ROOTFS/ubuntu/rootfs/root/.claude/projects/-root-work"; NP="$ROOTFS/debian/rootfs/root/.claude/projects/-root-work"
+mkdir -p "$ROOTFS/ubuntu/rootfs/root/work" "$OP/memory" "$NP"
+echo w > "$ROOTFS/ubuntu/rootfs/root/work/w.txt"
+echo alt > "$OP/s1.jsonl"; echo alt > "$OP/s2.jsonl"; echo note > "$OP/memory/n.md"; echo neu > "$NP/s2.jsonl"
+mkdir -p "$ROOTFS/ubuntu/rootfs/.l2s"; echo sub > "$ROOTFS/ubuntu/rootfs/.l2s/.l2s.sub"
+ln -s "$ROOTFS/ubuntu/rootfs/.l2s/.l2s.sub" "$OP/s3.jsonl"
+dinst $'n\n' --distro ubuntu
+dinst $'n\n\n' --distro debian
+check "Unterhaltungen: kopiert, vorhandene bleibt, proot-Hardlink eine Datei" "alt neu sub nein 1" \
+      "$(cat "$NP/s1.jsonl" 2>/dev/null) $(cat "$NP/s2.jsonl") $(cat "$NP/s3.jsonl" 2>/dev/null) $([ -L "$NP/s3.jsonl" ] && echo ja || echo nein) $(grep -c 'Unterhaltungen von Claude Code aus dem ubuntu-Gast' "$T/install.log")"
+check "Unterhaltungen: private Notizen nur mit der Wiederherstellung" nein "$(has "$NP/memory/n.md")"
+
+# --- a link to a folder among the new guest's conversations: nothing is written through it
+mkdir -p "$T/outside"; rm -rf "$NP"; ln -s "$T/outside" "$NP"
+dinst $'n\n' --distro ubuntu
+dinst $'n\n\n' --distro debian
+check "Unterhaltungen: Link im Ziel, nichts kopiert" "nein 1" \
+      "$(has "$T/outside/s1.jsonl") $(grep -c 'Unterhaltungen: auf dem Weg zu /root/.claude/projects liegt ein Link' "$T/install.log")"
 
 # --- an invalid value
 env HOME="$T/home-bad" PREFIX="$P" bash "$INSTALL" --distro arch > /dev/null 2>&1

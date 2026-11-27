@@ -148,7 +148,8 @@ to leave out. `--no-device` leaves the device configuration out without asking.
 `debian` both open the guest shell). With an installed guest `--distro` switches: the sessions stop, the old guest stays
 (back with `--distro` and its name, remove it with `proot-distro remove NAME`), and on a terminal the installer offers to
 take its settings and logins along (a backup of it into `/sdcard/backup/termux-NAME`, restored into the new guest, which
-asks what of it) and the work folder (copied into the new guest when that one is empty). In a guest without uutils
+asks what of it) and the work folder (copied into the new guest when that one is empty) with the conversations of Claude Code (the ones
+the new guest lacks, when both use the same work folder path). In a guest without uutils
 (Debian) the coreutils packages are not held back from upgrades.
 
 **Questions first.** The installer asks all its questions at the start, before it installs anything; then it runs

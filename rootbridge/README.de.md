@@ -146,7 +146,8 @@ Ubuntu) und speichert `DISTRO`, sobald der Gast da ist; Widget und Alias heißen
 öffnen beide die Gast-Shell). Mit installiertem Gast wechselt `--distro`: Die Sitzungen enden, der alte Gast bleibt
 (zurück mit `--distro` und seinem Namen, entfernen mit `proot-distro remove NAME`), und auf einem Terminal bietet der
 Installer an, seine Einstellungen und Zugangsdaten mitzunehmen (eine Sicherung nach `/sdcard/backup/termux-NAME`, im
-neuen Gast zurückgespielt, mit der Auswahl oben) und den Arbeitsordner (kopiert, wenn er im neuen Gast leer ist). In
+neuen Gast zurückgespielt, mit der Auswahl oben) und den Arbeitsordner (kopiert, wenn er im neuen Gast leer ist) mit den Unterhaltungen von Claude Code (die dem neuen
+Gast fehlen, bei gleichem Pfad des Arbeitsordners). In
 einem Gast ohne uutils (Debian) werden die coreutils-Pakete nicht von Upgrades zurückgehalten.
 
 **Fragen am Anfang.** Alle Fragen stellt der Installer gleich zu Beginn, bevor er etwas installiert; danach läuft er

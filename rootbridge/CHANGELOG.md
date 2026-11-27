@@ -10,7 +10,8 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   The widget of the guest shell is named after it, and `debian` opens it like `ubuntu`. With an installed guest
   `--distro` switches: the sessions stop, the old guest stays (back with `--distro`, `proot-distro remove` names it), and
   on a terminal the installer offers a backup of the old guest (`/sdcard/backup/termux-<old>`), restored into the new one,
-  and the work folder, copied into an empty one. A failed backup switches nothing. The guest installer holds the coreutils
+  and the work folder, copied into an empty one, with the conversations of Claude Code the new guest lacks (same work folder path; the private notes only
+  through the restore). A failed backup switches nothing. The guest installer holds the coreutils
   packages back from upgrades only in a guest with uutils: in Debian the hold would keep coreutils from its security
   updates. Tests: `tests/test_distro.sh`, `tests/test_apt_upgrade.sh`
 * **`rootbridge restore` asks what comes back.** It numbers what it would restore, asks whether to take the device
