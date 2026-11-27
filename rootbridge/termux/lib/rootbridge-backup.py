@@ -335,7 +335,8 @@ def open_dir(root, parts, create=False):
 def pack(entries, kind, roots):
     """A tar.gz (bytes) of the paths of this kind (t/ Termux home, g/ guest). Left out: what is excluded, for the
     settings everything a secret line names, and every link (named, not followed: a running guest cannot point us at a
-    Termux file). Every file is opened through descriptors with O_NOFOLLOW from its root down."""
+    Termux file), except in the secrets proot's links for hard links into the guest's own /.l2s, which stand for their
+    file. Every file is opened through descriptors with O_NOFOLLOW from its root down."""
     prefixes = {"termux": "t", "guest": "g"}
     # Decided for each path when it is reached, by the lines' patterns, not from a list made at the start: a file that
     # appears while we run (a login) is still kept out of the settings if a secret line names it.
@@ -349,6 +350,45 @@ def pack(entries, kind, roots):
                  if not parts[-1].endswith("*") for suffix in (".bak*", ".new*")]
 
     real_config = os.path.realpath(CONFIG)
+
+    def l2s_open(dfd, name, side):
+        """proot keeps a hard link (git packs, pip, plugin caches) as a link to <guest>/.l2s/.l2s.NAME000N, itself a link
+        to the file .l2s.NAME, written with the Termux path of the guest: that file is the content. Every hop must be a
+        direct entry of the guest's own .l2s folder, read through it without following a link; None for every other
+        link (and for a broken one)."""
+        # only into the encrypted archive: the file behind it may also be a secret path's (a hard link of a login)
+        if side != "guest" or kind == "settings":
+            return None
+        l2s = os.path.join(os.path.abspath(roots["guest"]), ".l2s")
+        try:
+            lfd = os.open(l2s, NOFOLLOW_DIR)
+        except OSError:
+            return None
+        try:
+            target = os.readlink(name, dir_fd=dfd)
+            for _hop in range(2):
+                if not os.path.isabs(target):   # proot writes absolute paths; a relative link is a project's own
+                    return None
+                target = os.path.normpath(target)
+                entry = os.path.basename(target)
+                if os.path.dirname(target) != l2s or not entry.startswith(".l2s."):
+                    return None
+                st = os.stat(entry, dir_fd=lfd, follow_symlinks=False)
+                if os.path.stat.S_ISLNK(st.st_mode):
+                    target = os.readlink(entry, dir_fd=lfd)
+                    continue
+                if not os.path.stat.S_ISREG(st.st_mode):
+                    return None
+                fd = os.open(entry, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=lfd)
+                if os.path.stat.S_ISREG(os.fstat(fd).st_mode):
+                    return fd
+                os.close(fd)
+                return None
+            return None
+        except FileNotFoundError:
+            return None
+        finally:
+            os.close(lfd)
 
     def keep(path, side, active=False):
         names = os.path.relpath(path, roots[side]).split(os.sep)
@@ -376,6 +416,8 @@ def pack(entries, kind, roots):
                 fd = os.open(name, NOFOLLOW_DIR, dir_fd=dfd)
             elif os.path.stat.S_ISREG(st.st_mode):
                 fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd)
+            elif os.path.stat.S_ISLNK(st.st_mode) and (fd := l2s_open(dfd, name, side)) is not None:
+                pass
             else:
                 say("  übersprungen (Link oder Sonderdatei): %s" % path)
                 return
@@ -946,7 +988,7 @@ def apply_ops(ops):
         for op in ops:
             def swap(dfd, name):
                 try:
-                    os.stat(name, dir_fd=dfd, follow_symlinks=False)
+                    was_link = os.path.stat.S_ISLNK(os.stat(name, dir_fd=dfd, follow_symlinks=False).st_mode)
                     had = True
                 except FileNotFoundError:
                     had = False
@@ -960,6 +1002,11 @@ def apply_ops(ops):
                     try:
                         os.link(name, name + alt, src_dir_fd=dfd, dst_dir_fd=dfd, follow_symlinks=False)
                     except (OSError, AttributeError, NotImplementedError):   # no hard links here (Python on Android has no os.link): a copy
+                        if was_link:   # a link (proot's for a hard link) is kept as the same link, never opened
+                            os.symlink(os.readlink(name, dir_fd=dfd), name + alt, dir_fd=dfd)
+                            done.append((op, had))
+                            os.replace(name + neu, name, src_dir_fd=dfd, dst_dir_fd=dfd)
+                            return
                         with open(os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd), "rb") as inp:
                             orig_mode = os.fstat(inp.fileno()).st_mode & 0o7777   # a rollback must not strip x bits
                             with os.fdopen(os.open(name + alt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,

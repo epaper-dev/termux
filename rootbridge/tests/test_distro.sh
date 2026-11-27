@@ -84,6 +84,17 @@ check "Neu, Enter: Ubuntu"                          "1 ubuntu ja" "$(calls '^pro
 # --- the switch: Ubuntu -> Debian, with backup, restore and the work folder (the old guest's own WORKDIR)
 mkdir -p "$ROOTFS/ubuntu/rootfs/root/src/proj" "$ROOTFS/ubuntu/rootfs/etc"
 echo hallo > "$ROOTFS/ubuntu/rootfs/root/src/proj/a.txt"
+# a hard link as proot keeps it (link -> /.l2s/.l2s.NAME0001 -> /.l2s/.l2s.NAME, Termux paths), a link of the project
+# itself, and a link whose second hop leads out of /.l2s (to a Termux file): it is not followed
+L2S="$ROOTFS/ubuntu/rootfs/.l2s"
+mkdir -p "$L2S"
+echo pack > "$L2S/.l2s.pack"
+ln -s "$L2S/.l2s.pack" "$L2S/.l2s.pack0001"
+ln -s "$L2S/.l2s.pack0001" "$ROOTFS/ubuntu/rootfs/root/src/proj/p.pack"
+ln -s a.txt "$ROOTFS/ubuntu/rootfs/root/src/proj/b.txt"
+echo private > "$T/private"
+ln -s "$T/private" "$L2S/.l2s.out0001"
+ln -s "$L2S/.l2s.out0001" "$ROOTFS/ubuntu/rootfs/root/src/proj/o.txt"
 echo 'WORKDIR=/root/src' > "$ROOTFS/ubuntu/rootfs/etc/termux-rootbridge.conf"
 echo mine > "$H/.shortcuts/icons/Ubuntu.png"
 # a setup of the new guest that fails: DISTRO stays, the next run switches again
@@ -100,6 +111,11 @@ check "Wechsel: Sicherung vor der Wiederherstellung" ja \
          [ -n "$b" ] && [ -n "$r" ] && [ "$b" -lt "$r" ] && echo ja || echo nein)"
 check "Wechsel: DISTRO=debian"                      debian "$(cget DISTRO)"
 check "Wechsel: Arbeitsordner kopiert"              hallo "$(cat "$ROOTFS/debian/rootfs/root/work/proj/a.txt" 2>/dev/null)"
+islink() { [ -L "$1" ] && echo ja || echo nein; }
+NW="$ROOTFS/debian/rootfs/root/work/proj"
+check "Wechsel: proot-Hardlink wird eine eigene Datei, ein Link des Projekts bleibt" "pack nein ja" \
+      "$(cat "$NW/p.pack" 2>/dev/null) $(islink "$NW/p.pack") $(islink "$NW/b.txt")"
+check "Wechsel: ein Link aus /.l2s hinaus wird nicht kopiert" ja "$(islink "$NW/o.txt")"
 check "Wechsel: alter Gast bleibt"                  ja "$(has "$ROOTFS/ubuntu/rootfs/root/src/proj/a.txt")"
 check "Wechsel: Widget Debian mit dem Icon, Ubuntu weg" "ja nein mine" \
       "$(has "$H/.shortcuts/Debian") $(has "$H/.shortcuts/Ubuntu") $(cat "$H/.shortcuts/icons/Debian.png" 2>/dev/null)"

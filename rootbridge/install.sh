@@ -1440,6 +1440,29 @@ if [ "$DO_GUEST" = 1 ]; then
         # no_link <root> <path>: no part of the path below the guest root is a link (one the guest set could lead out of
         # it, into the private files of Termux); cp -a itself copies the links inside the folder as links
         no_link() { local p="$1" part; for part in ${2//\// }; do p="$p/$part"; [ ! -L "$p" ] || return 1; done; }
+        # proot keeps a hard link (git packs, pip) as a link to /.l2s/.l2s.NAME000N, itself a link to the file
+        # /.l2s/.l2s.NAME, written with the Termux path of the old guest: copied as they are, the new guest cannot read
+        # them. l2s_file <link>: that file, when every hop is an absolute path straight into the old guest's /.l2s (a
+        # relative link of a project is never one, nothing the guest set can lead elsewhere; the old guest is stopped);
+        # own_files <dir>: each such link becomes a copy of its file (cp -T: never into a folder the link points to)
+        l2s_file() {
+            local dir="$OLD_GROOT/.l2s" t hop
+            [ -d "$dir" ] && [ ! -L "$dir" ] || return 1
+            t="$(readlink "$1")"
+            for hop in 1 2; do
+                [ "${t%/*}" = "$dir" ] && [[ "${t##*/}" == .l2s.* ]] || return 1
+                if [ -L "$t" ]; then t="$(readlink "$t")"
+                elif [ -f "$t" ]; then printf '%s' "$t"; return 0
+                else return 1; fi
+            done
+            return 1
+        }
+        own_files() {
+            local link file
+            while IFS= read -r -d '' link; do
+                if file="$(l2s_file "$link")"; then cp -pT --remove-destination "$file" "$link" || return 1; fi
+            done < <(find "$1" -type l -print0)
+        }
         w="$(guest_workdir "$OLD_GROOT")"; nw="$(guest_workdir "$GROOT")"
         if ! [[ "$w$nw" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "/$w/$nw/" == *"/../"* ]]; then
             say "  Arbeitsordner: WORKDIR=$w bzw. $nw ist kein einfacher Pfad, nicht kopiert"
@@ -1449,7 +1472,7 @@ if [ "$DO_GUEST" = 1 ]; then
             say "  Arbeitsordner: $w gibt es im $SWITCH_FROM-Gast nicht"
         elif [ -n "$(ls -A "$GROOT$nw" 2>/dev/null)" ]; then
             say "  Arbeitsordner: $nw im $DISTRO-Gast ist nicht leer, nicht kopiert (von Hand: $OLD_GROOT$w)"
-        elif mkdir -p "$GROOT$nw" && cp -a "$OLD_GROOT$w/." "$GROOT$nw/"; then
+        elif mkdir -p "$GROOT$nw" && cp -a "$OLD_GROOT$w/." "$GROOT$nw/" && own_files "$GROOT$nw"; then
             say "  Arbeitsordner: $w aus dem $SWITCH_FROM-Gast nach $nw kopiert"
         else
             say "  Hinweis: der Arbeitsordner ließ sich nicht ganz kopieren (von Hand: $OLD_GROOT$w)"

@@ -187,6 +187,37 @@ class TestBackup(unittest.TestCase):
         self.assertNotIn("g/root/.claude/token", names)
         self.assertNotIn("g/root/.claude/settings.json", names)   # a secret line names it
 
+    def test_a_proot_hard_link_is_backed_up_as_its_file(self):
+        # proot keeps a hard link as link -> /.l2s/.l2s.NAME0001 -> /.l2s/.l2s.NAME (paths outside the guest); a link
+        # to a .l2s-like name elsewhere, or one whose second hop leads out of /.l2s, is still not followed
+        l2s = os.path.join(self.guest, ".l2s")
+        self.write(self.guest, ".l2s/.l2s.pack", "pack data")
+        os.symlink(os.path.join(l2s, ".l2s.pack"), os.path.join(l2s, ".l2s.pack0001"))
+        self.write(self.d, "elsewhere/.l2s/.l2s.x0001", "termux secret")
+        os.symlink(os.path.join(self.d, "elsewhere/.l2s/.l2s.x0001"), os.path.join(l2s, ".l2s.esc0001"))
+        os.makedirs(os.path.join(self.guest, "root/notes"))
+        os.symlink(os.path.join(l2s, ".l2s.pack0001"), os.path.join(self.guest, "root/notes/p.pack"))
+        os.symlink(os.path.join(self.d, "elsewhere/.l2s/.l2s.x0001"), os.path.join(self.guest, "root/notes/out"))
+        os.symlink(os.path.join(l2s, ".l2s.esc0001"), os.path.join(self.guest, "root/notes/esc"))
+        # in the plain settings it stays out (the file behind it may also be a secret's)
+        self.write(self.home, ".config/termux-rootbridge/backup.list", "settings guest root/notes\n")
+        self.backup()
+        with tarfile.open(os.path.join(self.out, "a.tgz")) as tar:
+            self.assertFalse([n for n in tar.getnames() if n.startswith("g/root/notes/")])
+        # in the encrypted secrets it is its file; the other links stay out
+        shutil.rmtree(self.out)
+        self.write(self.home, ".config/termux-rootbridge/backup.list", "secret guest root/notes\n")
+        self.backup()
+        home, guest = self.fresh()
+        r = self.run_tool(["restore", self.out, "--yes"], home, guest)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        path = os.path.join(guest, "root/notes/p.pack")
+        self.assertFalse(os.path.islink(path))
+        with open(path) as fh:
+            self.assertEqual(fh.read(), "pack data")
+        self.assertFalse(os.path.lexists(os.path.join(guest, "root/notes/out")))
+        self.assertFalse(os.path.lexists(os.path.join(guest, "root/notes/esc")))
+
     def test_a_link_out_of_the_root_is_not_followed(self):
         self.write(self.d, "private/id", "termux secret")
         self.write(self.guest, "root/notes/n.md", "note")
@@ -846,6 +877,25 @@ class TestBackup(unittest.TestCase):
         r = subprocess.run([sys.executable, "-I", "-c", code], env=env, capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr)
         with open(os.path.join(guest, "root/.codex/auth.json")) as fh:
+            self.assertEqual(fh.read(), "secret")
+        self.assertFalse([n for n in os.listdir(os.path.join(guest, "root/.codex")) if "rootbridge-" in n])
+
+    def test_restore_over_a_proot_hard_link_where_python_has_no_os_link(self):
+        # the target is proot's link for a hard link: kept aside as the same link (never opened), then replaced
+        self.backup()
+        home, guest = self.fresh()
+        self.write(guest, ".l2s/.l2s.auth", "old login")
+        os.makedirs(os.path.join(guest, "root/.codex"))
+        os.symlink(os.path.join(guest, ".l2s/.l2s.auth"), os.path.join(guest, "root/.codex/auth.json"))
+        env = dict(os.environ, HOME=home, ROOTBRIDGE_CONFIG=os.path.join(home, ".config/termux-rootbridge/config"),
+                   RB_GUEST_ROOT=guest, BKPW="test")
+        code = ("import os, runpy, sys; hasattr(os, 'link') and delattr(os, 'link'); sys.argv = [%r, 'restore', %r, '--yes']; "
+                "runpy.run_path(%r, run_name='__main__')" % (TOOL, self.out, TOOL))
+        r = subprocess.run([sys.executable, "-I", "-c", code], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        path = os.path.join(guest, "root/.codex/auth.json")
+        self.assertFalse(os.path.islink(path))
+        with open(path) as fh:
             self.assertEqual(fh.read(), "secret")
         self.assertFalse([n for n in os.listdir(os.path.join(guest, "root/.codex")) if "rootbridge-" in n])
 
