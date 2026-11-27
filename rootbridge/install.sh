@@ -1446,10 +1446,10 @@ if [ "$DO_GUEST" = 1 ]; then
         # relative link of a project is never one, nothing the guest set can lead elsewhere; the old guest is stopped);
         # own_files <dir>: each such link becomes a copy of its file (cp -T: never into a folder the link points to)
         l2s_file() {
-            local dir="$OLD_GROOT/.l2s" t hop
+            local dir="$OLD_GROOT/.l2s" t
             [ -d "$dir" ] && [ ! -L "$dir" ] || return 1
             t="$(readlink "$1")"
-            for hop in 1 2; do
+            for _ in 1 2; do   # two hops: the link, then the file
                 [ "${t%/*}" = "$dir" ] && [[ "${t##*/}" == .l2s.* ]] || return 1
                 if [ -L "$t" ]; then t="$(readlink "$t")"
                 elif [ -f "$t" ]; then printf '%s' "$t"; return 0
