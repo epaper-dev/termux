@@ -9,8 +9,8 @@
             "name": "effort-router",
             "description": "Picks the reasoning effort of each request (github.com/cfitzgerald-pd/effort-router, pinned)",
             "source": {
-              "source": "github",
-              "repo": "cfitzgerald-pd/effort-router",
+              "source": "url",
+              "url": "https://github.com/cfitzgerald-pd/effort-router.git",
               "sha": "bd3496ca18b7000930679b890662c7bb8a947412"
             }
           }

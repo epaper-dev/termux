@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Test: the automatic effort (EFFORT_AUTO, effort-router as a pinned plugin of the managed settings).
 #   1. guest installer (staging root): --effort-auto effort-router declares the plugin and its inline marketplace (pinned to
-#      one commit), next to the Codex plugin; off and --claude no take only ours out; a declaration of yours stays;
+#      one commit, fetched over https: the guest knows no SSH host key of github.com), next to the Codex plugin; off and --claude no take only ours out; a declaration of yours stays;
 #      the choice is stored; a wrong value is refused
 #   2. install.sh (stub proot-distro, fake HOME/PREFIX): the option goes to the guest and is stored, off by default
 #   3. rootbridge status names it
@@ -37,7 +37,7 @@ pin = "-"
 source = markets.get("rootbridge-effort", {}).get("source", {})
 if source:
     entry = source["plugins"][0]["source"]
-    pin = "%s %s %s %s" % (source["source"], source["name"], entry["repo"], entry["sha"])
+    pin = "%s %s %s %s" % (source["source"], source["name"], entry["url"], entry["sha"])
 print("%s | %s | %s" % (" ".join(sorted(d.get("enabledPlugins", {}))), " ".join(sorted(markets)), pin))
 PY
 }
@@ -48,7 +48,7 @@ check "Gast ohne Option: nur das Codex-Plugin"             "codex@openai-codex |
 ginstall "$S" --effort-auto effort-router
 check "Gast --effort-auto effort-router: gespeichert"      effort-router "$(gval "$S" EFFORT_AUTO)"
 check "Gast --effort-auto effort-router: Plugin fest auf einen Commit" \
-      "codex@openai-codex effort-router@rootbridge-effort | openai-codex rootbridge-effort | settings rootbridge-effort cfitzgerald-pd/effort-router $SHA" "$(plugins "$S")"
+      "codex@openai-codex effort-router@rootbridge-effort | openai-codex rootbridge-effort | settings rootbridge-effort https://github.com/cfitzgerald-pd/effort-router.git $SHA" "$(plugins "$S")"
 check "Gast --effort-auto effort-router: Meldung"          1 "$(grep -c 'Effort-Wahl: Claude Code lädt effort-router' "$T/guest.log")"
 ginstall "$S"
 check "Gast danach ohne Option: bleibt an"                 "effort-router 1" "$(gval "$S" EFFORT_AUTO) $(plugins "$S" | grep -c rootbridge-effort)"
@@ -63,7 +63,7 @@ ginstall "$S" --effort-auto off
 check "Gast --effort-auto off: nur unseres geht"           "codex@openai-codex mine@elsewhere | openai-codex | -" "$(plugins "$S")"
 check "Gast --effort-auto off: gespeichert"                off "$(gval "$S" EFFORT_AUTO)"
 ginstall "$S" --effort-auto effort-router --codex no
-check "Gast ohne Codex: effort-router bleibt allein"       "effort-router@rootbridge-effort mine@elsewhere | rootbridge-effort | settings rootbridge-effort cfitzgerald-pd/effort-router $SHA" "$(plugins "$S")"
+check "Gast ohne Codex: effort-router bleibt allein"       "effort-router@rootbridge-effort mine@elsewhere | rootbridge-effort | settings rootbridge-effort https://github.com/cfitzgerald-pd/effort-router.git $SHA" "$(plugins "$S")"
 ginstall "$S" --uninstall
 check "Gast --uninstall: unser Plugin weg, deines bleibt"  "mine@elsewhere |  | -" "$(plugins "$S")"
 ginstall "$S" --effort-auto immer
