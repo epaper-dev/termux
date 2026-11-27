@@ -892,7 +892,7 @@ ainst() {   # ainst <answers> [args]: like sinst, with the answers on stdin; onl
     printf '%s' "$answers" | env HOME="$SH" PREFIX="$SP" PATH="$T/sbindir:$T/sstubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 \
         BRIDGE_DIR="$SH/.rootbridge" STUB_LOG="$ILOG" STUB_STATE="$T/state" RB_SU="$T/sstubs/su" \
         ROOTBRIDGE_FORCE_INTERACTIVE=1 bash "$INSTALL" --no-guest --no-migrate --no-extra-keys --no-colors --no-boot \
-        --claude --codex --speak --voice --language de ${phantom:+"$phantom"} "$@" > "$T/install.log" 2>&1
+        --claude --codex --no-opencode --speak --voice --language de ${phantom:+"$phantom"} "$@" > "$T/install.log" 2>&1
     IRC=$?
 }
 SCFG="$SH/.config/termux-rootbridge/config"

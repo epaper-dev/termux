@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # rootbridge-update - brings the AI tools of the guest up to date: Claude Code (`claude update`), Codex
-# (`codex update`). Started by rootbridge-claude
-# and rootbridge-codex at the start of a session, after rootbridge-apt, so starting EITHER one updates BOTH
-# (the two review each other: they should be current at the same time). Can also be run by hand.
+# (`codex update`), OpenCode (`opencode upgrade`). Started by rootbridge-claude, rootbridge-codex and
+# rootbridge-opencode at the start of a session, after rootbridge-apt, so starting any one updates ALL of them
+# (they review each other: they should be current at the same time). Can also be run by hand.
 # It never blocks the start: every problem is reported and the exit code is always 0.
 #
 # Config (/etc/termux-rootbridge.conf, read as data):
-#   TOOL_CLAUDE=on|off, TOOL_CODEX=on|off   which tools are part of the installation (default on; a tool that
-#                                           is off, or whose program is missing, is skipped)
+#   TOOL_CLAUDE=on|off, TOOL_CODEX=on|off, TOOL_OPENCODE=on|off   which tools are part of the installation (default
+#                                           on, OpenCode off; a tool that is off, or whose program is missing, is skipped)
 #   CLAUDE_UPDATE=6h|<N>h|daily|always|off  `claude update`
 #   CODEX_UPDATE=6h|<N>h|daily|always|off   `codex update`
+#   OPENCODE_UPDATE=6h|<N>h|daily|always|off   `opencode upgrade`
 #                                  6h (default): at most once per 6 h after a success; <N>h: the same with N
 #                                  hours (1-999); daily = 24h; always: at every start; off: never
-# Last success of each step: /var/lib/termux-rootbridge/{claude,codex}-update-last-success
+# Last success of each step: /var/lib/termux-rootbridge/{claude,codex,opencode}-update-last-success
 # A failed or aborted step leaves no stamp, so the next start tries again.
 #
 # Nothing here updates nodejs and git: they are apt packages and come with rootbridge-apt (apt-get upgrade).
@@ -77,6 +78,21 @@ update_codex() {
     return 0
 }
 
+# opencode upgrade (it runs the official installer again, which leaves the shell files alone while its folder is in
+# PATH). Never stops the start.
+update_opencode() {
+    local stamp
+    stamp="$(state_dir)/opencode-update-last-success"
+    update_due "opencode upgrade" OPENCODE_UPDATE "$stamp" || return 0
+    echo "== opencode upgrade"
+    if ( exec timeout 300 "$opencode_bin" upgrade ); then
+        stamp_success "$stamp"
+    else
+        echo "Update fehlgeschlagen oder abgebrochen - starte die vorhandene Version."
+    fi
+    return 0
+}
+
 # prune_versions <label> <link> <folder> <file|release>: Claude Code and Codex keep every version they downloaded
 # (350 to 470 MB each). <link> points to the version in use, which must lie in <folder>, the tool's own folder of
 # versions; of the others only the newest one stays (a way back). Only entries that are a version of the tool are
@@ -125,17 +141,21 @@ prune_versions() {
 
 # --- main (not run when the functions are cut out for the tests)---------------------------------------------
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-    # (the tests set ROOTBRIDGE_UPDATE_KEEP_PATH and ROOTBRIDGE_{CLAUDE,CODEX}_BIN to run it with stubs)
-    [ -n "${ROOTBRIDGE_UPDATE_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:$PATH
-    use_claude=0; use_codex=0
+    # (the tests set ROOTBRIDGE_UPDATE_KEEP_PATH and ROOTBRIDGE_{CLAUDE,CODEX,OPENCODE}_BIN to run it with stubs)
+    [ -n "${ROOTBRIDGE_UPDATE_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin:/root/.opencode/bin:$PATH
+    use_claude=0; use_codex=0; use_opencode=0
     [ "$(conf_get TOOL_CLAUDE || echo on)" = on ] && use_claude=1
     [ "$(conf_get TOOL_CODEX || echo on)" = on ] && use_codex=1
+    [ "$(conf_get TOOL_OPENCODE || echo off)" = on ] && use_opencode=1
     claude_bin="${ROOTBRIDGE_CLAUDE_BIN:-/root/.local/bin/claude}"
     [ -x "$claude_bin" ] || claude_bin="$(command -v claude || true)"
     codex_bin="${ROOTBRIDGE_CODEX_BIN:-/root/.local/bin/codex}"
     [ -x "$codex_bin" ] || codex_bin="$(command -v codex || true)"
     [ -n "$claude_bin" ] || use_claude=0
     [ -n "$codex_bin" ] || use_codex=0
+    opencode_bin="${ROOTBRIDGE_OPENCODE_BIN:-/root/.opencode/bin/opencode}"
+    [ -x "$opencode_bin" ] || opencode_bin="$(command -v opencode || true)"
+    [ -n "$opencode_bin" ] || use_opencode=0
 
     # Two sessions can start at the same time (both widgets): one update run at a time, the second one then
     # finds the stamps of the first and skips what is done.
@@ -153,6 +173,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 
     [ "$use_claude" = 1 ] && update_claude
     [ "$use_codex" = 1 ] && update_codex
+    [ "$use_opencode" = 1 ] && update_opencode
     [ "$use_claude" = 1 ] && prune_versions "Claude Code" "$claude_bin" "$HOME/.local/share/claude/versions" file
     codex_pkgs="${CODEX_HOME:-$HOME/.codex}/packages/standalone"
     [ "$use_codex" = 1 ] && prune_versions "Codex" "$codex_pkgs/current" "$codex_pkgs/releases" release

@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # rootbridge-guest-lib.sh - helpers shared by the guest scripts of termux-rootbridge (androidsu, rootbridge-claude,
-# rootbridge-codex, rootbridge-update, rootbridge-apt, rootbridge-open). Sourced, not run. Installed to
+# rootbridge-codex, rootbridge-opencode, rootbridge-update, rootbridge-apt, rootbridge-open). Sourced, not run. Installed to
 # /usr/local/lib/termux-rootbridge/ by install-guest.sh; the tests point ROOTBRIDGE_GUEST_LIB at the copy in the repo.
 
 CONF="${ROOTBRIDGE_CONF:-/etc/termux-rootbridge.conf}"
@@ -65,14 +65,14 @@ stamp_age() {
     echo $(( now - last ))
 }
 
-# --- session entry points (rootbridge-claude, rootbridge-codex) --------------------------------------------------------
+# --- session entry points (rootbridge-claude, rootbridge-codex, rootbridge-opencode) ---------------------------------
 # enter_workdir: the working directory of the session (WORKDIR from the config), /root if it is missing
 enter_workdir() {
     cd "$(conf_get WORKDIR || echo /root/work)" 2>/dev/null || cd /root || exit 1
 }
 
-# run_maintenance: apt-get update + upgrade, then claude update and codex update. Each step decides by itself whether it is
-# due, and none of them blocks the start.
+# run_maintenance: apt-get update + upgrade, then the updates of the tools (rootbridge-update). Each step decides by
+# itself whether it is due, and none of them blocks the start.
 run_maintenance() {
     if command -v rootbridge-apt >/dev/null 2>&1; then rootbridge-apt || true; fi
     if command -v rootbridge-update >/dev/null 2>&1; then rootbridge-update || true; fi

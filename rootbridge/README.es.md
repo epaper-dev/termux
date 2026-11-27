@@ -319,6 +319,26 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
 * **Datos.** El diff y lo que Codex lea en el árbol de trabajo van a OpenAI, con la cuenta con la que iniciaste sesión. El
   sandbox de Codex restringe la escritura, no la lectura: puede leer más del invitado que el repositorio.
 
+## OpenCode como tercera herramienta
+
+`install.sh --opencode` añade **OpenCode** (desactivado por defecto; se pregunta una vez, se guarda como `TOOL_OPENCODE`,
+`--no-opencode` lo quita de nuevo). Tiene una ventana de Termux y una sesión de tmux propias, `ubuntu-opencode` (widget
+**OpenCode**, `opencode`, `rootbridge attach opencode`).
+
+* **Instalación.** `setup-guest.sh` ejecuta el instalador oficial (`opencode.ai/install`, con `--no-modify-path`) en
+  `~/.opencode/bin`; el bloque de `~/.bashrc` del invitado pone el `PATH`. Inicio de sesión: `/connect` en la ventana de OpenCode.
+* **Actualizaciones.** `rootbridge-update` ejecuta `opencode upgrade` al iniciar una sesión, como mucho cada 6 h
+  (`OPENCODE_UPDATE`, `--opencode-update M`, `--no-opencode-update`); la comprobación propia de OpenCode está desactivada.
+* **Pautas.** Con `--guidelines` el bloque de calidad de código también va a `~/.config/opencode/AGENTS.md`.
+* **Quién revisa los commits.** `--reviewers codex|opencode|codex,opencode` (se guarda como `REVIEWERS`) elige quién revisa
+  cada `git commit` de Claude Code; con los dos, las revisiones corren a la vez y ambos deben decir `ALLOW`. Con Claude Code,
+  Codex y OpenCode instalados, el instalador pregunta una vez. Sin Codex revisa OpenCode. OpenCode revisa con un agente
+  propio que solo puede leer y ejecutar `git diff`, `git show`, `git log` y `git status`; no carga la configuración ni los
+  plugins del repositorio revisado. El modelo viene de la configuración de OpenCode, o de
+  `CODEX_PRECOMMIT_OPENCODE_MODEL=proveedor/modelo`. Falla cerrado como con Codex: sin inicio de sesión la revisión bloquea.
+  Interruptor de emergencia: `rootbridge review-off` / `review-on` (los nombres antiguos `codex-off` / `codex-on` siguen valiendo).
+* **Datos.** El diff y lo que OpenCode lea en el árbol de trabajo van al proveedor con el que iniciaste sesión en OpenCode.
+
 ## Uso diario
 
 | Comando (Termux) | Qué hace |
@@ -333,7 +353,8 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
 | `rootbridge codex-login` | `codex login` con traspaso al navegador (`--device-auth` sin navegador) |
 | `rootbridge stop` | detener sesión y daemon |
 | `rootbridge guard-off` / `guard-on` | interruptor de emergencia para los hooks |
-| `rootbridge codex-off` / `codex-on` | interruptor de emergencia de la revisión previa al commit de Codex (reinicia Claude Code) |
+| `opencode` / `rootbridge attach opencode` | conectarse a la sesión de OpenCode `ubuntu-opencode` (widget **OpenCode**; con `--opencode`) |
+| `rootbridge review-off` / `review-on` | interruptor de emergencia de la revisión previa al commit (reinicia Claude Code; también `codex-off` / `codex-on`) |
 | `ptt start` / `stop` / `toggle` / `status` | pulsar para hablar: pulsa una tecla en la ventana de Claude Code para `/voice` (ver abajo) |
 | `rootbridge voice start\|stop\|status\|grant` | PulseAudio y micrófono para `/voice`; `grant` da a Termux el permiso de micrófono de Android (root) |
 | `rootbridge voice speak on\|off\|toggle\|stop\|status` | leer las respuestas en voz alta sí o no (`off` también termina la lectura en curso), `stop` solo la termina ahora |
@@ -470,7 +491,7 @@ Termux: `~/.config/termux-rootbridge/config` (se interpreta como datos, nunca se
 Invitado: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
 la actualización, por defecto 600), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
-`daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` (`on` / `off`), `NOFILE_LIMIT` (ver abajo). `VOICE` / `SIDEKEY` (`on` / `off`). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`auto` / `hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
+`daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` / `TOOL_OPENCODE` (`on` / `off`), `OPENCODE_UPDATE` (mismos valores que `CODEX_UPDATE`), `OPENCODE_ARGS` (argumentos adicionales para OpenCode), `REVIEWERS` (`codex`, `opencode` o `codex,opencode`), `NOFILE_LIMIT` (ver abajo). `VOICE` / `SIDEKEY` (`on` / `off`). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`auto` / `hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
 
 `NOFILE_LIMIT` (por defecto `2048`, `0` = dejar el límite como está) es el límite de descriptores de archivo con el que
 se inicia Claude Code. Claude Code cierra todos los descriptores hasta ese límite tras cada fork, y bajo proot cada
@@ -493,6 +514,7 @@ Remote Control (nunca `--continue`) y lo omite para `-p`, `--version` y `--help`
 | Daemon: decide el diálogo (sí, no, descartado, fallido, sin respuesta, ausente, uno a la vez), agente que pregunta, notas para el hook, archivos falsificados no cuentan, comandos largos, validación de URL | — |
 | Hook de inicio de sesión (19 pruebas: formas de respuesta, reglas de URL, modos) | — |
 | Instaladores: raíz de staging, idempotencia, migración de la v1, desinstalación | — |
+| OpenCode como tercera herramienta: instalador del invitado, `REVIEWERS`, `rootbridge-update`, sesión y estado, `install.sh --opencode` / `--reviewers`; OpenCode como revisor y los dos juntos (`opencode` simulado) | `opencode run` y `/connect` en un dispositivo; los permisos del agente de revisión en una sesión real |
 | Codex junto a Claude Code: opciones de instalación y la elección guardada, pasos de actualización con marcas y bloqueo, ventanas de tmux, `codex-login` / `codex-off` / `status`, el bucle de revisión previa al commit (`node` simulado) | `codex-login` y el widget **Codex** en un dispositivo; `claude plugin update`, `codex update` y `onFailure: "block"` tras un fallo del hook; `bwrap` en otros dispositivos |
 | Voz y tecla lateral: opciones del instalador y la elección guardada, `default.pa` (la nuestra, la tuya, actualización con copia), `rootbridge voice`, ajustes y asignación de teclas en el invitado sin sobrescribir las tuyas, `sox` y Piper solo con Claude Code, lectura en voz alta (interruptor, parada de un proceso real, widgets, hooks; `tests/test_speak.py` con stubs de `piper` / `play`, el servicio de Articulino y `articulino_onnx`), desinstalación (stubs de `pulseaudio` / `pactl` / `su` / `pkg`) | el micrófono con hardware real, el sonido de Piper y Articulino en el altavoz, la descarga de Articulino, `pm grant` con root real (aviso de Magisk), `sidekey-ptt` con la tecla real, el permiso de micrófono tras una nueva instalación de Termux |
 

@@ -185,7 +185,7 @@ if pid == 0:
     env = os.environ.copy()
     env.update(HOME=home, PREFIX=prefix, PATH=path, ROOTBRIDGE_ALLOW_GUEST="1", BRIDGE_DIR=home+"/.rootbridge")
     os.execvpe("bash", ["bash", installer, "--no-boot", "--no-migrate", "--no-deps-check", "--no-extra-keys", "--no-setup", "--autonomous", "no",
-               "--no-sidekey", "--no-home-key", "--no-headset", *(options or ["--claude", "--codex", "--phantom-killer-on", "--language", "de", "--speak", "--voice"])],
+               "--no-sidekey", "--no-home-key", "--no-headset", *(options or ["--claude", "--codex", "--no-opencode", "--phantom-killer-on", "--language", "de", "--speak", "--voice"])],
               env)   # the key questions: test_voice.sh; the other questions: below, with options of their own
 if answers:
     os.write(master, answers.encode())
@@ -223,19 +223,19 @@ rinstall_tty ''
 check "Gespeicherter Name: keine zweite Abfrage" 0 "$(grep -c 'Gerätename \[' "$T/prompt.log")"
 check "Gespeicherter Name: wird genannt" 1 "$(grep -c 'Remote-Control-Name: boox-max-lumi (aus der Konfig' "$T/prompt.log")"
 check "Gespeicherter Name: Konfiguration unverändert" "$before" "$(cksum < "$CFG")"
-rinstall_tty '' --claude --codex --phantom-killer-on --remote-name boox-lumi
+rinstall_tty '' --claude --codex --no-opencode --phantom-killer-on --remote-name boox-lumi
 check "Expliziter Name: keine Abfrage am Terminal" 0 "$(grep -c 'Gerätename \[' "$T/prompt.log")"
 check "Expliziter Name: neuer Name gespeichert" 'REMOTE_NAME=boox-lumi' "$(grep '^REMOTE_NAME=' "$CFG")"
-rinstall_tty '' --no-claude --codex --phantom-killer-on
+rinstall_tty '' --no-claude --codex --no-opencode --phantom-killer-on
 check "Codex allein: keine Claude-Namensabfrage" 0 "$(grep -c 'Gerätename \[' "$T/prompt.log")"
 
 # the question block: all questions before anything is installed, each answer stored, asked only once
 H="$T/questions-home"; mkdir -p "$H"
 CFG="$H/.config/termux-rootbridge/config"
-rinstall_tty $'\nn\nn\ne\n\nn\nlumi\n' --no-sidekey   # Claude Enter, Codex n, Phantom n, Englisch, Vorlesen Enter, Spracheingabe n
+rinstall_tty $'\nn\n\nn\ne\n\nn\nlumi\n' --no-sidekey   # Claude Enter, Codex n, OpenCode Enter (nein), Phantom n, Englisch, Vorlesen Enter, Spracheingabe n
 check "Fragen: Installer erfolgreich" 0 "$?"
-check "Fragen: Claude Code, Codex, Phantom Killer gespeichert" "on off on" \
-    "$(for k in TOOL_CLAUDE TOOL_CODEX PHANTOM_KILLER; do sed -n "s/^$k=//p" "$CFG"; done | tr '\n' ' ' | sed 's/ $//')"
+check "Fragen: Claude Code, Codex, OpenCode, Phantom Killer gespeichert" "on off off on" \
+    "$(for k in TOOL_CLAUDE TOOL_CODEX TOOL_OPENCODE PHANTOM_KILLER; do sed -n "s/^$k=//p" "$CFG"; done | tr '\n' ' ' | sed 's/ $//')"
 check "Fragen: Gerätename gespeichert" 'REMOTE_NAME=lumi' "$(grep '^REMOTE_NAME=' "$CFG")"
 check "Fragen: Vorlesen an, Spracheingabe aus" "on off" "$(for k in SPEAK VOICE; do sed -n "s/^$k=//p" "$CFG"; done | tr '\n' ' ' | sed 's/ $//')"
 check "Fragen: Vorlesen ohne Spracheingabe an den Gast" 1 "$(grep -c -- '--voice no --speak yes' "$STUB_LOG")"
@@ -257,7 +257,7 @@ mkdir -p "$T/backup"; : > "$T/backup/a.tgz"
 printf '#!/bin/sh\necho planted >> "%s/planted.log"\n' "$T" > "$T/backup/restore"
 H="$T/restore-home"; mkdir -p "$H"
 export RB_BACKUP_DIR="$T/backup"
-rinstall_tty $'\n' --claude --codex --phantom-killer-on --language de --speak --voice --remote-name x --no-sidekey
+rinstall_tty $'\n' --claude --codex --no-opencode --phantom-killer-on --language de --speak --voice --remote-name x --no-sidekey
 check "Sicherung: Frage am Anfang, Enter stellt am Ende mit rootbridge restore wieder her" "1 1" \
       "$(grep -c 'Sicherung gefunden' "$T/prompt.log") $(grep -c '== Sicherung wiederherstellen' "$T/prompt.log")"
 check "Sicherung: nichts aus dem Ordner ausgeführt"     nein "$([ -e "$T/planted.log" ] && echo ja || echo nein)"
@@ -266,7 +266,7 @@ r_line="$(grep -n '== Sicherung wiederherstellen' "$T/prompt.log" | head -1 | cu
 g_line="$(grep -n '== 5/5 Gast' "$T/prompt.log" | head -1 | cut -d: -f1)"
 check "Sicherung: gefragt vor, wiederhergestellt nach dem Gast" ja \
       "$([ -n "$q_line" ] && [ -n "$r_line" ] && [ "$q_line" -lt "$g_line" ] && [ "$g_line" -lt "$r_line" ] && echo ja || echo nein)"
-rinstall_tty $'n\n' --claude --codex --phantom-killer-on --language de --speak --voice --remote-name x --no-sidekey
+rinstall_tty $'n\n' --claude --codex --no-opencode --phantom-killer-on --language de --speak --voice --remote-name x --no-sidekey
 check "Sicherung: n stellt nichts wieder her"            0 "$(grep -c '== Sicherung wiederherstellen' "$T/prompt.log")"
 unset RB_BACKUP_DIR
 

@@ -348,6 +348,26 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
 * **Daten.** Der Diff und alles, was Codex im Arbeitsbaum liest, gehen an OpenAI, unter dem Konto, mit dem du dich angemeldet
   hast. Die Sandbox von Codex beschränkt das Schreiben, nicht das Lesen: Es kann mehr vom Gast lesen als das Repository.
 
+## OpenCode als drittes Werkzeug
+
+`install.sh --opencode` richtet **OpenCode** zusätzlich ein (standardmäßig aus; die Frage kommt einmal, gespeichert als
+`TOOL_OPENCODE`, `--no-opencode` nimmt es wieder heraus). Es bekommt ein eigenes Termux-Fenster mit eigener tmux-Sitzung
+`ubuntu-opencode` (Widget **OpenCode**, `opencode`, `rootbridge attach opencode`).
+
+* **Installation.** `setup-guest.sh` lädt den offiziellen Installer (`opencode.ai/install`, mit `--no-modify-path`) nach
+  `~/.opencode/bin`; der `~/.bashrc`-Block des Gasts setzt den `PATH`. Anmelden: `/connect` im OpenCode-Fenster.
+* **Updates.** `rootbridge-update` ruft beim Start jeder Sitzung `opencode upgrade` auf, höchstens alle 6 h
+  (`OPENCODE_UPDATE`, `--opencode-update M`, `--no-opencode-update`); OpenCodes eigene Update-Prüfung ist aus.
+* **Richtlinien.** Mit `--guidelines` kommt der Block zur Codequalität auch nach `~/.config/opencode/AGENTS.md`.
+* **Wer prüft die Commits.** `--reviewers codex|opencode|codex,opencode` (gespeichert als `REVIEWERS`) wählt, wer jeden
+  `git commit` von Claude Code prüft; bei beiden laufen die Prüfungen gleichzeitig, und beide müssen `ALLOW` sagen. Sind
+  Claude Code, Codex und OpenCode installiert, fragt der Installer einmal. Ohne Codex prüft OpenCode. OpenCode prüft mit einem
+  eigenen Agenten, der nur lesen und `git diff`, `git show`, `git log` und `git status` ausführen darf; Konfiguration und
+  Plugins des geprüften Repositorys lädt es dabei nicht. Das Modell wählt OpenCodes Konfiguration, oder
+  `CODEX_PRECOMMIT_OPENCODE_MODEL=anbieter/modell`. Fail-closed wie bei Codex: Ohne Anmeldung blockiert die Prüfung.
+  Notausgang: `rootbridge review-off` / `review-on` (die alten Namen `codex-off` / `codex-on` gehen weiter).
+* **Daten.** Der Diff und was OpenCode im Arbeitsbaum liest, gehen an den Anbieter, bei dem du OpenCode angemeldet hast.
+
 ## Bedienung
 
 | Befehl (Termux) | Wirkung |
@@ -362,7 +382,8 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
 | `rootbridge codex-login` | `codex login` mit Browser-Übergabe (`--device-auth` ohne Browser) |
 | `rootbridge stop` | Session und Daemon stoppen |
 | `rootbridge guard-off` / `guard-on` | Notschalter für die Hooks |
-| `rootbridge codex-off` / `codex-on` | Notschalter für die Codex-Pre-Commit-Review (Claude Code neu starten) |
+| `opencode` / `rootbridge attach opencode` | an die OpenCode-Sitzung `ubuntu-opencode` anhängen (Widget **OpenCode**; mit `--opencode`) |
+| `rootbridge review-off` / `review-on` | Notschalter für die Pre-Commit-Review (Claude Code neu starten; auch `codex-off` / `codex-on`) |
 | `ptt start` / `stop` / `toggle` / `status` | Push-to-Talk: drückt im Claude-Code-Fenster eine Taste für `/voice` (siehe unten) |
 | `rootbridge voice start\|stop\|status\|grant` | PulseAudio und Mikrofon für `/voice`; `grant` gibt Termux die Mikrofon-Berechtigung von Android (Root) |
 | `rootbridge voice speak on\|off\|toggle\|stop\|status` | Vorlesen der Antworten an oder aus (`off` beendet auch, was gerade gelesen wird), `stop` nur das Lesen jetzt |
@@ -497,6 +518,7 @@ Kurzfassung (Details: [docs/LOGIN.md](docs/LOGIN.md)):
 | Daemon: der Dialog entscheidet (Ja, Nein, weggedrückt, gescheitert, keine Antwort, fehlend, einer nach dem anderen), anfragender Agent, Notizen für den Hook, gefälschte Dateien zählen nicht, lange Befehle, URL-Prüfung (Checks) | — |
 | Login-Hook (19 Tests: Antwortformen, URL-Regeln, Modi) | — |
 | Installer: Staging-Root, Idempotenz, v1-Migration, Deinstallation | — |
+| OpenCode als drittes Werkzeug: Gast-Installer, `REVIEWERS`, `rootbridge-update`, Sitzung und Status, `install.sh --opencode` / `--reviewers`; OpenCode als Prüfer und beide zusammen (Stub-`opencode`) | `opencode run` und `/connect` auf einem Gerät; die Rechte des Prüf-Agenten in einer echten Sitzung |
 | Codex neben Claude Code: Installationsoptionen und gespeicherte Wahl, Update-Schritte mit Stempeln und Sperre, tmux-Fenster, `codex-login` / `codex-off` / `status`, die Pre-Commit-Schleife (Stub-`node`) | `codex-login` und das Widget **Codex** auf einem Gerät; `claude plugin update`, `codex update` und `onFailure: "block"` nach einem Absturz des Hooks; `bwrap` auf anderen Geräten |
 | Sprache und Seitentaste: Installationsoptionen und gespeicherte Wahl, `default.pa` (unsere, deine, Update mit Backup), `rootbridge voice`, Einstellungen und Tastenbelegung im Gast ohne deine zu überschreiben, `sox` und Piper nur mit Claude Code, Vorlesen (Schalter, Stopp eines echten Prozesses, Widgets, Hooks; `tests/test_speak.py` mit Stubs für `piper` / `play`, den Articulino-Dienst und `articulino_onnx`), Deinstallation (Stubs für `pulseaudio` / `pactl` / `su` / `pkg`) | das Mikrofon mit echter Hardware, der Ton von Piper und Articulino am Lautsprecher, der Download von Articulino, `pm grant` mit echtem Root (Magisk-Rückfrage), `sidekey-ptt` an der echten Taste, die Mikrofon-Berechtigung nach einer Neuinstallation von Termux |
 
