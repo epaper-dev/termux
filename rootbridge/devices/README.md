@@ -29,9 +29,11 @@ key or a value that does not fit is left out, with a note during the installatio
 | `SIDEKEY_DEVICE` | `/dev/input/eventN` | the input device of the side key |
 | `SIDEKEY_DEVICE_NAME` | up to 64 letters, digits, space, `. _ -` | instead: the input device whose name has this (looked up as root) |
 | `SIDEKEY_CODE` | a number | the key code of the side key (`getevent -l` shows it) |
+| `SIDEKEY_WAKE` | `yes` or `no` | `yes`: a long press of the side key also wakes the device |
 | `HEADSET_DEVICE`, `HEADSET_DEVICE_NAME`, `HEADSET_CODE` | as above | the key of a wired headset |
 | `HOMEKEY_METHOD` | `assistant` or `none` | `assistant`: a long press on Home starts Android's assistant, which Termux push to talk becomes |
 | `LONG_PRESS` | seconds, e.g. `0.4` | how long a key is held for a long press |
+| `APP_FREEZE` | `boox` or `none` | `boox`: the installer ends with the steps that keep Onyx's app freeze away from the Termux apps |
 
 Find the values as root in Termux: `getevent -pl` lists the input devices with their names, and `getevent -l` shows the
 code of a key while you press it.

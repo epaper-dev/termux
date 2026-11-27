@@ -4,16 +4,19 @@
 BRIDGE until the E-Ink app (hisense-a9/patching) and the Termux app do this themselves. It keeps a root `cat` on the input
 device of the side key alive and reads nothing else (keyreader.py). Device and key come from the device file
 (SIDEKEY_DEVICE or SIDEKEY_DEVICE_NAME, SIDEKEY_CODE); without one those of the Hisense A9: /dev/input/event2 (gpio-keys),
-scan code 766 = 0x2fe. Short and double presses are ignored: they stay with the E-Ink app. Set the long press of the E-Ink
-app to "Nothing", or its menu opens as well.
+scan code 766 = 0x2fe. With SIDEKEY_WAKE=yes the long press also wakes the device (`input keyevent KEYCODE_WAKEUP` as
+root). Short and double presses are ignored: they stay with the E-Ink app. Set the long press of the E-Ink app to
+"Nothing", or its menu opens as well.
 The key of a wired headset has a reader of its own: headset-ptt.
 
 Installed by `install.sh` when the side key is chosen (SIDEKEY=on in the rootbridge config) and started by
-`rootbridge start|attach`. Runs in Termux as the Termux user; root is only the `cat` (su). Log: ~/.cache/sidekey-ptt.log
+`rootbridge start|attach`. Runs in Termux as the Termux user; root is only the `cat` and the wake-up (su).
+Log: ~/.cache/sidekey-ptt.log
 Stop it:  pkill -f sidekey-ptt        (a stray `cat` ends with the next key press)
 Test hooks: SIDEKEY_CMD, SIDEKEY_PTT, SIDEKEY_LONG, SIDEKEY_ONCE, SIDEKEY_CACHE (see keyreader.py).
 """
 import os
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -30,11 +33,22 @@ class SideKey(keyreader.Reader):
         self.talking = True
         self.log("Langdruck: ptt start")
         self.ptt("start")
+        if (self.device or {}).get("SIDEKEY_WAKE") == "yes":
+            self.wake()
 
     def on_release(self, proc, was_long):
         if self.talking:
             self.log("losgelassen: ptt stop")
         self.on_end()
+
+    def wake(self):
+        try:
+            r = subprocess.run(["su", "-c", "input keyevent KEYCODE_WAKEUP"], stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            if r.returncode != 0:
+                self.log("Aufwecken: su Exit %d" % r.returncode)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            self.log("Aufwecken: %s" % e)
 
     def on_end(self):
         if self.talking:

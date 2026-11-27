@@ -5,6 +5,11 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **Device file of the Onyx Boox Max Lumi** (`devices/onyx-maxlumi.conf`): the hardware Home button talks while it is held
+  and wakes the device (new key `SIDEKEY_WAKE`), the key of a USB-C headset toggles. The headset reader takes its device
+  also on kernels before 4.5 (without `UI_DEV_SETUP` the virtual device is set up the old way). With `APP_FREEZE=boox` the
+  installer ends with the manual step that keeps Onyx's app freeze away from the Termux apps (also in the READMEs).
+  Tests: `tests/test_sidekey.py`, `tests/test_device.sh`
 * **The effort of each request, chosen automatically.** `--effort-auto effort-router` (off by default, asked once with Claude
   Code, stored as `EFFORT_AUTO`) declares the plugin effort-router (github.com/cfitzgerald-pd/effort-router, pinned to
   commit bd3496ca) in the managed settings, through a marketplace of the type `settings`; nothing of it is copied. Claude

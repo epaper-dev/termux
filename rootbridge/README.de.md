@@ -65,6 +65,10 @@ Die Termux:API dieses Repositorys, `api/`, zeigt sie in der Sprache des Telefons
 
 * Android mit Termux (F-Droid/GitHub-Build), `proot-distro` mit Ubuntu-Gast, Claude Code im Gast installiert (`install.sh` richtet fehlende Teile davon und die Pakete unten selbst ein)
 * funktionierendes `su` (Magisk, KernelSU ...) – ohne `su` gehen nur die Login-Funktionen
+* Onyx Boox: in der App-Übersicht unter App-Management → App-Freeze die Schalter für **Termux** und **Termux:API** auf Off
+  stellen (auch Termux:Boot und Termux:Widget, falls benutzt). Eine eingefrorene Termux:API zeigt keine Root-Rückfrage, jede
+  Anfrage wird dann abgelehnt; nach einer Neuinstallation einer dieser Apps erneut prüfen. Der Schalter ist unabhängig von
+  der Erlaubnis, im Hintergrund zu laufen.
 * Termux-Pakete: `tmux proot-distro python coreutils util-linux`, optional `termux-api` (+ Termux:API-App) für die Zwischenablage
 * Gast: `python3`, coreutils mit `sha256sum`, `od`, `timeout`, `shellcheck` (für die Shell-Skripte der Agenten; `install.sh`
   installiert es per `apt`)

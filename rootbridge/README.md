@@ -67,6 +67,9 @@ The Termux:API of this repository, `api/`, shows them in the language of the pho
 * Android with Termux (F-Droid/GitHub build), `proot-distro` with an Ubuntu guest, Claude Code installed in the guest
   (`curl -fsSL https://claude.ai/install.sh | bash`); `install.sh` sets up what is missing of this and of the packages below
 * A working `su` (Magisk, KernelSU, ...) — without it, only the login features work
+* Onyx Boox: in the app overview, under App Management → App Freeze, switch **Termux** and **Termux:API** off (also
+  Termux:Boot and Termux:Widget if you use them). A frozen Termux:API shows no root request, so every request is refused;
+  check again after reinstalling one of these apps. This switch is separate from the permission to run in the background.
 * Termux packages: `tmux proot-distro python coreutils util-linux termux-api` and the Termux:API app: the dialog that asks
   you for every root request (without it every request is refused), the browser hand-off and the clipboard
 * Guest packages: `python3` (the guest's own, for the hooks), coreutils with `sha256sum`, `od`, `timeout`, `shellcheck` (for the

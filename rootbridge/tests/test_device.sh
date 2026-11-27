@@ -62,6 +62,7 @@ check "A9: Home und Headset weiter gefragt"          "1 1" "$(count 'Langer Druc
 check "A9: Antworten gespeichert"                    "off off off" "$(cget SIDEKEY) $(cget HOMEKEY) $(cget HEADSET)"
 check "A9: Leistung genannt"                         1 "$(count 'Leistung: 8 Kerne')"
 check "A9: Vorlesen ohne Einwand"                    "0 on" "$(count 'Vorlesen auf diesem Gerät') $(cget SPEAK)"
+check "A9: kein Hinweis zum App-Freeze"              0 "$(count 'App-Freeze')"
 
 before="$(cksum < "$DEV")"
 dinst ''
@@ -95,6 +96,12 @@ printf '%s\n' ro.product.manufacturer=Onyx ro.product.model="MaxLumi 2" > "$T/pr
 dinst $'\nn\nn\nn\n'
 check "Unbekannt: Hinweis auf die Datei"             1 "$(count 'Gerät: Onyx MaxLumi 2 (keine Gerätedatei; eigene anlegen: devices/onyx-maxlumi-2.conf')"
 check "Unbekannt: nichts gespeichert"                "" "$(cget DEVICE)"
+
+# --- the Boox: its device file asks for the manual step against the app freeze
+H="$T/home-maxlumi"; mkdir -p "$H"
+printf '%s\n' ro.product.manufacturer=ONYX ro.product.model=MaxLumi > "$T/props"
+dinst '' --device onyx-maxlumi
+check "Boox: Hinweis zum App-Freeze"                 1 "$(count 'App-Management -> App-Freeze')"
 
 # --- a device file that lacks keys, and a line that does not fit (a copy of the repository with a device file of its own)
 cp -r "$ROOT" "$T/repo"
@@ -152,9 +159,9 @@ H="$T/home-name"; mkdir -p "$H"; a9_props
 ptyinst $'\n\n'   # device: Enter, name: Enter
 check "Name: NAME der Gerätedatei vorgeschlagen"     "1 hisense-a9" "$(count 'Gerätename \[hisense-a9\]') $(cget REMOTE_NAME)"
 H="$T/home-name2"; mkdir -p "$H"
-printf '%s\n' ro.product.manufacturer=Onyx ro.product.model=MaxLumi > "$T/props"
+printf '%s\n' ro.product.manufacturer=Onyx ro.product.model="MaxLumi 2" > "$T/props"
 ptyinst $'\n'   # no device file: name: Enter
-check "Name: ohne Gerätedatei die Kennung"           "1 onyx-maxlumi" "$(count 'Gerätename \[onyx-maxlumi\]') $(cget REMOTE_NAME)"
+check "Name: ohne Gerätedatei die Kennung"           "1 onyx-maxlumi-2" "$(count 'Gerätename \[onyx-maxlumi-2\]') $(cget REMOTE_NAME)"
 
 # --- an option for a device file that does not exist: nothing written
 H="$T/home-bad"; mkdir -p "$H"

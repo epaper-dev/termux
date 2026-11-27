@@ -69,6 +69,10 @@ La Termux:API de este repositorio, `api/`, los muestra en el idioma del teléfon
 * Android con Termux (compilación de F-Droid/GitHub), `proot-distro` con un invitado Ubuntu y Claude Code instalado en
   el invitado (`curl -fsSL https://claude.ai/install.sh | bash`); `install.sh` prepara lo que falte de esto y de los paquetes de abajo
 * Un `su` que funcione (Magisk, KernelSU, ...); sin él, solo funcionan las funciones de inicio de sesión
+* Onyx Boox: en la vista de apps, en App Management → App Freeze, pon en Off los interruptores de **Termux** y **Termux:API**
+  (también Termux:Boot y Termux:Widget si los usas). Con Termux:API congelada no aparece la solicitud de root y toda
+  solicitud se rechaza; compruébalo de nuevo tras reinstalar una de estas apps. El interruptor es independiente del
+  permiso para ejecutarse en segundo plano.
 * Paquetes de Termux: `tmux proot-distro python coreutils util-linux`; opcional `termux-api` (+ la app Termux:API)
   para el portapapeles
 * Paquetes del invitado: `python3` (hooks), coreutils con `sha256sum`, `od`, `timeout`, `shellcheck` (para los scripts de shell de

@@ -9,12 +9,14 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIDEKEY = os.path.join(HERE, "..", "termux", "bin", "sidekey-ptt")
 HEADSET_READER = os.path.join(HERE, "..", "termux", "bin", "headset-ptt")
 KEYREADER = os.path.join(HERE, "..", "termux", "lib", "keyreader.py")
 A9 = os.path.join(HERE, "..", "devices", "hisense-hlte556n.conf")
+BOOX = os.path.join(HERE, "..", "devices", "onyx-maxlumi.conf")
 READERS = {"side": (SIDEKEY, "SIDEKEY"), "headset": (HEADSET_READER, "HEADSET")}
 
 # writes the events of argv ("code:value:pause", ...) as struct input_event, each followed by a SYN, then waits a bit;
@@ -134,6 +136,29 @@ class TestKeys(ReaderTest):
         self.device("HEADSET_DEVICE_NAME=Jack\nHEADSET_CODE=%d\n" % VOLUME)
         self.press("%d:1:0.05" % VOLUME, "%d:0:0" % VOLUME, reader="headset")
         self.assertEqual(self.passed_on(), ["%d 1" % VOLUME, "%d 0" % VOLUME])
+
+    def woken(self, text):
+        """The su calls of the side key reader for a long press with this device file."""
+        bindir = os.path.join(self.tmp.name, "bin")
+        os.makedirs(bindir, exist_ok=True)
+        calls = os.path.join(self.tmp.name, "su.log")
+        with open(os.path.join(bindir, "su"), "w") as fh:
+            fh.write('#!/bin/sh\necho "$2" >> %s\n' % calls)
+        os.chmod(os.path.join(bindir, "su"), 0o755)
+        self.device(text)
+        with mock.patch.dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"]):
+            self.assertEqual(self.press("158:1:0.5", "158:0:0"), ["start", "stop"])
+        try:
+            with open(calls) as fh:
+                return fh.read().splitlines()
+        except FileNotFoundError:
+            return []
+
+    def test_a_long_press_wakes_the_device_when_the_device_file_says_so(self):
+        self.assertEqual(self.woken("SIDEKEY_CODE=158\nSIDEKEY_WAKE=yes\n"), ["input keyevent KEYCODE_WAKEUP"])
+
+    def test_without_sidekey_wake_nothing_is_woken(self):
+        self.assertEqual(self.woken("SIDEKEY_CODE=158\n"), [])
 
     def test_the_stream_ends_while_talking(self):
         self.assertEqual(self.press("%d:1:0.5" % SIDE), ["start", "stop"])
@@ -282,6 +307,13 @@ class TestDeviceFile(unittest.TestCase):
         self.assertIn("SIDEKEY_CODE=766", out)
         self.assertIn("HEADSET_DEVICE_NAME=Button Jack", out)
         self.assertIn("LABEL=Hisense A9", out)
+
+    def test_the_boox_file_is_valid(self):
+        with open(BOOX) as src:
+            out, err = self.check(src.read())
+        self.assertEqual(err, "")
+        self.assertIn("SIDEKEY_WAKE=yes", out)
+        self.assertIn("HEADSET_CODE=164", out)
 
     def test_unknown_keys_and_values_that_do_not_fit_are_left_out(self):
         out, err = self.check("SIDEKEY_CODE=766\nSIDEKEY_DEVICE=/dev/input/../../etc/passwd\nEVIL=$(reboot)\n"
