@@ -362,8 +362,9 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
 * **Wer prüft die Commits.** `--reviewers codex|opencode|codex,opencode` (gespeichert als `REVIEWERS`) wählt, wer jeden
   `git commit` von Claude Code prüft; bei beiden laufen die Prüfungen gleichzeitig, und beide müssen `ALLOW` sagen. Sind
   Claude Code, Codex und OpenCode installiert, fragt der Installer einmal. Ohne Codex prüft OpenCode. OpenCode prüft mit einem
-  eigenen Agenten, der nur lesen und `git diff`, `git show`, `git log` und `git status` ausführen darf; Konfiguration und
-  Plugins des geprüften Repositorys lädt es dabei nicht. Das Modell wählt OpenCodes Konfiguration, oder
+  eigenen Agenten ohne Shell, der nur Dateien des Repositorys und den temporären Ordner lesen darf, in den der Hook die
+  Diffs (staged und unstaged) legt.
+  Konfiguration und Plugins des geprüften Repositorys lädt es dabei nicht. Das Modell wählt OpenCodes Konfiguration, oder
   `CODEX_PRECOMMIT_OPENCODE_MODEL=anbieter/modell`. Fail-closed wie bei Codex: Ohne Anmeldung blockiert die Prüfung.
   Notausgang: `rootbridge review-off` / `review-on` (die alten Namen `codex-off` / `codex-on` gehen weiter).
 * **Daten.** Der Diff und was OpenCode im Arbeitsbaum liest, gehen an den Anbieter, bei dem du OpenCode angemeldet hast.

@@ -331,8 +331,8 @@ out again). It gets a Termux window and tmux session of its own, `ubuntu-opencod
 * **Who reviews the commits.** `--reviewers codex|opencode|codex,opencode` (stored as `REVIEWERS`) chooses who reviews every
   `git commit` of Claude Code; with both, the reviews run at the same time and both must say `ALLOW`. With Claude Code,
   Codex and OpenCode installed the installer asks once. Without Codex, OpenCode reviews. OpenCode reviews with an agent of
-  its own that may only read and run `git diff`, `git show`, `git log` and `git status`; it loads no config or plugins of
-  the repository under review. The model comes from OpenCode's config, or `CODEX_PRECOMMIT_OPENCODE_MODEL=provider/model`.
+  its own that has no shell and may only read files of the repository and the temporary folder where the hook puts the
+  staged and unstaged diff. It loads no config or plugins of the repository under review. The model comes from OpenCode's config, or `CODEX_PRECOMMIT_OPENCODE_MODEL=provider/model`.
   Fail-closed as with Codex: without a login the review blocks. Emergency switch: `rootbridge review-off` / `review-on`
   (the old names `codex-off` / `codex-on` still work).
 * **Data.** The diff and whatever OpenCode reads in the working tree go to the provider you logged OpenCode in with.

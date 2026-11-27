@@ -51,6 +51,8 @@ printf '%s' "${@: -1}" > "$FAKE_OC_LOG.prompt"
 [ -z "${FAKE_OC_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
 PYTHON_BIN -I -c 'import json, os
 json.dump({k: v for k, v in os.environ.items() if k.startswith("OPENCODE_")}, open(os.environ["FAKE_OC_LOG"] + ".env", "w"))
+diffs = [line[2:] for line in open(os.environ["FAKE_OC_LOG"] + ".prompt") if line.startswith("- /")]
+open(os.environ["FAKE_OC_LOG"] + ".diff", "w").write("".join(open(p.split()[0]).read() for p in diffs))
 for event in ({"type": "text", "part": {"text": "Let me look at the diff."}}, {"type": "tool_use", "part": {"tool": "bash"}},
               {"type": "text", "part": {"text": os.environ.get("FAKE_OC_REPLY", "")}}):
     print(json.dumps(event))'
@@ -441,15 +443,20 @@ class HookTest(unittest.TestCase):
         [call] = self.opencode_calls()
         self.assertIn("run --format json --agent rootbridge-review --dir " + self.repo, call)
         with open(self.oc_log + ".prompt") as fh:
-            self.assertIn("<compact_output_contract>", fh.read())
+            prompt = fh.read()
+        self.assertIn("<compact_output_contract>", prompt)
+        with open(self.oc_log + ".diff") as fh:                           # no shell: the hook hands over the diffs
+            self.assertTrue(fh.read().startswith("diff --git "))
+        diff_dir = os.path.dirname(prompt.split("\n- ")[-2])
+        self.assertFalse(os.path.exists(diff_dir))                      # gone after the review
         self.assertIn("small", r.stderr)
         with open(self.oc_log + ".env") as fh:
             env = json.load(fh)
         self.assertEqual(env["OPENCODE_DISABLE_PROJECT_CONFIG"], "1")   # the repository under review brings no config
         self.assertEqual(env["OPENCODE_PURE"], "1")                     # and no plugins
         agent = json.loads(env["OPENCODE_CONFIG_CONTENT"])["agent"]["rootbridge-review"]["permission"]
-        self.assertEqual((agent["edit"], agent["task"], agent["bash"]["*"]), ("deny", "deny", "deny"))
-        self.assertEqual(list(agent["bash"])[-4:], ["*>*", "*--output*", "*--ext-diff*", "*--no-index*"])   # last wins
+        self.assertEqual([agent[k] for k in ("edit", "task", "bash")], ["deny"] * 3)
+        self.assertEqual(list(agent["external_directory"].items()), [("*", "deny"), (diff_dir + "/*", "allow")])
         self.assertEqual(len(self.state_files()), 1)
 
     def test_an_opencode_block_blocks_and_names_opencode(self):
@@ -499,6 +506,31 @@ class HookTest(unittest.TestCase):
             fh.write("WORKDIR=/root/work\n")
         self.assertEqual(self.run_hook().returncode, 0)
         self.assertEqual((self.node_calls(), self.opencode_calls()), (1, []))
+
+    def test_another_choice_of_reviewers_reviews_the_same_state_again(self):
+        self.reviewers("codex")
+        self.assertEqual(self.run_hook().returncode, 0)
+        self.reviewers("codex,opencode")
+        r = self.run_hook(FAKE_OC_REPLY="BLOCK: no\n- [high] a.py:1 - x")
+        self.assertEqual(r.returncode, 2)
+        self.assertEqual((self.node_calls(), len(self.opencode_calls())), (2, 1))
+
+    def test_binary_content_is_left_out_of_the_diffs(self):
+        diff = (b"diff --git a/x b/x\nGIT binary patch\nliteral 3\nKcmZQzWMT#Y01f~L\n\n"
+                b"diff --git a/y b/y\n+text\n")
+        prompt = load_hook().with_diff_files("P", [diff, b""], self.tmp)
+        with open(os.path.join(self.tmp, "staged.diff"), "rb") as fh:
+            self.assertEqual(fh.read(), b"diff --git a/x b/x\n(binary content left out)\ndiff --git a/y b/y\n+text\n")
+        self.assertIn("unstaged.diff (empty)", prompt)
+
+    def test_a_long_line_of_a_diff_stays_readable(self):
+        # OpenCode's read tool cuts a line after 2000 characters
+        line = "+" + "a" * 4500 + "END"
+        load_hook().with_diff_files("P", [(line + "\n").encode(), b""], self.tmp)
+        with open(os.path.join(self.tmp, "staged.diff"), encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+        self.assertTrue(all(len(x) <= 1002 for x in lines))
+        self.assertEqual("".join([lines[0]] + [x.removeprefix("~ ") for x in lines[1:]]), line)
 
     def test_both_are_named_in_the_sentence(self):
         self.reviewers("codex,opencode")
