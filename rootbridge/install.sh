@@ -9,7 +9,8 @@
 #                   [--model NAME|none] [--claude | --no-claude] [--codex | --no-codex]
 #                   [--codex-update 6h|<N>h|daily|always|off | --no-codex-update] [--codex-bypass | --no-codex-bypass]
 #                   [--opencode | --no-opencode] [--opencode-update 6h|<N>h|daily|always|off | --no-opencode-update]
-#                   [--reviewers codex|opencode|codex,opencode] [--guidelines | --no-guidelines]
+#                   [--reviewers codex|opencode|codex,opencode] [--effort-auto effort-router|off | --no-effort-auto]
+#                   [--guidelines | --no-guidelines]
 #                   [--voice | --no-voice] [--speak | --no-speak] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
 #                   [--headset | --no-headset] [--phantom-killer-off | --phantom-killer-on] [--language de|en]
 #                   [--device ID|none] [--distro ubuntu|debian]
@@ -63,6 +64,10 @@
 # --reviewers codex|opencode|codex,opencode: who reviews every `git commit` of Claude Code (with both, each one must say
 #   ALLOW). Asked once when Claude Code, Codex and OpenCode are all installed, stored as REVIEWERS; default codex. Only
 #   tools of the installation review: without Codex it is OpenCode. Emergency switch: `rootbridge review-off`.
+# --effort-auto effort-router|off / --no-effort-auto: Claude Code picks the reasoning effort of each request (off by default;
+#   needs Claude Code). effort-router (github.com/cfitzgerald-pd/effort-router, pinned to one commit, loaded by Claude Code
+#   as a plugin; nothing of it is copied): Claude classifies each request and raises or lowers the effort for that turn, at
+#   about 1-3 s more per request. Asked once on a terminal and stored (EFFORT_AUTO).
 # --guidelines / --no-guidelines: code quality guidelines for the agents, on by default: a marked block in the guest's
 #   ~/.claude/CLAUDE.md (with Claude Code), ~/.codex/AGENTS.md (with Codex) and ~/.config/opencode/AGENTS.md (with
 #   OpenCode); your own text in those files stays and
@@ -160,6 +165,7 @@ CODEX_UPD_MODE=""; CODEX_UPD_SET=0
 OPENCODE_UPD_MODE=""; OPENCODE_UPD_SET=0
 USE_OPENCODE=no; USE_OPENCODE_SET=0   # OpenCode, the third tool (off unless chosen)
 REVIEWERS=""; REVIEWERS_SET=0         # who reviews the commits of Claude Code: codex | opencode | codex,opencode
+EFFORT_AUTO=off; EFFORT_AUTO_SET=0    # the effort of each request chosen automatically: off | effort-router
 USE_CLAUDE=yes; USE_CLAUDE_SET=0; USE_CODEX=yes; USE_CODEX_SET=0   # which tools: yes | no
 USE_VOICE=yes; USE_VOICE_SET=0; USE_SIDEKEY=no; USE_SIDEKEY_SET=0   # voice dictation / side key as push to talk
 USE_SPEAK=yes; USE_SPEAK_SET=0     # reading Claude's answers aloud
@@ -215,6 +221,11 @@ while [ $# -gt 0 ]; do
                 *) echo "--reviewers: ungültiger Wert '$2' (erlaubt: codex, opencode, codex,opencode)" >&2; exit 2 ;;
             esac
             REVIEWERS_SET=1; shift ;;
+        --effort-auto)
+            [ $# -ge 2 ] || { echo "--effort-auto braucht effort-router oder off" >&2; exit 2; }
+            case "$2" in effort-router|off) EFFORT_AUTO="$2" ;; *) echo "--effort-auto: ungültiger Wert '$2' (erlaubt: effort-router, off)" >&2; exit 2 ;; esac
+            EFFORT_AUTO_SET=1; shift ;;
+        --no-effort-auto) EFFORT_AUTO=off; EFFORT_AUTO_SET=1 ;;
         --claude) USE_CLAUDE=yes; USE_CLAUDE_SET=1 ;;
         --no-claude) USE_CLAUDE=no; USE_CLAUDE_SET=1 ;;
         --codex) USE_CODEX=yes; USE_CODEX_SET=1 ;;
@@ -395,6 +406,7 @@ AUTOSTART_DELAY=3
 # TOOL_OPENCODE=off     # on | off: OpenCode is part of this installation; set with install.sh --opencode / --no-opencode
 # OPENCODE_UPDATE=6h    # opencode upgrade at session start: same values; set with install.sh --opencode-update / --no-opencode-update
 # REVIEWERS=codex       # codex | opencode | codex,opencode: who reviews the commits of Claude Code; install.sh --reviewers
+# EFFORT_AUTO=off       # off | effort-router: the effort of each request chosen automatically; install.sh --effort-auto
 # GUIDELINES=on         # on | off: code quality block in the guest's CLAUDE.md / AGENTS.md; set with install.sh --guidelines / --no-guidelines
 # CODEX_BYPASS=on       # on | off: Codex without its own sandbox (CODEX_ARGS in the guest config); set with install.sh --codex-bypass / --no-codex-bypass
 # VOICE=on              # on | off: voice dictation for Claude Code (PulseAudio, microphone); set with install.sh --voice / --no-voice
@@ -604,6 +616,17 @@ if [ "$REVIEWERS_SET" != 1 ] && [ -z "$REVIEWERS" ] && [ "$USE_CLAUDE$USE_CODEX$
     IFS= read -r v || echo
     case "$v" in o|O|opencode|OpenCode) REVIEWERS=opencode ;; b|B|beide|Beide) REVIEWERS=codex,opencode ;; *) REVIEWERS=codex ;; esac
     REVIEWERS_SET=1
+fi
+# The automatic effort: the option, else the stored choice, else asked once (default no). Only with Claude Code.
+if [ "$EFFORT_AUTO_SET" != 1 ]; then
+    v="$(cfg_get EFFORT_AUTO)"
+    case "$v" in effort-router|off) EFFORT_AUTO="$v"; [ "$v" = off ] || say "  Effort-Wahl: $v (aus der Konfig)" ;; esac
+fi
+if [ "$USE_CLAUDE" = yes ] && [ "$EFFORT_AUTO_SET" != 1 ] && [ -z "$(cfg_get EFFORT_AUTO)" ]; then
+    v=no
+    ask_key v EFFORT_AUTO_SET EFFORT_AUTO no \
+        "Effort automatisch wählen (effort-router: Claude stuft jede Anfrage selbst ein und denkt bei schweren länger, bei leichten kürzer; je Anfrage 1-3 s mehr)?"
+    [ "$v" = yes ] && EFFORT_AUTO=effort-router
 fi
 # stored at the end, once the chosen tools are installed: the launchers (rootbridge attach) go by it, and a run that fails
 # half way must not switch them to a tool that is not there yet (the question then comes again)
@@ -1380,6 +1403,7 @@ if [ "$DO_GUEST" = 1 ]; then
     fi
     GUEST_ARGS=(--src /var/tmp/termux-rootbridge-install --autonomous "$AUTONOMOUS" --claude "$USE_CLAUDE" --codex "$USE_CODEX" --opencode "$USE_OPENCODE" --voice "$VOICE_ON" --speak "$SPEAK_ON" --language "$LANGUAGE" --codex-bypass "$USE_BYPASS" --guidelines "$USE_GUIDE")
     if [ -n "$REVIEWERS" ]; then GUEST_ARGS+=(--reviewers "$REVIEWERS"); fi
+    GUEST_ARGS+=(--effort-auto "$EFFORT_AUTO")
     if [ -n "$REMOTE_NAME" ]; then GUEST_ARGS+=(--remote-name "$REMOTE_NAME"); fi
     if [ "$LANGUAGE_SET" = 1 ]; then GUEST_ARGS+=(--set-language); fi   # chosen in this run: Claude Code's setting follows
     if [ "$MODEL_SET" = 1 ]; then GUEST_ARGS+=(--model "$MODEL"); fi
@@ -1395,7 +1419,7 @@ if [ "$DO_GUEST" = 1 ]; then
         key="${line%%=*}"; val="${line#*=}"
         val="${val%\"}"; val="${val#\"}"; val="${val%\'}"; val="${val#\'}"
         case "$key" in
-            APT_UPGRADE|CLAUDE_UPDATE|CODEX_UPDATE|OPENCODE_UPDATE|CODEX_BYPASS|DEVICE|GUIDELINES|LANGUAGE|PHANTOM_KILLER|REMOTE_NAME|REVIEWERS|SPEAK_SHORT)
+            APT_UPGRADE|CLAUDE_UPDATE|CODEX_UPDATE|OPENCODE_UPDATE|CODEX_BYPASS|DEVICE|GUIDELINES|LANGUAGE|PHANTOM_KILLER|REMOTE_NAME|REVIEWERS|EFFORT_AUTO|SPEAK_SHORT)
                 [[ "$val" =~ ^[A-Za-z0-9_.:@,+-]*$ ]] ;;
             *)
                 probe="$(mktemp "$STAGE_DIR/probe.XXXXXX")"   # in the private folder, not in TMPDIR
@@ -1595,6 +1619,9 @@ if [ "$USE_OPENCODE_SET" = 1 ]; then
 fi
 if [ "$REVIEWERS_SET" = 1 ]; then
     cfg_set REVIEWERS "$REVIEWERS" "Prüfer der Commits von Claude Code: $REVIEWERS"
+fi
+if [ "$EFFORT_AUTO_SET" = 1 ]; then
+    cfg_set EFFORT_AUTO "$EFFORT_AUTO" "Effort-Wahl: $EFFORT_AUTO"
 fi
 
 # start the daemon with the new code: without it nothing reads aloud and no root request gets through until the next session

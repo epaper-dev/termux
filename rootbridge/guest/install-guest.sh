@@ -5,7 +5,7 @@
 #   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
 #                    [--theme NAME] [--model NAME|none] [--apt-upgrade 6h|<N>h|daily|always|off]
 #                    [--claude yes|no] [--codex yes|no] [--codex-bypass yes|no] [--guidelines yes|no] [--voice yes|no]
-#                    [--opencode yes|no] [--reviewers codex|opencode|codex,opencode]
+#                    [--opencode yes|no] [--reviewers codex|opencode|codex,opencode] [--effort-auto effort-router|off]
 #                    [--claude-update M] [--codex-update M] [--opencode-update M] [--uninstall]
 #
 #   --claude yes|no   Claude Code is part of the installation (default yes). no = Codex only: no Claude Code
@@ -28,6 +28,11 @@
 #                     in ~/.claude/CLAUDE.md (with Claude Code), ~/.codex/AGENTS.md (with Codex) and
 #                     ~/.config/opencode/AGENTS.md (with OpenCode), text from templates/. Your
 #                     own text in those files stays; no removes the blocks again. Stored as GUIDELINES.
+#   --effort-auto effort-router|off  the reasoning effort of each request chosen automatically (default off; with
+#                     Claude Code): effort-router, a plugin of github.com/cfitzgerald-pd/effort-router pinned to one commit,
+#                     declared in the managed settings (an inline marketplace; nothing of it is copied). Claude classifies
+#                     each request and invokes one of its effort-* skills. Stored as EFFORT_AUTO; without the option the
+#                     stored value stays.
 #   --codex-update M  CODEX_UPDATE in /etc/termux-rootbridge.conf: `codex update` at the
 #                     start of a session (rootbridge-update). Same values and rules as --claude-update.
 #   --opencode-update M  OPENCODE_UPDATE: `opencode upgrade` at the start of a session, the same way.
@@ -84,7 +89,7 @@ APT_MODE=""; APT_MODE_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
 OPENCODE_UPD_MODE=""; OPENCODE_UPD_SET=0
-OPENCODE_ON=""; REVIEWERS=""
+OPENCODE_ON=""; REVIEWERS=""; EFFORT_AUTO=""
 CLAUDE_ON=""; CODEX_ON=""; VOICE_ON=yes; SPEAK_ON=""; BYPASS_ON=""; GUIDE_ON=""
 LANGUAGE=""; LANGUAGE_SET=0   # de | en: Claude Code's "language", the texts in CLAUDE.md, the voice that reads aloud
 UNINSTALL=0
@@ -120,6 +125,9 @@ while [ $# -gt 0 ]; do
         --reviewers)
             [ $# -ge 2 ] || { echo "--reviewers braucht codex, opencode oder codex,opencode" >&2; exit 2; }
             REVIEWERS="$2"; shift 2 ;;
+        --effort-auto)
+            [ $# -ge 2 ] || { echo "--effort-auto braucht effort-router oder off" >&2; exit 2; }
+            EFFORT_AUTO="$2"; shift 2 ;;
         --claude)
             [ $# -ge 2 ] || { echo "--claude braucht yes oder no" >&2; exit 2; }
             CLAUDE_ON="$2"; shift 2 ;;
@@ -183,6 +191,10 @@ case "$REVIEWERS" in
     opencode,codex) REVIEWERS=codex,opencode ;;
     *) echo "--reviewers: ungültiger Wert '$REVIEWERS' (erlaubt: codex, opencode, codex,opencode)" >&2; exit 2 ;;
 esac
+case "$EFFORT_AUTO" in
+    ""|effort-router|off) ;;
+    *) echo "--effort-auto: ungültiger Wert '$EFFORT_AUTO' (erlaubt: effort-router, off)" >&2; exit 2 ;;
+esac
 
 case "$AUTONOMOUS" in
     yes|no|ask) ;;
@@ -227,6 +239,9 @@ if [ -z "$OPENCODE_ON" ]; then if [ "$(stored TOOL_OPENCODE)" = on ]; then OPENC
 # installation, and when none of them is, Codex or else OpenCode. Empty: no tool to review with (no hook).
 [ -n "$REVIEWERS" ] || REVIEWERS="$(stored REVIEWERS)"
 REVIEW_BY=""
+# the automatic effort: the option, else the stored EFFORT_AUTO, else off
+[ -n "$EFFORT_AUTO" ] || EFFORT_AUTO="$(stored EFFORT_AUTO)"
+[ "$EFFORT_AUTO" = effort-router ] || EFFORT_AUTO=off
 case ",${REVIEWERS:-codex}," in *,codex,*) [ "$CODEX_ON" = no ] || REVIEW_BY=codex ;; esac
 case ",${REVIEWERS:-codex}," in *,opencode,*) [ "$OPENCODE_ON" = no ] || REVIEW_BY="${REVIEW_BY:+$REVIEW_BY,}opencode" ;; esac
 if [ -z "$REVIEW_BY" ]; then
@@ -311,11 +326,12 @@ for event, entries in new.items():
     hooks[event] = hooks.get(event, []) + entries
 for event in [e for e, entries in hooks.items() if not entries]:
     del hooks[event]
-# These two declarations belong to the Codex review hook. Claude Code fetches the plugin at startup.
-# Removing the Codex template must also remove the declarations, while keeping other plugins/marketplaces.
-for key, owned in (("enabledPlugins", "codex@openai-codex"), ("extraKnownMarketplaces", "openai-codex")):
-    values = cur.get(key, {})
-    values.pop(owned, None)
+# The plugins of our templates (Codex, effort-router) and their marketplaces. Claude Code fetches them at startup.
+# Removing a template must also remove its declarations, while keeping other plugins/marketplaces.
+OWNED = {"enabledPlugins": ("codex@openai-codex", "effort-router@rootbridge-effort"),
+         "extraKnownMarketplaces": ("openai-codex", "rootbridge-effort")}
+for key, owned in OWNED.items():
+    values = {k: v for k, v in cur.get(key, {}).items() if k not in owned}
     values.update(plugins[key])
     if values:
         cur[key] = values
@@ -435,9 +451,10 @@ for event in list(cur.get("hooks", {})):
 cur["hooks"] = cur.get("hooks") or {}
 if not cur["hooks"]:
     cur.pop("hooks")
-for key, owned in (("enabledPlugins", "codex@openai-codex"), ("extraKnownMarketplaces", "openai-codex")):
+for key, owned in {"enabledPlugins": ("codex@openai-codex", "effort-router@rootbridge-effort"),
+                   "extraKnownMarketplaces": ("openai-codex", "rootbridge-effort")}.items():
     if key in cur:
-        cur[key].pop(owned, None)
+        cur[key] = {k: v for k, v in cur[key].items() if k not in owned}
         if not cur[key]:
             del cur[key]
 ask = [r for r in cur.get("permissions", {}).get("ask", [])
@@ -634,6 +651,11 @@ if [ -n "$REVIEW_BY" ] && [ "$(stored REVIEWERS)" != "$REVIEW_BY" ]; then
     grep -q '^REVIEWERS=' "$ROOT$CONF" || printf 'REVIEWERS=\n' >> "$ROOT$CONF"
     conf_set REVIEWERS "$REVIEW_BY" "REVIEWERS=$REVIEW_BY (prüfen die Commits von Claude Code)"
 fi
+# EFFORT_AUTO: off or effort-router
+if [ "$(stored EFFORT_AUTO)" != "$EFFORT_AUTO" ]; then
+    grep -q '^EFFORT_AUTO=' "$ROOT$CONF" || printf 'EFFORT_AUTO=\n' >> "$ROOT$CONF"
+    conf_set EFFORT_AUTO "$EFFORT_AUTO" "EFFORT_AUTO=$EFFORT_AUTO"
+fi
 # Codex without its sandbox (--codex-bypass). The choice is stored as CODEX_BYPASS (on|off) when it was given.
 if [ "$BYPASS_SET" = 1 ]; then
     grep -q '^CODEX_BYPASS=' "$ROOT$CONF" || printf 'CODEX_BYPASS=%s\n' "$(onoff "$BYPASS_CHOICE")" >> "$ROOT$CONF"
@@ -808,6 +830,7 @@ if [ "$CLAUDE_ON" = yes ]; then
     templates=("$SRC/claude/managed-settings.template.json")
     [ "$CODEX_ON" = yes ] && templates+=("$SRC/claude/managed-settings.codex.template.json")
     [ -n "$REVIEW_BY" ] && templates+=("$SRC/claude/managed-settings.review.template.json")
+    [ "$EFFORT_AUTO" = effort-router ] && templates+=("$SRC/claude/managed-settings.effort.template.json")
     [ "$SPEAK_ON" = yes ] && templates+=("$SRC/claude/managed-settings.voice.template.json")
     mkdir -p "$ROOT$MANAGED_DIR"
     merge_managed "$ROOT$MANAGED" "$ROOT$MANAGED.new.$$" "$PYTHON" "$LIBDIR" "${templates[@]}"
@@ -818,6 +841,9 @@ if [ "$CLAUDE_ON" = yes ]; then
     fi
     if [ "$CODEX_ON" = yes ]; then
         say "  Codex-Plugin: Claude Code lädt codex@openai-codex beim Start automatisch (Netz nötig)."
+    fi
+    if [ "$EFFORT_AUTO" = effort-router ]; then
+        say "  Effort-Wahl: Claude Code lädt effort-router (fester Stand) beim Start automatisch (Netz nötig)."
     fi
     if [ "$SPEAK_ON" = yes ]; then
         say "  Vorlesen: Hook in den Managed Settings (an/aus in Termux: rootbridge voice speak on|off)"

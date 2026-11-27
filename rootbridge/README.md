@@ -337,6 +337,16 @@ out again). It gets a Termux window and tmux session of its own, `ubuntu-opencod
   (the old names `codex-off` / `codex-on` still work).
 * **Data.** The diff and whatever OpenCode reads in the working tree go to the provider you logged OpenCode in with.
 
+## Automatic effort
+
+`install.sh --effort-auto effort-router` (off by default; with Claude Code the installer asks once, stored as `EFFORT_AUTO`,
+`--no-effort-auto` turns it off again) lets Claude Code pick the effort of each request itself: low for a typo, high for a
+security review. Claude Code loads the plugin [effort-router](https://github.com/cfitzgerald-pd/effort-router), pinned to
+one commit, from the managed settings (a marketplace declared inline in the settings; nothing of it is in this repository).
+Claude classifies each request and invokes one of the skills `effort-low` to `effort-max`, which sets the effort for that
+turn. It costs about 1 to 3 s and a few tokens per request; the plugin logs the turns (`~/.claude/effort-router/usage`,
+report with the skill `effort-report`). It does not pick a model: Claude Code cannot switch it per request.
+
 ## Daily use
 
 | Command (Termux) | What it does |
@@ -484,7 +494,7 @@ Termux: `~/.config/termux-rootbridge/config` (parsed as data, never executed): `
 `ASK_TIMEOUT`, `GUEST_ISOLATE` (`on` / `off`), `SU_ARGS` (`-c` or `-mm -c`), `AUTOSTART_DELAY`, `REMOTE_NAME`, `APT_UPGRADE`, `CLAUDE_UPDATE`, `CODEX_UPDATE`, `TOOL_CLAUDE` and `TOOL_CODEX` (all read by `install.sh`).
 Guest: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (seconds for the
-upgrade, default 600), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `CODEX_UPDATE` (same values), `CODEX_ARGS` (extra arguments for Codex), `CODEX_PRECOMMIT` (`off` = no pre-commit review, set by `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` / `TOOL_OPENCODE` (`on` / `off`), `OPENCODE_UPDATE` (same values as `CODEX_UPDATE`), `OPENCODE_ARGS` (extra arguments for OpenCode), `REVIEWERS` (`codex`, `opencode` or `codex,opencode`), `NOFILE_LIMIT` (see below). `VOICE` / `SIDEKEY` (`on` / `off`). Termux config only: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`auto` / `hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), see `ptt help`.
+upgrade, default 600), `APT_HOLD` (packages held back from the upgrade), `CLAUDE_UPDATE` (`6h`, `<N>h`, `daily`, `always`, `off`), `CODEX_UPDATE` (same values), `CODEX_ARGS` (extra arguments for Codex), `CODEX_PRECOMMIT` (`off` = no pre-commit review, set by `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` / `TOOL_OPENCODE` (`on` / `off`), `OPENCODE_UPDATE` (same values as `CODEX_UPDATE`), `OPENCODE_ARGS` (extra arguments for OpenCode), `REVIEWERS` (`codex`, `opencode` or `codex,opencode`), `EFFORT_AUTO` (`off` or `effort-router`), `NOFILE_LIMIT` (see below). `VOICE` / `SIDEKEY` (`on` / `off`). Termux config only: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`auto` / `hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), see `ptt help`.
 
 `NOFILE_LIMIT` (default `2048`, `0` = leave the limit alone) is the file-descriptor limit Claude Code is started with.
 Claude Code closes every descriptor up to that limit after each fork, and under proot every `close()` is a trapped

@@ -5,6 +5,13 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **The effort of each request, chosen automatically.** `--effort-auto effort-router` (off by default, asked once with Claude
+  Code, stored as `EFFORT_AUTO`) declares the plugin effort-router (github.com/cfitzgerald-pd/effort-router, pinned to
+  commit bd3496ca) in the managed settings, through a marketplace of the type `settings`; nothing of it is copied. Claude
+  classifies each request and invokes one of its effort skills for the turn. Our plugin declarations (Codex, effort-router)
+  are now one list in the merge of the managed settings: switching one off removes only its own entries.
+  `rootbridge status` names it. A local classifier (s1-llm-auto-router) was measured on the Hisense A9 and left out for
+  now: 7.4 s to load, 420 MB, and German requests came out too easy. Test: `tests/test_effort.sh`
 * **OpenCode as a third tool, and a choice of who reviews the commits.** `--opencode` (off by default, asked once, stored as
   `TOOL_OPENCODE`) installs OpenCode with its official installer into `~/.opencode/bin`, with a session of its own
   (`ubuntu-opencode`, widget **OpenCode**, `opencode`), `opencode upgrade` in `rootbridge-update` (`OPENCODE_UPDATE`,

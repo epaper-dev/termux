@@ -48,7 +48,7 @@ dinst() {
     printf '%s' "$answers" | env HOME="$H" PREFIX="$P" PATH="$T/stubs:$PATH" ROOTBRIDGE_ALLOW_GUEST=1 BRIDGE_DIR="$H/.rootbridge" \
         ROOTBRIDGE_FORCE_INTERACTIVE="${TTY-1}" STUB_LOG="$LOG" RB_BACKUP_DIR="$T/backup" RB_STORAGE_CHECK="$T/storage" \
         bash "$INSTALL" --no-deps-check --no-migrate --no-boot --no-extra-keys --no-colors --autonomous no \
-        --claude --no-codex --no-opencode --phantom-killer-on --language de --no-voice --no-speak --remote-name x "$@" > "$T/install.log" 2>&1
+        --claude --no-codex --no-opencode --no-effort-auto --phantom-killer-on --language de --no-voice --no-speak --remote-name x "$@" > "$T/install.log" 2>&1
     IRC=$?
 }
 cget() { sed -n "s/^$1=//p" "$H/.config/termux-rootbridge/config" | tail -n 1; }
