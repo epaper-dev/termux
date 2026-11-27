@@ -5,6 +5,13 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **OpenCode 2.** `setup-guest.sh` installs OpenCode 2 (`opencode.ai/v2/install`) and replaces an OpenCode 1 with it;
+  `rootbridge-update` runs that installer again when opencode.ai names a newer version (`opencode upgrade` updates
+  nothing in a curl installation of OpenCode 2). The review hook tells the two apart by `opencode --version`: OpenCode 2
+  runs with `--standalone` (the shared background service would use its own config), its directory set through `PWD`
+  (it has no `--dir`), its permissions as ordered rules (`external_directory` denied at the end; OpenCode 2 allows it by
+  default), and the pieces of its answer joined per part. The snapshot also leaves out `opencode.json(c)`, `.opencode/`
+  and `.claude/` (OpenCode 2 has no `OPENCODE_PURE`).
 * **Device file of the Onyx Boox Max Lumi** (`devices/onyx-maxlumi.conf`): the hardware Home button talks while it is held
   and wakes the device (new key `SIDEKEY_WAKE`), the key of a USB-C headset toggles. The headset reader takes its device
   also on kernels before 4.5 (without `UI_DEV_SETUP` the virtual device is set up the old way). With `APP_FREEZE=boox` the

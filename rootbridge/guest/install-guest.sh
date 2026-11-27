@@ -35,7 +35,7 @@
 #                     stored value stays.
 #   --codex-update M  CODEX_UPDATE in /etc/termux-rootbridge.conf: `codex update` at the
 #                     start of a session (rootbridge-update). Same values and rules as --claude-update.
-#   --opencode-update M  OPENCODE_UPDATE: `opencode upgrade` at the start of a session, the same way.
+#   --opencode-update M  OPENCODE_UPDATE: the update of OpenCode 2 at the start of a session, the same way.
 #   --src DIR         directory that contains bin/, lib/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
 #   --voice yes|no    voice dictation for Claude Code (default yes; needs Claude Code): ~/.claude/keybindings.json gets
@@ -517,7 +517,7 @@ if [ "$CODEX_ON" = yes ]; then
 fi
 if [ "$OPENCODE_ON" = yes ]; then
     command -v opencode >/dev/null 2>&1 || [ -x "$ROOT$HOME_DIR/.opencode/bin/opencode" ] \
-        || say "  Hinweis: opencode nicht gefunden (curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path)"
+        || say "  Hinweis: opencode nicht gefunden (curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path)"
 fi
 say "  Programme: Claude Code $CLAUDE_ON, Codex $CODEX_ON, OpenCode $OPENCODE_ON"
 
