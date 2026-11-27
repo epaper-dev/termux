@@ -337,8 +337,10 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
 * **Quién revisa los commits.** `--reviewers codex|opencode|codex,opencode` (se guarda como `REVIEWERS`) elige quién revisa
   cada `git commit` de Claude Code; con los dos, las revisiones corren a la vez y ambos deben decir `ALLOW`. Con Claude Code,
   Codex y OpenCode instalados, el instalador pregunta una vez. Sin Codex revisa OpenCode. OpenCode revisa con un agente
-  propio sin shell que solo puede leer archivos del repositorio y la carpeta temporal donde el hook deja los diffs
-  (staged y unstaged). No carga
+  propio sin shell que solo lee una instantánea del hook: los diffs (staged y unstaged) y los archivos cambiados en su
+  estado nuevo. Los enlaces, los archivos de más de 1 MB y los archivos de instrucciones (`AGENTS.md`, `CLAUDE.md`,
+  `CONTEXT.md`, que OpenCode adjuntaría como instrucciones) quedan fuera, así un enlace del repositorio no puede enviar un
+  archivo de otro sitio al proveedor; sus cambios se revisan en el diff. No carga
   la configuración ni los plugins del repositorio revisado. El modelo viene de la configuración de OpenCode, o de
   `CODEX_PRECOMMIT_OPENCODE_MODEL=proveedor/modelo`. Falla cerrado como con Codex: sin inicio de sesión la revisión bloquea.
   Interruptor de emergencia: `rootbridge review-off` / `review-on` (los nombres antiguos `codex-off` / `codex-on` siguen valiendo).
