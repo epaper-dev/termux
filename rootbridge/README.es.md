@@ -340,6 +340,17 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
   Interruptor de emergencia: `rootbridge review-off` / `review-on` (los nombres antiguos `codex-off` / `codex-on` siguen valiendo).
 * **Datos.** El diff y lo que OpenCode lea en el árbol de trabajo van al proveedor con el que iniciaste sesión en OpenCode.
 
+## Esfuerzo automático
+
+`install.sh --effort-auto effort-router` (desactivado por defecto; con Claude Code el instalador pregunta una vez, se guarda
+como `EFFORT_AUTO`, `--no-effort-auto` lo desactiva) deja que Claude Code elija el esfuerzo de cada petición: bajo para una
+errata, alto para una revisión de seguridad. Claude Code carga el plugin
+[effort-router](https://github.com/cfitzgerald-pd/effort-router), fijado a un commit, desde la configuración gestionada (un
+marketplace declarado en la propia configuración; nada de él está en este repositorio). Claude clasifica cada petición e
+invoca una de las skills `effort-low` a `effort-max`, que fija el esfuerzo para ese turno. Cuesta de 1 a 3 s y unos pocos
+tokens por petición; el plugin registra los turnos (`~/.claude/effort-router/usage`, informe con la skill `effort-report`).
+No elige modelo: Claude Code no puede cambiarlo por petición.
+
 ## Uso diario
 
 | Comando (Termux) | Qué hace |
@@ -492,7 +503,7 @@ Termux: `~/.config/termux-rootbridge/config` (se interpreta como datos, nunca se
 Invitado: `/etc/termux-rootbridge.conf`: `BRIDGE_DIR`, `WORKDIR`, `AUTH_OPEN`, `AUTH_REPLACE_OUTPUT`,
 `CLAUDE_ARGS`, `APT_UPGRADE` (`6h`, `<N>h`, `daily`, `always`, `off`), `APT_TIMEOUT` (segundos para
 la actualización, por defecto 600), `APT_HOLD` (paquetes retenidos en la actualización), `CLAUDE_UPDATE` (`6h`, `<N>h`,
-`daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` / `TOOL_OPENCODE` (`on` / `off`), `OPENCODE_UPDATE` (mismos valores que `CODEX_UPDATE`), `OPENCODE_ARGS` (argumentos adicionales para OpenCode), `REVIEWERS` (`codex`, `opencode` o `codex,opencode`), `NOFILE_LIMIT` (ver abajo). `VOICE` / `SIDEKEY` (`on` / `off`). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`auto` / `hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
+`daily`, `always`, `off`), `CODEX_UPDATE` (mismos valores), `CODEX_ARGS` (argumentos adicionales para Codex), `CODEX_PRECOMMIT` (`off` = sin revisión previa al commit, lo pone `rootbridge codex-off`), `TOOL_CLAUDE` / `TOOL_CODEX` / `TOOL_OPENCODE` (`on` / `off`), `OPENCODE_UPDATE` (mismos valores que `CODEX_UPDATE`), `OPENCODE_ARGS` (argumentos adicionales para OpenCode), `REVIEWERS` (`codex`, `opencode` o `codex,opencode`), `EFFORT_AUTO` (`off` o `effort-router`), `NOFILE_LIMIT` (ver abajo). `VOICE` / `SIDEKEY` (`on` / `off`). Solo en la configuración de Termux: `PTT_TARGET`, `PTT_KEY`, `PTT_MODE` (`auto` / `hold` / `tap`), `PTT_INTERVAL` (ms), `PTT_MAX` (s), ver `ptt help`.
 
 `NOFILE_LIMIT` (por defecto `2048`, `0` = dejar el límite como está) es el límite de descriptores de archivo con el que
 se inicia Claude Code. Claude Code cierra todos los descriptores hasta ese límite tras cada fork, y bajo proot cada

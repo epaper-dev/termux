@@ -523,7 +523,11 @@ cmd_status() {
         else
             echo "  Codex:               nicht Teil der Installation (--no-codex)"
         fi
-        [ "$TOOL_CLAUDE" = on ] && status_review "$root"
+        if [ "$TOOL_CLAUDE" = on ]; then
+            status_review "$root"
+            grep -qsx 'EFFORT_AUTO=effort-router' "$root/etc/termux-rootbridge.conf" \
+                && echo "  Effort-Wahl:         effort-router (Claude stuft jede Anfrage ein)"
+        fi
         if [ "$TOOL_OPENCODE" = on ]; then
             guest_has "$root/root/.opencode/bin/opencode" && echo "  OpenCode:            ok" || echo "  OpenCode:            FEHLT"
             [ -s "$root/root/.local/share/opencode/auth.json" ] && echo "  OpenCode-Login:      ok" \

@@ -369,6 +369,17 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
   Notausgang: `rootbridge review-off` / `review-on` (die alten Namen `codex-off` / `codex-on` gehen weiter).
 * **Daten.** Der Diff und was OpenCode im Arbeitsbaum liest, gehen an den Anbieter, bei dem du OpenCode angemeldet hast.
 
+## Effort automatisch wählen
+
+`install.sh --effort-auto effort-router` (standardmäßig aus; mit Claude Code fragt der Installer einmal, gespeichert als
+`EFFORT_AUTO`, `--no-effort-auto` schaltet es wieder ab) lässt Claude Code den Effort jeder Anfrage selbst wählen: niedrig
+für einen Tippfehler, hoch für eine Sicherheitsprüfung. Dafür lädt Claude Code das Plugin
+[effort-router](https://github.com/cfitzgerald-pd/effort-router), fest auf einen Commit, aus den Managed Settings (ein
+Marketplace direkt in den Einstellungen; nichts davon liegt in diesem Repository). Claude stuft jede Anfrage ein und ruft
+einen der Skills `effort-low` bis `effort-max` auf, der den Effort für diese Runde setzt. Das kostet je Anfrage etwa 1 bis
+3 s und ein paar Tokens; das Plugin führt ein Protokoll der Runden (`~/.claude/effort-router/usage`, Bericht mit dem Skill
+`effort-report`). Ein Modell wählt es nicht, das kann Claude Code nicht je Anfrage wechseln.
+
 ## Bedienung
 
 | Befehl (Termux) | Wirkung |

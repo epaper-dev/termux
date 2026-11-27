@@ -1,0 +1,25 @@
+{
+  "extraKnownMarketplaces": {
+    "rootbridge-effort": {
+      "source": {
+        "source": "settings",
+        "name": "rootbridge-effort",
+        "plugins": [
+          {
+            "name": "effort-router",
+            "description": "Picks the reasoning effort of each request (github.com/cfitzgerald-pd/effort-router, pinned)",
+            "source": {
+              "source": "url",
+              "url": "https://github.com/cfitzgerald-pd/effort-router.git",
+              "sha": "bd3496ca18b7000930679b890662c7bb8a947412"
+            }
+          }
+        ]
+      },
+      "autoUpdate": false
+    }
+  },
+  "enabledPlugins": {
+    "effort-router@rootbridge-effort": true
+  }
+}
