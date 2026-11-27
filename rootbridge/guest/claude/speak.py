@@ -58,6 +58,7 @@ RB_SPEAK_SOCKET (its socket), RB_SPEAK_SERVER_START (how long to wait for it), R
 RB_SPEAK_OFFER_SECONDS (how long --offer-record waits for an answer).
 Python >= 3.8, standard library only.
 """
+import base64
 import contextlib
 import fcntl
 import json
@@ -1222,6 +1223,19 @@ def transcript_tail(path, tool_use_id):
         time.sleep(0.1)
 
 
+def narration(block):
+    """A thinking block that Claude Code shows as a note between tool calls: it has text, and its signature names it
+    narration. Real thinking has no text in the transcript (414 of 414 blocks on the A9, 2026-11-27)."""
+    text = block.get("thinking")
+    if block.get("type") != "thinking" or not isinstance(text, str) or not text.strip():
+        return False
+    try:
+        head = base64.b64decode(str(block.get("signature", ""))[:64] + "==")
+    except ValueError:
+        return False
+    return b"narration" in head
+
+
 def newest_note(tail):
     """(uuid, text) of the newest assistant entry with text in the transcript tail (JSON lines) since the last prompt of
     the user, or None. A user entry that only carries tool results is not a prompt."""
@@ -1238,7 +1252,8 @@ def newest_note(tail):
                 continue
             return None
         if entry.get("type") == "assistant":
-            text = "\n".join(b["text"] for b in blocks if b.get("type") == "text" and isinstance(b.get("text"), str))
+            text = "\n".join(b["text"] if b.get("type") == "text" else b["thinking"] for b in blocks
+                             if b.get("type") == "text" and isinstance(b.get("text"), str) or narration(b))
             if text.strip():
                 return str(entry.get("uuid", "")), text
     return None
