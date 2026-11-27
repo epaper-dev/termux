@@ -10,7 +10,7 @@ settings termux .termux/termux.properties
 settings termux .ssh/authorized_keys
 settings termux .termux/colors.properties
 
-# --- the guest: rootbridge, git, Claude Code, Codex
+# --- the guest: rootbridge, git, Claude Code, Codex, OpenCode
 settings guest  root/.claude/CLAUDE.md
 settings guest  root/.claude/keybindings.json
 settings guest  root/.claude/themes
@@ -18,8 +18,9 @@ settings guest  root/.claude/scripts      # for example the Codex pre-commit scr
 settings guest  root/.claude/commands
 settings guest  root/.claude/agents
 settings guest  root/.codex/AGENTS.md
+settings guest  root/.config/opencode/AGENTS.md
 
-# --- secrets: logins of git, gh, Claude Code and Codex; the settings of git, Claude Code and Codex too, they can hold
+# --- secrets: logins of git, gh, Claude Code, Codex and OpenCode; their settings too, they can hold
 # tokens (url rewrites, http headers, env, API keys)
 secret   guest  root/.claude/projects/*/memory   # private session notes
 secret   guest  root/.claude/plans               # private plans
@@ -28,6 +29,7 @@ secret   guest  root/.gitconfig
 secret   guest  root/.claude/settings.json
 secret   guest  root/.claude/settings.local.json
 secret   guest  root/.codex/config.toml
+secret   guest  root/.config/opencode/opencode.json   # providers can hold API keys ({env:...} or written out)
 secret   guest  root/.git-credentials
 secret   guest  root/.config/git/credentials
 secret   guest  root/.config/git/config
@@ -44,6 +46,7 @@ secret   guest  root/.claude/plugins/store
 secret   guest  root/.claude/.credentials.json
 secret   guest  root/.claude.json
 secret   guest  root/.codex/auth.json
+secret   guest  root/.local/share/opencode/auth.json   # the logins of OpenCode (/connect)
 secret   guest  root/.bashrc               # holds GITHUB_PERSONAL_ACCESS_TOKEN
 secret   guest  root/.android             # adb keys
 secret   guest  root/.local/share/rootbridge   # your voice for Articulino (voice.wav) or your "nie" to recording it

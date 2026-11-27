@@ -18,6 +18,7 @@ AUTH_OPEN="auto"        # auto | copy | off   (used by the Claude hook)
 CLAUDE_ARGS=""
 TOOL_CLAUDE="on"        # on | off: Claude Code is part of this installation (install.sh --no-claude sets off)
 TOOL_CODEX="on"         # on | off: Codex is part of this installation (install.sh --no-codex sets off)
+TOOL_OPENCODE="off"     # on | off: OpenCode is part of this installation (install.sh --opencode sets on)
 VOICE="on"              # on | off: voice dictation for Claude Code (sox, PulseAudio, microphone); install.sh --no-voice sets off
 SPEAK=""                # on | off: reading Claude's answers aloud (PulseAudio plays it); install.sh --no-speak sets off;
                         # empty (a config from before it): follows VOICE, as it was part of it
@@ -82,7 +83,7 @@ rb_load_config() {
                 [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -le 1500 ] && PTT_WARMUP="$val" ;;
             PTT_MAX)
                 [[ "$val" =~ ^[0-9]{1,4}$ ]] && [ "$val" -ge 1 ] && PTT_MAX="$val" ;;
-            THEME_FOLLOW|THEME_RESTART|GUEST_ISOLATE|TOOL_CLAUDE|TOOL_CODEX|VOICE|SPEAK|SIDEKEY|HEADSET|HOMEKEY|PTT_BEEP)
+            THEME_FOLLOW|THEME_RESTART|GUEST_ISOLATE|TOOL_CLAUDE|TOOL_CODEX|TOOL_OPENCODE|VOICE|SPEAK|SIDEKEY|HEADSET|HOMEKEY|PTT_BEEP)
                 case "$val" in on|off) printf -v "$key" '%s' "$val" ;; esac ;;
             CLAUDE_ARGS)
                 [[ "$val" =~ ^[A-Za-z0-9._\ =:/,-]*$ ]] && CLAUDE_ARGS="$val" ;;
@@ -142,7 +143,8 @@ rb_login_opts() {
 }
 
 # --- who asks, and your answer -------------------------------------------------
-# rb_requester <request id>: sets RB_AGENT ("Claude Code", "Codex" or "") and RB_AGENT_PID. The id starts with the pid of
+# rb_requester <request id>: sets RB_AGENT ("Claude Code", "Codex", "OpenCode" or "") and RB_AGENT_PID (not for OpenCode:
+# it has no hook that reads the notes, they would pile up). The id starts with the pid of
 # the androidsu that wrote the request (no pid namespace under proot); its ancestors show the agent, by process name
 # (comm: from outside proot /proc/<pid>/exe is not the program). Only a hint for the dialog and for the event file,
 # never a reason to allow anything.
@@ -154,6 +156,7 @@ rb_requester() {
         case "$(cat "$RB_PROC_DIR/$pid/comm" 2>/dev/null)" in
             claude) RB_AGENT="Claude Code" ;;
             codex) RB_AGENT="Codex" ;;
+            opencode) RB_AGENT="OpenCode"; return 0 ;;
         esac
         if [ -n "$RB_AGENT" ]; then RB_AGENT_PID="$pid"; return 0; fi
         pid="$(sed -n 's/^PPid:[[:space:]]*//p' "$RB_PROC_DIR/$pid/status" 2>/dev/null)"

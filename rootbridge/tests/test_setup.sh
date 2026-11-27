@@ -113,6 +113,14 @@ echo "curl $*" >> "$STUB_LOG"
 out=""; url=""
 while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; case "$1" in http*) url="$1" ;; esac; shift; done
 case "$url" in
+    *opencode*)
+        cat > "$out" <<'INST'
+#!/bin/bash
+echo "opencode-installer: ran with HOME=$HOME args=$*" >> "$STUB_LOG"
+mkdir -p "$HOME/.opencode/bin"
+printf '#!/bin/bash\nexit 0\n' > "$HOME/.opencode/bin/opencode"; chmod +x "$HOME/.opencode/bin/opencode"
+INST
+        exit 0 ;;
     *codex*)
         [ -z "${STUB_CODEX_CURL_FAIL:-}" ] || exit 22
         if [ -n "${STUB_CODEX_INSTALLER_FAIL:-}" ]; then
@@ -545,6 +553,25 @@ gx bash "$SETUP_GUEST" --nein
 check "D15 unbekannte Option: Code 2"                           2 "$?"
 gx bash "$SETUP_GUEST" --codex
 check "D15 --codex ohne Wert: Abbruch"                          1 "$?"
+
+# OpenCode: its official installer, without touching the shell files; git without bubblewrap when Codex is off
+newenv d16 python3 curl shellcheck
+mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
+gx bash "$SETUP_GUEST" --claude no --codex no --opencode yes
+check "D16 nur OpenCode: läuft durch"                           0 "$?"
+check "D16 OpenCode-Installer: die offizielle URL"              1 "$(count "$LOG" '^curl -fsSL https://opencode.ai/install -o ')"
+check "D16 OpenCode-Installer: Gast-HOME, ohne Profil-Änderung" "opencode-installer: ran with HOME=$E/ghome args=--no-modify-path" "$(grep '^opencode-installer: ' "$LOG")"
+check "D16 opencode liegt in ~/.opencode/bin"                   ja "$([ -x "$E/ghome/.opencode/bin/opencode" ] && echo ja || echo nein)"
+check "D16 git ja, bubblewrap nein"                             "1 0" "$(grep '^apt-get install' "$LOG" | grep -c ' git') $(grep '^apt-get install' "$LOG" | grep -c bubblewrap)"
+: > "$LOG"
+gx bash "$SETUP_GUEST" --claude no --codex no --opencode yes
+check "D16 zweiter Lauf: 'schon installiert', kein Download"    "1 0" "$(count "$E/out.log" '^  opencode ist schon installiert') $(count "$LOG" '^curl')"
+gx bash "$SETUP_GUEST" --opencode maybe
+check "D16 --opencode maybe: Abbruch"                           1 "$?"
+newenv d17 python3 curl shellcheck
+mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
+gx bash "$SETUP_GUEST" --claude no
+check "D17 ohne --opencode: kein OpenCode"                      0 "$(count "$LOG" 'opencode')"
 
 # =========================================================== C. PATH in the guest ~/.bashrc
 GS="$T/c1"; mkdir -p "$GS"

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# rootbridge-opencode - guest entry point of the OpenCode window (started by `rootbridge attach opencode`, the widget
+# "OpenCode"):
+#   1. apt-get update + upgrade (rootbridge-apt, at most once every 6 h by default, never blocks the start)
+#   2. rootbridge-update: the update of the installed tools (CLAUDE_UPDATE / CODEX_UPDATE / OPENCODE_UPDATE, at most
+#      once every 6 h by default, never blocks the start)
+#   3. OpenCode, in the working directory (earlier conversations: /sessions; --continue is not used, it shows an empty
+#      conversation when the folder has none yet)
+#
+# OPENCODE_ARGS in /etc/termux-rootbridge.conf adds options, for example OPENCODE_ARGS="--model anthropic/claude-sonnet-5-5".
+# The first login: /connect in the OpenCode window. OpenCode gets no Android root on its own: androidsu hands every
+# request to the Termux daemon, which asks you in an Android dialog.
+
+# (the tests set ROOTBRIDGE_OPENCODE_KEEP_PATH and ROOTBRIDGE_OPENCODE_BIN to run it with stubs)
+[ -n "${ROOTBRIDGE_OPENCODE_KEEP_PATH:-}" ] || export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.opencode/bin:$PATH
+
+# shellcheck source=../lib/rootbridge-guest-lib.sh
+. "${ROOTBRIDGE_GUEST_LIB:-/usr/local/lib/termux-rootbridge/rootbridge-guest-lib.sh}" 2>/dev/null \
+    || { echo "rootbridge-opencode: rootbridge-guest-lib.sh nicht gefunden (install.sh erneut ausführen)" >&2; exit 1; }
+
+enter_workdir
+
+# links OpenCode opens (the login of a provider): Android's browser, like for Claude Code and Codex
+export BROWSER=/usr/local/bin/rootbridge-open
+
+opencode_bin="${ROOTBRIDGE_OPENCODE_BIN:-/root/.opencode/bin/opencode}"
+[ -x "$opencode_bin" ] || opencode_bin="$(command -v opencode || true)"
+if [ -z "$opencode_bin" ]; then
+    echo "rootbridge-opencode: opencode nicht gefunden. Installation: install.sh --opencode" >&2
+    exec bash -l
+fi
+
+# apt-get update + upgrade and the updates of the tools (see rootbridge-update)
+run_maintenance
+
+read -r -a extra <<< "$(conf_get OPENCODE_ARGS || true)"
+# updates come from rootbridge-update (OPENCODE_UPDATE), not from OpenCode itself
+( OPENCODE_DISABLE_AUTOUPDATE=1 exec "$opencode_bin" "${extra[@]}" )
+after_tool OpenCode opencode "$?"

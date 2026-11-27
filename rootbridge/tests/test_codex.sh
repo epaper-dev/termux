@@ -604,7 +604,7 @@ rb bash "$T/bin/rootbridge" status
 check "status: Login ok mit auth.json"                     1 "$(grep -c 'Codex-Login: *ok' "$T/out.txt")"
 check "status: Pre-Commit-Review aktiv"                    1 "$(grep -c 'Pre-Commit-Review: *aktiv' "$T/out.txt")"
 rb bash "$T/bin/rootbridge" codex-off; rb bash "$T/bin/rootbridge" status
-check "status nach codex-off: AUSGESCHALTET"               1 "$(grep -c 'Pre-Commit-Review: *AUSGESCHALTET (codex-off)' "$T/out.txt")"
+check "status nach codex-off: AUSGESCHALTET"               1 "$(grep -c 'Pre-Commit-Review: *AUSGESCHALTET (review-off)' "$T/out.txt")"
 mv "$G/etc/claude-code/managed-settings.json" "$G/etc/claude-code/managed-settings.json.off"
 rb bash "$T/bin/rootbridge" status
 check "status nach guard-off: AUSGESCHALTET (guard-off)"   1 "$(grep -c 'Pre-Commit-Review: *AUSGESCHALTET (guard-off)' "$T/out.txt")"
@@ -615,7 +615,7 @@ check "status ohne Claude Code: nennt --no-claude"         1 "$(grep -c 'Claude 
 check "status ohne Claude Code: keine Plugin-Zeile"        0 "$(grep -c 'Codex-Plugin' "$T/out.txt")"
 : > "$RBC"
 rb bash "$T/bin/rootbridge" help
-check "help: nennt codex-login, codex-off und attach [claude|codex]" 3 "$(grep -c 'codex-login\|codex-off\|attach \[claude|codex\]' "$T/out.txt")"
+check "help: nennt codex-login, review-off und attach [claude|codex|opencode]" 3 "$(grep -c 'codex-login\|review-off\|attach \[claude|codex|opencode\]' "$T/out.txt")"
 
 # =========================================================================== 6. install.sh
 H="$T/ih"; P="$T/ip"; GROOT="$P/var/lib/proot-distro/containers/ubuntu/rootfs"

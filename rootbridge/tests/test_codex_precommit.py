@@ -44,6 +44,19 @@ PYTHON_BIN -I -c 'import json, os; print(json.dumps({"rawOutput": os.environ.get
 """
 
 
+FAKE_OPENCODE = """#!/bin/bash
+# stub opencode: logs the call and its OPENCODE_ environment, answers with $FAKE_OC_REPLY like `opencode run --format json`
+echo "opencode ${*:1:$(($# - 1))}" >> "$FAKE_OC_LOG"
+printf '%s' "${@: -1}" > "$FAKE_OC_LOG.prompt"
+[ -z "${FAKE_OC_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
+PYTHON_BIN -I -c 'import json, os
+json.dump({k: v for k, v in os.environ.items() if k.startswith("OPENCODE_")}, open(os.environ["FAKE_OC_LOG"] + ".env", "w"))
+for event in ({"type": "text", "part": {"text": "Let me look at the diff."}}, {"type": "tool_use", "part": {"tool": "bash"}},
+              {"type": "text", "part": {"text": os.environ.get("FAKE_OC_REPLY", "")}}):
+    print(json.dumps(event))'
+"""
+
+
 class HookTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="codex-precommit-")
@@ -59,6 +72,11 @@ class HookTest(unittest.TestCase):
         with open(os.path.join(self.bin, "node"), "w") as fh:
             fh.write(FAKE_NODE.replace("PYTHON_BIN", sys.executable))
         os.chmod(os.path.join(self.bin, "node"), 0o755)
+        with open(os.path.join(self.bin, "opencode"), "w") as fh:
+            fh.write(FAKE_OPENCODE.replace("PYTHON_BIN", sys.executable))
+        os.chmod(os.path.join(self.bin, "opencode"), 0o755)
+        self.oc_log = os.path.join(self.tmp, "opencode.log")
+        self.conf = os.path.join(self.tmp, "termux-rootbridge.conf")
         # PATH of the hook: the stub node plus git and which, nothing else
         self.bare = os.path.join(self.tmp, "bare")
         os.makedirs(self.bare)
@@ -85,6 +103,8 @@ class HookTest(unittest.TestCase):
             "FAKE_LOG": self.log,
             "FAKE_PROMPT": self.prompt_file,
             "FAKE_REPLY": reply,
+            "FAKE_OC_LOG": self.oc_log,
+            "ROOTBRIDGE_CONF": self.conf,
         }
         env.update(extra)
         return env
@@ -400,6 +420,91 @@ class HookTest(unittest.TestCase):
         r = self.run_hook(reply="")
         self.assertEqual(r.returncode, 2)
         self.assertEqual(self.state_files(), [])
+
+    # ------------------------------------------------------------------ OpenCode, and both
+    def opencode_calls(self):
+        try:
+            with open(self.oc_log) as fh:
+                return fh.read().splitlines()
+        except OSError:
+            return []
+
+    def reviewers(self, value):
+        with open(self.conf, "w") as fh:
+            fh.write(f"WORKDIR=/root/work\nREVIEWERS={value}\n")
+
+    def test_opencode_reviews_with_its_read_only_agent_and_the_last_text_counts(self):
+        self.reviewers("opencode")
+        r = self.run_hook(FAKE_OC_REPLY="ALLOW: fine\n- [note] a.py:1 - small")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.node_calls(), 0)
+        [call] = self.opencode_calls()
+        self.assertIn("run --format json --agent rootbridge-review --dir " + self.repo, call)
+        with open(self.oc_log + ".prompt") as fh:
+            self.assertIn("<compact_output_contract>", fh.read())
+        self.assertIn("small", r.stderr)
+        with open(self.oc_log + ".env") as fh:
+            env = json.load(fh)
+        self.assertEqual(env["OPENCODE_DISABLE_PROJECT_CONFIG"], "1")   # the repository under review brings no config
+        self.assertEqual(env["OPENCODE_PURE"], "1")                     # and no plugins
+        agent = json.loads(env["OPENCODE_CONFIG_CONTENT"])["agent"]["rootbridge-review"]["permission"]
+        self.assertEqual((agent["edit"], agent["task"], agent["bash"]["*"]), ("deny", "deny", "deny"))
+        self.assertEqual(list(agent["bash"])[-4:], ["*>*", "*--output*", "*--ext-diff*", "*--no-index*"])   # last wins
+        self.assertEqual(len(self.state_files()), 1)
+
+    def test_an_opencode_block_blocks_and_names_opencode(self):
+        self.reviewers("opencode")
+        r = self.run_hook(FAKE_OC_REPLY="BLOCK: bad\n- [high] a.py:1 - problem; fix: do x")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("Lösungsvorschläge von OpenCode", r.stderr)
+        self.assertIn("fix: do x", r.stderr)
+        self.assertEqual(self.state_files(), [])
+
+    def test_with_both_each_must_allow(self):
+        self.reviewers("codex,opencode")
+        r = self.run_hook(reply="ALLOW: ok", FAKE_OC_REPLY="BLOCK: leak\n- [high] a.py:1 - secret")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("[OpenCode]", r.stderr)
+        self.assertIn("[Codex]", r.stderr)
+        self.assertEqual((self.node_calls(), len(self.opencode_calls())), (1, 1))
+        self.assertEqual(self.state_files(), [])
+        r = self.run_hook(reply="ALLOW: ok", FAKE_OC_REPLY="ALLOW: fine")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.state_files()), 1)
+
+    def test_with_both_a_failing_one_blocks(self):
+        self.reviewers("codex,opencode")
+        r = self.run_hook(reply="ALLOW: ok", FAKE_OC_FAIL="1", FAKE_OC_REPLY="ALLOW: ok")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("OpenCode: Exit 1", r.stderr)
+        self.assertEqual(len(self.opencode_calls()), 2)                 # two attempts, like Codex
+        self.assertEqual(self.state_files(), [])
+
+    def test_a_missing_opencode_blocks(self):
+        self.reviewers("opencode")
+        os.remove(os.path.join(self.bin, "opencode"))
+        r = self.run_hook(FAKE_OC_REPLY="ALLOW: ok")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("OpenCode nicht gefunden", r.stderr)
+
+    def test_an_unknown_reviewer_blocks(self):
+        self.reviewers("codex,gemini")
+        r = self.run_hook()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("REVIEWERS", r.stderr)
+        self.assertEqual(self.node_calls(), 0)
+
+    def test_without_reviewers_in_the_config_codex_reviews(self):
+        with open(self.conf, "w") as fh:
+            fh.write("WORKDIR=/root/work\n")
+        self.assertEqual(self.run_hook().returncode, 0)
+        self.assertEqual((self.node_calls(), self.opencode_calls()), (1, []))
+
+    def test_both_are_named_in_the_sentence(self):
+        self.reviewers("codex,opencode")
+        stub, said = self.speak_stub()
+        self.run_hook(FAKE_OC_REPLY="ALLOW: ok", CODEX_PRECOMMIT_SPEAK=stub, RB_SPEAK_DIR=self.tmp)
+        self.assertEqual(self.said(said), ["Codex und OpenCode prüfen den Commit."])
 
 
 def load_hook():

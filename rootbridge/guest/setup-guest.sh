@@ -1,13 +1,15 @@
 #!/bin/bash
 # setup-guest.sh - runs INSIDE the guest (install.sh --setup calls it through proot-distro, before
 # install-guest.sh). Makes a fresh Ubuntu ready for the bridge, without any question:
-#   1. python3, curl and the CA certificates (apt-get; only when one is missing); git when Codex is part of
-#      the installation (Codex reviews through git, and so does the pre-commit hook), plus bubblewrap for its sandbox; nodejs when both tools are
+#   1. python3, curl and the CA certificates (apt-get; only when one is missing); git when Codex or OpenCode is part of
+#      the installation (they review through git, and so does the pre-commit hook), plus bubblewrap for the sandbox of Codex;
+#      nodejs when Claude Code and Codex are
 #      (the Codex plugin of Claude Code is a node program, Node.js 18.18 or newer); sox for /voice
 #      when Claude Code and voice are both part of it (Claude Code records through `rec`); shellcheck for the
 #      agents' shell scripts (the CI of this repository checks them with it); openssh-client and gh (GitHub CLI)
 #   2. Claude Code with the official installer (only when there is no claude yet)
 #   3. Codex with the official standalone installer (only when there is no codex yet)
+#   3b. OpenCode with its official installer into ~/.opencode/bin (only with --opencode yes and when there is none yet)
 #   4. Piper for the speech output (with Claude Code and voice): pip package piper-tts in a venv (PIPER_DIR) and the
 #      German voice de_DE-kerstin-medium (only what is missing; python3-venv from apt when venv cannot be made)
 #   5. Articulino for the speech output in your own voice (with Piper): a venv (ARTICULINO_DIR) with its runtime package
@@ -18,12 +20,14 @@
 # Idempotent: with everything in place it changes nothing and does not touch the network.
 #
 #   setup-guest.sh [--claude yes|no] [--codex yes|no] [--voice yes|no] [--speak yes|no]       (all default to yes)
+#                  [--opencode yes|no]                                                         (default no)
 #     --voice: sox with the PulseAudio plugin (apt-get), which Claude Code's /voice records through; only with Claude Code
 #     --speak: reading aloud (default: as --voice): sox (it plays), Piper (step 4) and Articulino (step 5)
 #     --language de|en: the Piper voice (de_DE-kerstin-medium or en_US-lessac-medium; default de)
 #
 #   CLAUDE_INSTALL_URL        installer script of Claude Code (default https://claude.ai/install.sh)
 #   CODEX_INSTALL_URL         installer script of Codex (default https://chatgpt.com/codex/install.sh)
+#   OPENCODE_INSTALL_URL      installer script of OpenCode (default https://opencode.ai/install)
 #   ROOTBRIDGE_GUEST_HOME     home of the guest user (default /root, like install-guest.sh)
 #   ROOTBRIDGE_CA_BUNDLE      certificate bundle to look for (default /etc/ssl/certs/ca-certificates.crt)
 #   PIPER_DIR                 venv of Piper (default /opt/piper; the voices in its voices/)
@@ -35,12 +39,13 @@ HOME_DIR="${ROOTBRIDGE_GUEST_HOME:-/root}"
 CA_BUNDLE="${ROOTBRIDGE_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 INSTALL_URL="${CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CODEX_URL="${CODEX_INSTALL_URL:-https://chatgpt.com/codex/install.sh}"
+OPENCODE_URL="${OPENCODE_INSTALL_URL:-https://opencode.ai/install}"
 PIPER_DIR="${PIPER_DIR:-/opt/piper}"
 PIPER_VOICE_NAME=de_DE-kerstin-medium   # speak.py reads this voice (German; --language en: en_US-lessac-medium)
 ARTICULINO_DIR="${ARTICULINO_DIR:-/opt/articulino}"
 ARTICULINO_REPO=eigenhand/Articulino-DE-EN-Realtime-Stream-TTS-ONNX
 ARTICULINO_REV=a760ce8d513534111c7679751869fa4c45ef0e54   # 2026-10-15; a new one: check its SHA256SUMS and listen first
-CLAUDE_ON=yes; CODEX_ON=yes; VOICE_ON=yes; SPEAK_ON=""; LANGUAGE=de
+CLAUDE_ON=yes; CODEX_ON=yes; OPENCODE_ON=no; VOICE_ON=yes; SPEAK_ON=""; LANGUAGE=de
 
 say() { printf '%s\n' "$*"; }
 die() { echo "setup-guest.sh: $*" >&2; exit 1; }
@@ -49,16 +54,17 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --claude) [ $# -ge 2 ] || die "--claude braucht yes oder no"; CLAUDE_ON="$2"; shift 2 ;;
         --codex)  [ $# -ge 2 ] || die "--codex braucht yes oder no";  CODEX_ON="$2";  shift 2 ;;
+        --opencode) [ $# -ge 2 ] || die "--opencode braucht yes oder no"; OPENCODE_ON="$2"; shift 2 ;;
         --voice)  [ $# -ge 2 ] || die "--voice braucht yes oder no";  VOICE_ON="$2";  shift 2 ;;
         --speak)  [ $# -ge 2 ] || die "--speak braucht yes oder no";  SPEAK_ON="$2";  shift 2 ;;
         --language) [ $# -ge 2 ] || die "--language braucht de oder en"; LANGUAGE="$2"; shift 2 ;;
         *) echo "setup-guest.sh: unbekannte Option: $1" >&2; exit 2 ;;
     esac
 done
-case "$CLAUDE_ON$CODEX_ON" in
-    yesyes|yesno|noyes) ;;
-    *) die "--claude / --codex: erlaubt ist yes oder no, und mindestens eines von beiden muss yes sein" ;;
-esac
+for v in "$CLAUDE_ON" "$CODEX_ON" "$OPENCODE_ON"; do
+    case "$v" in yes|no) ;; *) die "--claude / --codex / --opencode: erlaubt ist yes oder no" ;; esac
+done
+[ "$CLAUDE_ON$CODEX_ON$OPENCODE_ON" != nonono ] || die "mindestens eines von Claude Code, Codex und OpenCode muss yes sein"
 case "$VOICE_ON" in yes|no) ;; *) die "--voice: erlaubt ist yes oder no" ;; esac
 SPEAK_ON="${SPEAK_ON:-$VOICE_ON}"
 case "$SPEAK_ON" in yes|no) ;; *) die "--speak: erlaubt ist yes oder no" ;; esac
@@ -70,6 +76,7 @@ trap 'rm -rf "$TMPDIR_SETUP"' EXIT
 claude_present() { [ -x "$HOME_DIR/.local/bin/claude" ] || command -v claude >/dev/null 2>&1; }
 # the codex in ~/.local/bin is a link with an absolute target (the standalone package under ~/.codex)
 codex_present() { [ -x "$HOME_DIR/.local/bin/codex" ] || [ -L "$HOME_DIR/.local/bin/codex" ] || command -v codex >/dev/null 2>&1; }
+opencode_present() { [ -x "$HOME_DIR/.opencode/bin/opencode" ]; }
 
 # ------------------------------------------------------------------ 1. packages
 say "== Gast: Voraussetzungen"
@@ -83,8 +90,10 @@ guest_has curl    || pkgs="$pkgs curl"
 guest_has shellcheck || pkgs="$pkgs shellcheck"
 guest_has ssh || pkgs="$pkgs openssh-client"   # git over SSH, and the keys that rootbridge restore brings back
 guest_has gh || pkgs="$pkgs gh"   # GitHub CLI (pull requests, CI runs), its login comes back with rootbridge restore
-if [ "$CODEX_ON" = yes ]; then
+if [ "$CODEX_ON" = yes ] || [ "$OPENCODE_ON" = yes ]; then
     guest_has git || pkgs="$pkgs git"
+fi
+if [ "$CODEX_ON" = yes ]; then
     command -v bwrap >/dev/null 2>&1 || pkgs="$pkgs bubblewrap"
 fi
 if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
@@ -154,6 +163,25 @@ if [ "$CODEX_ON" = yes ]; then
         codex_present \
             || die "Der Codex-Installer lief durch, aber es gibt kein codex ($HOME_DIR/.local/bin/codex)."
         say "  codex installiert: $HOME_DIR/.local/bin/codex"
+    fi
+fi
+
+# ------------------------------------------------------------------ 3b. OpenCode
+if [ "$OPENCODE_ON" = yes ]; then
+    say "== Gast: OpenCode"
+    if opencode_present; then
+        say "  opencode ist schon installiert"
+    else
+        tmp="$TMPDIR_SETUP/opencode-install.sh"
+        say "  lade den Installer: $OPENCODE_URL"
+        curl -fsSL "$OPENCODE_URL" -o "$tmp" \
+            || die "Download von $OPENCODE_URL ist fehlgeschlagen (Netz?). Erneut starten: bash install.sh --setup (ohne OpenCode: --no-opencode)"
+        # --no-modify-path: the guest ~/.bashrc block of install-guest.sh puts ~/.opencode/bin on the PATH
+        HOME="$HOME_DIR" bash "$tmp" --no-modify-path </dev/null \
+            || die "Der OpenCode-Installer ist fehlgeschlagen. Erneut starten: bash install.sh --setup (ohne OpenCode: --no-opencode)"
+        opencode_present \
+            || die "Der OpenCode-Installer lief durch, aber es gibt kein opencode ($HOME_DIR/.opencode/bin/opencode)."
+        say "  opencode installiert: $HOME_DIR/.opencode/bin/opencode"
     fi
 fi
 

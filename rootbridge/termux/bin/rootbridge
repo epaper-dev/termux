@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # rootbridge - control program of termux-rootbridge (runs in Termux).
 #
-#   rootbridge start [--no-attach] [claude|codex]   daemon + session of that tool (Termux:Boot: --no-attach;
-#                                    default: Claude Code, Codex if installed without Claude Code)
-#   rootbridge attach [claude|codex]  attach to the session, in the window of that tool (create if missing)
-#   rootbridge shell                 plain guest shell here (does not start Claude Code or Codex)
+#   rootbridge start [--no-attach] [claude|codex|opencode]   daemon + session of that tool (Termux:Boot: --no-attach;
+#                                    default: Claude Code, else Codex, else OpenCode, as far as installed)
+#   rootbridge attach [claude|codex|opencode]  attach to the session, in the window of that tool (create if missing)
+#   rootbridge shell                 plain guest shell here (does not start Claude Code, Codex or OpenCode)
 #   rootbridge stop                  stop session and daemon
 #   rootbridge status                daemon, session, guest install, audit log
 #   rootbridge login <server>        `claude mcp login <server>` with browser hand-off
 #   rootbridge codex-login [args]    `codex login` with browser hand-off (--device-auth for no browser)
-#   rootbridge codex-off | codex-on  emergency switch for the Codex pre-commit review (Claude Code restart)
+#   rootbridge review-off | review-on  emergency switch for the pre-commit review (Claude Code restart; also codex-off | codex-on)
 #   rootbridge guard-off | guard-on  emergency switch for the Claude Code hooks
 #   rootbridge theme light|dark      Claude Code theme "Auto epaper" follows (tmux hook)
 #   rootbridge voice start|stop|status|grant   microphone for /voice: PulseAudio, source, Android permission
@@ -89,11 +89,12 @@ guest_login() {   # guest_login <command...>
     proot-distro login "$DISTRO" $(rb_login_opts) -- "$@"
 }
 
-# The tmux session of a tool: Claude Code lives in SESSION (window claude), Codex in a session of its own, so
+# The tmux session of a tool: Claude Code lives in SESSION (window claude), Codex and OpenCode each in a session of its own, so
 # that each has its own Termux window (as the Ubuntu shell has), and ptt and the input line stay with Claude's session.
 # (Targets are written "=name": tmux would otherwise take "ubuntu" for "ubuntu-codex" when only that one runs.) A Codex of an
 # earlier installation still runs as a window of SESSION: it stays there until it ends, then the next one gets its own session.
 session_of() {
+    if [ "${1:-}" = opencode ]; then printf '%s-opencode' "$SESSION"; return; fi
     if [ "${1:-}" != codex ]; then printf '%s' "$SESSION"; return; fi
     if ! tmux has-session -t "=$SESSION-codex" 2>/dev/null \
             && tmux list-windows -t "=$SESSION" -F '#W' 2>/dev/null | grep -qx codex; then
@@ -104,17 +105,20 @@ session_of() {
 }
 session_exists() { tmux has-session -t "=$(session_of "${1:-claude}")" 2>/dev/null; }
 
-# The tool a bare `attach` / `start` opens: Claude Code, or Codex on an installation without Claude Code.
-default_tool() { if [ "$TOOL_CLAUDE" = on ]; then echo claude; else echo codex; fi; }
+# The tool a bare `attach` / `start` opens: Claude Code, else Codex, else OpenCode (the first one installed).
+default_tool() {
+    if [ "$TOOL_CLAUDE" = on ]; then echo claude; elif [ "$TOOL_CODEX" = on ]; then echo codex; else echo opencode; fi
+}
 
-# pick_tool [claude|codex]: the tool to open (the default one without an argument); it has to be installed
+# pick_tool [claude|codex|opencode]: the tool to open (the default one without an argument); it has to be installed
 pick_tool() {
     local t="${1:-}"
     [ -n "$t" ] || t="$(default_tool)"
     case "$t" in
         claude) [ "$TOOL_CLAUDE" = on ] || die "Claude Code ist in dieser Installation abgeschaltet (install.sh --no-claude)" ;;
         codex)  [ "$TOOL_CODEX" = on ]  || die "Codex ist in dieser Installation abgeschaltet (install.sh --no-codex)" ;;
-        *) die "unbekanntes Programm: $t (claude oder codex)" ;;
+        opencode) [ "$TOOL_OPENCODE" = on ] || die "OpenCode ist nicht Teil dieser Installation (install.sh --opencode)" ;;
+        *) die "unbekanntes Programm: $t (claude, codex oder opencode)" ;;
     esac
     printf '%s' "$t"
 }
@@ -142,8 +146,8 @@ cmd_attach() {
     local tool="" a
     for a in "$@"; do
         case "$a" in
-            claude|codex) [ -z "$tool" ] || die "Nur ein Programm angeben"; tool="$a" ;;
-            *) die "unbekanntes Programm oder Option: $a (claude oder codex)" ;;
+            claude|codex|opencode) [ -z "$tool" ] || die "Nur ein Programm angeben"; tool="$a" ;;
+            *) die "unbekanntes Programm oder Option: $a (claude, codex oder opencode)" ;;
         esac
     done
     tool="$(pick_tool "$tool")" || exit 1
@@ -188,7 +192,8 @@ cmd_start() {
     extras_start
     [ "$attach" = 1 ] && [ -t 0 ] && [ -t 1 ] || { session_create "$tool"; return 0; }
     if ! session_exists "$tool"; then
-        local label="Claude Code"; [ "$tool" = codex ] && label="Codex"
+        local label="Claude Code"
+        case "$tool" in codex) label="Codex" ;; opencode) label="OpenCode" ;; esac
         printf '%s startet in %ss - beliebige Taste für die Termux-Shell ' "$label" "$AUTOSTART_DELAY"
         if read -r -s -n 1 -t "$AUTOSTART_DELAY" _; then
             echo; return 0
@@ -210,7 +215,7 @@ cmd_shell() {
 
 cmd_stop() {
     local t
-    for t in claude codex; do session_exists "$t" && tmux kill-session -t "=$(session_of "$t")"; done
+    for t in claude codex opencode; do session_exists "$t" && tmux kill-session -t "=$(session_of "$t")"; done
     daemon_stop
     echo "Session und Daemon gestoppt."
 }
@@ -228,17 +233,23 @@ status_codex() {
     if [ "$TOOL_CLAUDE" = on ]; then
         [ -n "$(ls -d "$root"/root/.claude/plugins/cache/openai-codex/codex/*/ 2>/dev/null)" ] \
             && echo "  Codex-Plugin:        ok" || echo "  Codex-Plugin:        FEHLT"
-        if grep -qs 'codex-precommit-review' "$root/etc/claude-code/managed-settings.json"; then
-            if grep -qsx 'CODEX_PRECOMMIT=off' "$conf"; then
-                echo "  Pre-Commit-Review:   AUSGESCHALTET (codex-off)"
-            else
-                echo "  Pre-Commit-Review:   aktiv (Commits werden ohne Codex-Login blockiert)"
-            fi
-        elif [ -f "$root/etc/claude-code/managed-settings.json.off" ]; then
-            echo "  Pre-Commit-Review:   AUSGESCHALTET (guard-off)"
+    fi
+}
+
+# status_review <guest root>: the pre-commit review of Claude Code's commits (who reviews, switched off or missing)
+status_review() {
+    local root="$1" conf="$1/etc/termux-rootbridge.conf" who
+    who="$(sed -n 's/^REVIEWERS=//p' "$conf" 2>/dev/null | tail -n 1)"
+    if grep -qs 'codex-precommit-review' "$root/etc/claude-code/managed-settings.json"; then
+        if grep -qsx 'CODEX_PRECOMMIT=off' "$conf"; then
+            echo "  Pre-Commit-Review:   AUSGESCHALTET (review-off)"
         else
-            echo "  Pre-Commit-Review:   FEHLT"
+            echo "  Pre-Commit-Review:   aktiv: ${who:-codex} (Commits werden ohne Login des Prüfers blockiert)"
         fi
+    elif [ -f "$root/etc/claude-code/managed-settings.json.off" ]; then
+        echo "  Pre-Commit-Review:   AUSGESCHALTET (guard-off)"
+    elif [ "$TOOL_CODEX" = on ] || [ "$TOOL_OPENCODE" = on ]; then
+        echo "  Pre-Commit-Review:   FEHLT"
     fi
 }
 
@@ -489,7 +500,7 @@ cmd_status() {
         echo "Daemon:       gestoppt"
     fi
     local t shown=""
-    for t in claude codex; do session_exists "$t" && shown="$shown '$(session_of "$t")'"; done
+    for t in claude codex opencode; do session_exists "$t" && shown="$shown '$(session_of "$t")'"; done
     if [ -n "$shown" ]; then echo "Session:     $shown läuft"; else echo "Session:      keine"; fi
     if [ "$GUEST_ISOLATE" = on ]; then echo "Gast:         abgeschottet (nur ~/.rootbridge sichtbar)"; else echo "Gast:         NICHT abgeschottet (GUEST_ISOLATE=off): Root-Dialog umgehbar"; fi
     if root="$(guest_root)"; then
@@ -511,6 +522,12 @@ cmd_status() {
             status_codex "$root"
         else
             echo "  Codex:               nicht Teil der Installation (--no-codex)"
+        fi
+        [ "$TOOL_CLAUDE" = on ] && status_review "$root"
+        if [ "$TOOL_OPENCODE" = on ]; then
+            guest_has "$root/root/.opencode/bin/opencode" && echo "  OpenCode:            ok" || echo "  OpenCode:            FEHLT"
+            [ -s "$root/root/.local/share/opencode/auth.json" ] && echo "  OpenCode-Login:      ok" \
+                || echo "  OpenCode-Login:      FEHLT (im OpenCode-Fenster: /connect)"
         fi
     else
         echo "Gast ($DISTRO):    nicht gefunden"
@@ -552,7 +569,7 @@ cmd_codex_login() {
     guest_login bash -lc 'export PATH="$HOME/.local/bin:$PATH" BROWSER=/usr/local/bin/rootbridge-open; codex login "$@"' _ "$@"
 }
 
-# codex-off | codex-on: switch the Codex pre-commit review off / on again. Only you can do this: the
+# review-off | review-on (also codex-off | codex-on): switch the pre-commit review off / on again. Only you can do this: the
 # switch is the line CODEX_PRECOMMIT=off in the guest's /etc/termux-rootbridge.conf, which rootbridge-claude
 # hands to Claude Code (restart it for the change to apply).
 cmd_codex_precommit() {   # off | on
@@ -565,9 +582,9 @@ cmd_codex_precommit() {   # off | on
     [ "$1" = off ] && echo 'CODEX_PRECOMMIT=off' >> "$tmp"
     cat "$tmp" > "$f"; rm -f "$tmp"
     if [ "$1" = off ]; then
-        echo "Codex-Review vor dem Commit AUS. Claude Code neu starten. Wieder an: rootbridge codex-on"
+        echo "Review vor dem Commit AUS. Claude Code neu starten. Wieder an: rootbridge review-on"
     else
-        echo "Codex-Review vor dem Commit wieder AN. Claude Code neu starten."
+        echo "Review vor dem Commit wieder AN. Claude Code neu starten."
     fi
     rb_audit "CODEX-PRECOMMIT-$1" 0 "$f"
 }
@@ -723,8 +740,8 @@ case "${1:-}" in
     status)       cmd_status ;;
     login)        shift; cmd_login "$@" ;;
     codex-login)  shift; cmd_codex_login "$@" ;;
-    codex-off)    cmd_codex_precommit off ;;
-    codex-on)     cmd_codex_precommit on ;;
+    codex-off|review-off) cmd_codex_precommit off ;;
+    codex-on|review-on)   cmd_codex_precommit on ;;
     guard-off)    cmd_guard off ;;
     guard-on)     cmd_guard on ;;
     theme)        shift; cmd_theme "$@" ;;

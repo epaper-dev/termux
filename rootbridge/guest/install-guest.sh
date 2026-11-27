@@ -5,24 +5,32 @@
 #   install-guest.sh [--src DIR] [--root DIR] [--autonomous yes|no|ask] [--remote-name NAME]
 #                    [--theme NAME] [--model NAME|none] [--apt-upgrade 6h|<N>h|daily|always|off]
 #                    [--claude yes|no] [--codex yes|no] [--codex-bypass yes|no] [--guidelines yes|no] [--voice yes|no]
-#                    [--claude-update M] [--codex-update M] [--uninstall]
+#                    [--opencode yes|no] [--reviewers codex|opencode|codex,opencode]
+#                    [--claude-update M] [--codex-update M] [--opencode-update M] [--uninstall]
 #
 #   --claude yes|no   Claude Code is part of the installation (default yes). no = Codex only: no Claude Code
 #                     settings, hooks, managed settings or claude() wrapper (an existing value in the config stays
 #                     without the option)
 #   --codex yes|no    Codex is part of the installation (default yes): rootbridge-codex (the Codex window), the
-#                     update step and, together with Claude Code, the Codex pre-commit review hook in the managed
-#                     settings (an existing value in the config stays without the option)
+#                     update step and, together with Claude Code, the Codex plugin and the pre-commit review hook in the
+#                     managed settings (an existing value in the config stays without the option)
+#   --opencode yes|no OpenCode is part of the installation (default no): rootbridge-opencode (the OpenCode window), the
+#                     update step and ~/.opencode/bin on the PATH (an existing value in the config stays without the option)
+#   --reviewers LIST  who reviews every `git commit` of Claude Code: codex, opencode or codex,opencode (both must say
+#                     ALLOW). Only tools of this installation count; without one of them it is the other. Stored as
+#                     REVIEWERS (the ones that review); without the option the stored value stays, else codex.
 #   --codex-bypass yes|no  Codex without its own sandbox (default yes; only with Codex): under proot the bubblewrap
 #                     sandbox fails on every command ("unsupported host mount"), so Codex gets
 #                     CODEX_ARGS="--dangerously-bypass-approvals-and-sandbox" in /etc/termux-rootbridge.conf (your other
 #                     arguments stay). no removes the flag again. Stored as CODEX_BYPASS. What keeps Android root closed is
 #                     the Termux daemon, which asks you itself for every root request.
 #   --guidelines yes|no  code quality guidelines for the agents (default yes): a marked block (<!-- >>> termux-rootbridge >>> -->)
-#                     in ~/.claude/CLAUDE.md (with Claude Code) and ~/.codex/AGENTS.md (with Codex), text from templates/. Your
+#                     in ~/.claude/CLAUDE.md (with Claude Code), ~/.codex/AGENTS.md (with Codex) and
+#                     ~/.config/opencode/AGENTS.md (with OpenCode), text from templates/. Your
 #                     own text in those files stays; no removes the blocks again. Stored as GUIDELINES.
 #   --codex-update M  CODEX_UPDATE in /etc/termux-rootbridge.conf: `codex update` at the
 #                     start of a session (rootbridge-update). Same values and rules as --claude-update.
+#   --opencode-update M  OPENCODE_UPDATE: `opencode upgrade` at the start of a session, the same way.
 #   --src DIR         directory that contains bin/, lib/ and claude/ (default: next to this script)
 #   --root DIR        install below DIR instead of / (staging, tests)
 #   --voice yes|no    voice dictation for Claude Code (default yes; needs Claude Code): ~/.claude/keybindings.json gets
@@ -75,6 +83,8 @@ MODEL=opusplan; MODEL_SET=0
 APT_MODE=""; APT_MODE_SET=0
 CLAUDE_UPD_MODE=""; CLAUDE_UPD_SET=0
 CODEX_UPD_MODE=""; CODEX_UPD_SET=0
+OPENCODE_UPD_MODE=""; OPENCODE_UPD_SET=0
+OPENCODE_ON=""; REVIEWERS=""
 CLAUDE_ON=""; CODEX_ON=""; VOICE_ON=yes; SPEAK_ON=""; BYPASS_ON=""; GUIDE_ON=""
 LANGUAGE=""; LANGUAGE_SET=0   # de | en: Claude Code's "language", the texts in CLAUDE.md, the voice that reads aloud
 UNINSTALL=0
@@ -101,6 +111,15 @@ while [ $# -gt 0 ]; do
         --codex-update)
             [ $# -ge 2 ] || { echo "--codex-update braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
             CODEX_UPD_MODE="$2"; CODEX_UPD_SET=1; shift 2 ;;
+        --opencode-update)
+            [ $# -ge 2 ] || { echo "--opencode-update braucht 6h (Stunden), daily, always oder off" >&2; exit 2; }
+            OPENCODE_UPD_MODE="$2"; OPENCODE_UPD_SET=1; shift 2 ;;
+        --opencode)
+            [ $# -ge 2 ] || { echo "--opencode braucht yes oder no" >&2; exit 2; }
+            OPENCODE_ON="$2"; shift 2 ;;
+        --reviewers)
+            [ $# -ge 2 ] || { echo "--reviewers braucht codex, opencode oder codex,opencode" >&2; exit 2; }
+            REVIEWERS="$2"; shift 2 ;;
         --claude)
             [ $# -ge 2 ] || { echo "--claude braucht yes oder no" >&2; exit 2; }
             CLAUDE_ON="$2"; shift 2 ;;
@@ -158,12 +177,18 @@ check_mode() {
 check_mode apt-upgrade "$APT_MODE" "$APT_MODE_SET"
 check_mode claude-update "$CLAUDE_UPD_MODE" "$CLAUDE_UPD_SET"
 check_mode codex-update "$CODEX_UPD_MODE" "$CODEX_UPD_SET"
+check_mode opencode-update "$OPENCODE_UPD_MODE" "$OPENCODE_UPD_SET"
+case "$REVIEWERS" in
+    ""|codex|opencode|codex,opencode) ;;
+    opencode,codex) REVIEWERS=codex,opencode ;;
+    *) echo "--reviewers: ungültiger Wert '$REVIEWERS' (erlaubt: codex, opencode, codex,opencode)" >&2; exit 2 ;;
+esac
 
 case "$AUTONOMOUS" in
     yes|no|ask) ;;
     *) echo "--autonomous: ungültiger Wert '$AUTONOMOUS' (erlaubt: yes, no, ask)" >&2; exit 2 ;;
 esac
-for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON" "codex-bypass:$BYPASS_ON" "guidelines:$GUIDE_ON" "voice:$VOICE_ON" "speak:$SPEAK_ON"; do
+for pair in "claude:$CLAUDE_ON" "codex:$CODEX_ON" "opencode:$OPENCODE_ON" "codex-bypass:$BYPASS_ON" "guidelines:$GUIDE_ON" "voice:$VOICE_ON" "speak:$SPEAK_ON"; do
     case "${pair#*:}" in
         ""|yes|no) ;;
         *) echo "--${pair%%:*}: ungültiger Wert '${pair#*:}' (erlaubt: yes, no)" >&2; exit 2 ;;
@@ -186,14 +211,27 @@ END='# <<< termux-rootbridge <<<'
 
 say() { printf '%s\n' "$*"; }
 
+# stored <KEY>: the value an earlier install stored in the guest config (quotes removed; empty when there is none)
+stored() { sed -n "s/^$1=//p" "$ROOT$CONF" 2>/dev/null | tail -n 1 | tr -d '\042\047'; }
 # Which tools are part of the installation: the option, else what an earlier install stored in the config
 # (TOOL_CLAUDE / TOOL_CODEX = on|off), else yes.
 tool_on() {   # tool_on <config key> <option value yes|no|empty>
     case "$2" in yes|no) printf '%s' "$2"; return ;; esac
-    if [ "$(sed -n "s/^$1=//p" "$ROOT$CONF" 2>/dev/null | tail -n 1 | tr -d '\042\047')" = off ]; then printf no; else printf yes; fi
+    if [ "$(stored "$1")" = off ]; then printf no; else printf yes; fi
 }
 CLAUDE_ON="$(tool_on TOOL_CLAUDE "$CLAUDE_ON")"
 CODEX_ON="$(tool_on TOOL_CODEX "$CODEX_ON")"
+# OpenCode: the option, else the stored TOOL_OPENCODE, else no (it came later and is a choice of its own)
+if [ -z "$OPENCODE_ON" ]; then if [ "$(stored TOOL_OPENCODE)" = on ]; then OPENCODE_ON=yes; else OPENCODE_ON=no; fi; fi
+# Who reviews the commits of Claude Code: the option, else the stored REVIEWERS, else codex; of them the tools of this
+# installation, and when none of them is, Codex or else OpenCode. Empty: no tool to review with (no hook).
+[ -n "$REVIEWERS" ] || REVIEWERS="$(stored REVIEWERS)"
+REVIEW_BY=""
+case ",${REVIEWERS:-codex}," in *,codex,*) [ "$CODEX_ON" = no ] || REVIEW_BY=codex ;; esac
+case ",${REVIEWERS:-codex}," in *,opencode,*) [ "$OPENCODE_ON" = no ] || REVIEW_BY="${REVIEW_BY:+$REVIEW_BY,}opencode" ;; esac
+if [ -z "$REVIEW_BY" ]; then
+    if [ "$CODEX_ON" = yes ]; then REVIEW_BY=codex; elif [ "$OPENCODE_ON" = yes ]; then REVIEW_BY=opencode; fi
+fi
 # Codex without its sandbox (the option, else the stored CODEX_BYPASS, else yes) - only with Codex
 GUIDE_SET=0; [ -z "$GUIDE_ON" ] || GUIDE_SET=1
 GUIDE_ON="$(tool_on GUIDELINES "$GUIDE_ON")"
@@ -422,7 +460,7 @@ PY
 if [ "$UNINSTALL" = 1 ]; then
     say "== Gast: Deinstallation"
     unmerge_managed
-    for f in androidsu rootbridge-open rootbridge-claude rootbridge-codex rootbridge-update rootbridge-apt rootbridge-speak; do rm -f "$ROOT$BINDIR/$f"; done
+    for f in androidsu rootbridge-open rootbridge-claude rootbridge-codex rootbridge-opencode rootbridge-update rootbridge-apt rootbridge-speak; do rm -f "$ROOT$BINDIR/$f"; done
     [ -L "$ROOT$BINDIR/xdg-open" ] && rm -f "$ROOT$BINDIR/xdg-open"
     rm -rf "$ROOT$LIBDIR" "$ROOT/var/lib/termux-rootbridge"
     # the managed Codex hook: only our block (a requirements.toml of your own stays)
@@ -431,7 +469,7 @@ if [ "$UNINSTALL" = 1 ]; then
         python3 -I "$SRC/lib/rbfile.py" drop "$ROOT$REQ" "$BEGIN" "$END"
         if ! grep -q '[^[:space:]]' "$ROOT$REQ"; then rm -f "$ROOT$REQ"; rmdir "$ROOT$(dirname "$REQ")" 2>/dev/null || true; fi
     fi
-    for gf in .claude/CLAUDE.md .codex/AGENTS.md; do
+    for gf in .claude/CLAUDE.md .codex/AGENTS.md .config/opencode/AGENTS.md; do
         if [ -f "$ROOT$HOME_DIR/$gf" ] && grep -qxF '<!-- >>> termux-rootbridge >>> -->' "$ROOT$HOME_DIR/$gf"; then
             python3 -I "$SRC/lib/rbfile.py" drop "$ROOT$HOME_DIR/$gf" '<!-- >>> termux-rootbridge >>> -->' '<!-- <<< termux-rootbridge <<< -->'
             grep -q '[^[:space:]]' "$ROOT$HOME_DIR/$gf" || rm -f "$ROOT$HOME_DIR/$gf"
@@ -445,8 +483,8 @@ fi
 
 # ------------------------------------------------------------------ install
 say "== Gast: Installation (Quelle: $SRC)"
-if [ "$CLAUDE_ON" = no ] && [ "$CODEX_ON" = no ]; then
-    echo "Mindestens eines von Claude Code und Codex muss installiert werden (--claude yes / --codex yes)." >&2
+if [ "$CLAUDE_ON" = no ] && [ "$CODEX_ON" = no ] && [ "$OPENCODE_ON" = no ]; then
+    echo "Mindestens eines von Claude Code, Codex und OpenCode muss installiert werden (--claude yes / --codex yes / --opencode yes)." >&2
     exit 2
 fi
 for need in python3 bash sha256sum od timeout; do
@@ -460,7 +498,11 @@ if [ "$CODEX_ON" = yes ]; then
     command -v codex >/dev/null 2>&1 || [ -x "$ROOT$HOME_DIR/.local/bin/codex" ] || [ -L "$ROOT$HOME_DIR/.local/bin/codex" ] \
         || say "  Hinweis: codex nicht gefunden (curl -fsSL https://chatgpt.com/codex/install.sh | sh)"
 fi
-say "  Programme: Claude Code $CLAUDE_ON, Codex $CODEX_ON"
+if [ "$OPENCODE_ON" = yes ]; then
+    command -v opencode >/dev/null 2>&1 || [ -x "$ROOT$HOME_DIR/.opencode/bin/opencode" ] \
+        || say "  Hinweis: opencode nicht gefunden (curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path)"
+fi
+say "  Programme: Claude Code $CLAUDE_ON, Codex $CODEX_ON, OpenCode $OPENCODE_ON"
 
 # the python3 of the guest itself where there is one: the agents' hooks run in isolated sessions (no Termux inside)
 PYTHON=/usr/bin/python3
@@ -483,6 +525,11 @@ if [ "$CODEX_ON" = yes ]; then
     put "$SRC/bin/rootbridge-codex" "$BINDIR/rootbridge-codex"
 else
     rm -f "$ROOT$BINDIR/rootbridge-codex"
+fi
+if [ "$OPENCODE_ON" = yes ]; then
+    put "$SRC/bin/rootbridge-opencode" "$BINDIR/rootbridge-opencode"
+else
+    rm -f "$ROOT$BINDIR/rootbridge-opencode"
 fi
 # speech output (--speak, Claude Code only): reads Claude's answers aloud (Piper or Articulino with speak-server.py, both
 # installed by setup-guest.sh)
@@ -519,8 +566,8 @@ fi
 put "$SRC/claude/rootbridge-hook.py" "$LIBDIR/rootbridge-hook.py"
 # the guards of the earlier versions (the daemon asks now, tickets are gone)
 rm -f "$ROOT$LIBDIR/android-root-guard.py" "$ROOT$LIBDIR/codex-root-guard.py"
-# the Codex pre-commit review hook runs inside Claude Code: it needs both
-if [ "$CLAUDE_ON" = yes ] && [ "$CODEX_ON" = yes ]; then
+# the pre-commit review hook runs inside Claude Code: it needs Claude Code and a tool that reviews (Codex, OpenCode)
+if [ "$CLAUDE_ON" = yes ] && [ -n "$REVIEW_BY" ]; then
     put "$SRC/claude/codex-precommit-review.py" "$LIBDIR/codex-precommit-review.py"
 else
     rm -f "$ROOT$LIBDIR/codex-precommit-review.py"
@@ -557,7 +604,7 @@ for kv in "BRIDGE_DIR=$BRIDGE_DIR" "WORKDIR=/root/work" \
           "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" \
           "APT_UPGRADE=6h" "APT_TIMEOUT=600" "CLAUDE_UPDATE=6h" "CODEX_UPDATE=6h" "NOFILE_LIMIT=2048" \
           "TOOL_CLAUDE=$(onoff "$CLAUDE_ON")" \
-          "TOOL_CODEX=$(onoff "$CODEX_ON")"; do
+          "TOOL_CODEX=$(onoff "$CODEX_ON")" "TOOL_OPENCODE=$(onoff "$OPENCODE_ON")" "OPENCODE_UPDATE=6h"; do
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"
 done
@@ -575,12 +622,18 @@ fi
 if [ "$APT_MODE_SET" = 1 ]; then conf_set APT_UPGRADE "$APT_MODE" "APT_UPGRADE=$APT_MODE"; fi
 if [ "$CLAUDE_UPD_SET" = 1 ]; then conf_set CLAUDE_UPDATE "$CLAUDE_UPD_MODE" "CLAUDE_UPDATE=$CLAUDE_UPD_MODE"; fi
 if [ "$CODEX_UPD_SET" = 1 ]; then conf_set CODEX_UPDATE "$CODEX_UPD_MODE" "CODEX_UPDATE=$CODEX_UPD_MODE"; fi
-# TOOL_CLAUDE / TOOL_CODEX (which tools this installation has; read by rootbridge-update and later installs) were
+if [ "$OPENCODE_UPD_SET" = 1 ]; then conf_set OPENCODE_UPDATE "$OPENCODE_UPD_MODE" "OPENCODE_UPDATE=$OPENCODE_UPD_MODE"; fi
+# TOOL_CLAUDE / TOOL_CODEX / TOOL_OPENCODE (which tools this installation has; read by rootbridge-update and later installs) were
 # added above if missing; a changed choice (--claude no, --codex yes, ...) replaces the stored value
-for kv in "TOOL_CLAUDE=$(onoff "$CLAUDE_ON")" "TOOL_CODEX=$(onoff "$CODEX_ON")"; do
+for kv in "TOOL_CLAUDE=$(onoff "$CLAUDE_ON")" "TOOL_CODEX=$(onoff "$CODEX_ON")" "TOOL_OPENCODE=$(onoff "$OPENCODE_ON")"; do
     key="${kv%%=*}"
     if [ "$(sed -n "s/^$key=//p" "$ROOT$CONF" | tail -n 1)" != "${kv#*=}" ]; then conf_set "$key" "${kv#*=}" "$kv"; fi
 done
+# REVIEWERS: the tools that review the commits of Claude Code (read by the pre-commit hook)
+if [ -n "$REVIEW_BY" ] && [ "$(stored REVIEWERS)" != "$REVIEW_BY" ]; then
+    grep -q '^REVIEWERS=' "$ROOT$CONF" || printf 'REVIEWERS=\n' >> "$ROOT$CONF"
+    conf_set REVIEWERS "$REVIEW_BY" "REVIEWERS=$REVIEW_BY (prüfen die Commits von Claude Code)"
+fi
 # Codex without its sandbox (--codex-bypass). The choice is stored as CODEX_BYPASS (on|off) when it was given.
 if [ "$BYPASS_SET" = 1 ]; then
     grep -q '^CODEX_BYPASS=' "$ROOT$CONF" || printf 'CODEX_BYPASS=%s\n' "$(onoff "$BYPASS_CHOICE")" >> "$ROOT$CONF"
@@ -749,17 +802,21 @@ say "  Arbeitsordner: $wd"
 # bridge directory must exist as a real node inside the guest (proot bind quirk)
 mkdir -p "$ROOT$BRIDGE_DIR" 2>/dev/null || say "  Hinweis: $BRIDGE_DIR nicht anlegbar (Termux-Home nicht gebunden?)"
 
-# managed settings (hooks + ask rules + plugin declaration). Only with Claude Code; Codex review only with both.
+# managed settings (hooks + ask rules + plugin declaration). Only with Claude Code; the Codex plugin with Codex, the
+# review hook with a tool that reviews.
 if [ "$CLAUDE_ON" = yes ]; then
     templates=("$SRC/claude/managed-settings.template.json")
     [ "$CODEX_ON" = yes ] && templates+=("$SRC/claude/managed-settings.codex.template.json")
+    [ -n "$REVIEW_BY" ] && templates+=("$SRC/claude/managed-settings.review.template.json")
     [ "$SPEAK_ON" = yes ] && templates+=("$SRC/claude/managed-settings.voice.template.json")
     mkdir -p "$ROOT$MANAGED_DIR"
     merge_managed "$ROOT$MANAGED" "$ROOT$MANAGED.new.$$" "$PYTHON" "$LIBDIR" "${templates[@]}"
     commit_file "$ROOT$MANAGED.new.$$" "$ROOT$MANAGED"
     say "  Managed Settings: $MANAGED"
+    if [ -n "$REVIEW_BY" ]; then
+        say "  Review vor dem Commit ($REVIEW_BY): Hook in den Managed Settings (Notausgang: rootbridge review-off)"
+    fi
     if [ "$CODEX_ON" = yes ]; then
-        say "  Codex-Review vor dem Commit: Hook in den Managed Settings (Notausgang: rootbridge codex-off)"
         say "  Codex-Plugin: Claude Code lädt codex@openai-codex beim Start automatisch (Netz nötig)."
     fi
     if [ "$SPEAK_ON" = yes ]; then
@@ -941,6 +998,14 @@ cat >> "$B.new.$$" <<EOF
 codex() { BROWSER=$BINDIR/rootbridge-open command codex "\$@"; }
 EOF
 fi
+if [ "$OPENCODE_ON" = yes ]; then
+cat >> "$B.new.$$" <<EOF
+# OpenCode's installer puts opencode into ~/.opencode/bin; links it opens go to Android's browser, and its updates come
+# from rootbridge-update (OPENCODE_UPDATE), not from OpenCode itself.
+case ":\$PATH:" in *":\$HOME/.opencode/bin:"*) ;; *) export PATH="\$HOME/.opencode/bin:\$PATH" ;; esac
+opencode() { BROWSER=$BINDIR/rootbridge-open OPENCODE_DISABLE_AUTOUPDATE=1 command opencode "\$@"; }
+EOF
+fi
 if { [ "$VOICE_ON" = yes ] || [ "$SPEAK_ON" = yes ]; } && [ "$CLAUDE_ON" = yes ]; then
 # Voice and reading aloud: PulseAudio in Termux lets a client in only with its cookie (private to Termux; the guest shares the Termux home)
 cat >> "$B.new.$$" <<'EOF'
@@ -951,7 +1016,7 @@ cat >> "$B.new.$$" <<EOF
 $END
 EOF
 commit_file "$B.new.$$" "$B"
-say "  ~/.bashrc: Block (PATH$([ "$CLAUDE_ON" = yes ] && echo ', claude()')$([ "$CODEX_ON" = yes ] && echo ', codex()'))"
+say "  ~/.bashrc: Block (PATH$([ "$CLAUDE_ON" = yes ] && echo ', claude()')$([ "$CODEX_ON" = yes ] && echo ', codex()')$([ "$OPENCODE_ON" = yes ] && echo ', opencode()'))"
 
 # guidelines: a marked block in the guidance file of each agent (Markdown: the markers are HTML comments)
 GL_BEGIN='<!-- >>> termux-rootbridge >>> -->'
@@ -977,8 +1042,8 @@ guidelines() {
 }
 # Claude Code: code quality (--guidelines) and, with voice, the summary first and the question last, so the short version
 # read aloud (speak-first) carries the answer; in German when Claude Code answers in German (its setting "language"), so
-# English rules do not pull the answers into English. Codex: code quality.
-claude_texts=(); codex_texts=()
+# English rules do not pull the answers into English. Codex and OpenCode: code quality.
+claude_texts=(); codex_texts=(); opencode_texts=()
 if [ "$CLAUDE_ON" = yes ]; then
     lang="$(python3 -I -c 'import json, sys; print(str(json.load(open(sys.argv[1], encoding="utf-8")).get("language", "")).lower())' \
         "$ROOT$HOME_DIR/.claude/settings.json" 2>/dev/null)" || lang=""
@@ -988,7 +1053,9 @@ if [ "$CLAUDE_ON" = yes ]; then
     [ "$SPEAK_ON" = yes ] && claude_texts+=("speech$de.claude.md")
 fi
 [ "$GUIDE_ON" = yes ] && [ "$CODEX_ON" = yes ] && codex_texts+=(code-quality.codex.md)
+[ "$GUIDE_ON" = yes ] && [ "$OPENCODE_ON" = yes ] && opencode_texts+=(code-quality.codex.md)   # the same text, for any agent
 guidelines .claude/CLAUDE.md "${claude_texts[@]}"
 guidelines .codex/AGENTS.md "${codex_texts[@]}"
+guidelines .config/opencode/AGENTS.md "${opencode_texts[@]}"
 
 say "Fertig. Gast-Teil installiert."

@@ -48,6 +48,8 @@ jobs:
         run: bash tests/test_theme_follow.sh
       - name: Codex next to Claude Code (rootbridge-update / rootbridge-codex / rootbridge codex-* / install.sh options; stubs)
         run: bash tests/test_codex.sh
+      - name: OpenCode as the third tool and who reviews the commits (install-guest / rootbridge-update / rootbridge-opencode / rootbridge / install.sh; stubs)
+        run: bash tests/test_opencode.sh
       - name: ptt, push to talk through a tmux key (hold and tap mode, settings; stub tmux)
         run: bash tests/test_ptt.sh
       - name: Voice dictation (microphone, PulseAudio, sox, /voice settings), reading aloud (Piper, switch, widgets) and the side key reader (stubs for pulseaudio / pactl / su / pkg)
