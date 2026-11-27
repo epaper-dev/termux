@@ -18,7 +18,7 @@ settings guest  root/.claude/scripts      # for example the Codex pre-commit scr
 settings guest  root/.claude/commands
 settings guest  root/.claude/agents
 settings guest  root/.codex/AGENTS.md
-settings guest  root/.config/opencode/AGENTS.md
+settings guest  root/.local/state/opencode/model.json   # the model chosen in OpenCode
 
 # --- secrets: logins of git, gh, Claude Code, Codex and OpenCode; their settings too, they can hold
 # tokens (url rewrites, http headers, env, API keys)
@@ -29,7 +29,12 @@ secret   guest  root/.gitconfig
 secret   guest  root/.claude/settings.json
 secret   guest  root/.claude/settings.local.json
 secret   guest  root/.codex/config.toml
-secret   guest  root/.config/opencode/opencode.json   # providers can hold API keys ({env:...} or written out)
+secret   guest  root/.config/opencode     # opencode.json(c) can hold API keys; also AGENTS.md, agents, commands, skills, plugins, themes, cli.json
+exclude  guest  root/.config/opencode/node_modules   # OpenCode installs the packages of its plugins itself (with these files)
+exclude  guest  root/.config/opencode/package.json
+exclude  guest  root/.config/opencode/package-lock.json
+exclude  guest  root/.config/opencode/bun.lock
+exclude  guest  root/.config/opencode/.gitignore
 secret   guest  root/.git-credentials
 secret   guest  root/.config/git/credentials
 secret   guest  root/.config/git/config
@@ -47,6 +52,7 @@ secret   guest  root/.claude/.credentials.json
 secret   guest  root/.claude.json
 secret   guest  root/.codex/auth.json
 secret   guest  root/.local/share/opencode/auth.json   # the logins of OpenCode (/connect)
+secret   guest  root/.local/share/opencode/mcp-auth.json   # the OAuth logins of its MCP servers
 secret   guest  root/.bashrc               # holds GITHUB_PERSONAL_ACCESS_TOKEN
 secret   guest  root/.android             # adb keys
 secret   guest  root/.local/share/rootbridge   # your voice for Articulino (voice.wav) or your "nie" to recording it

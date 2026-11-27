@@ -316,6 +316,12 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   C code. Tests: `tests/test_setup.sh`, `tests/test_voice.sh`.
 
 ### Fixed
+* **The backup keeps all of OpenCode.** It named `opencode.json`, but OpenCode writes `opencode.jsonc`, so the config with
+  its providers was missing, and so were its skills, agents, commands, plugins, themes and `cli.json`. Now the whole
+  `~/.config/opencode` is a secret (API keys can stand in the config), without `node_modules` and the package files
+  OpenCode makes itself for its plugins; also `mcp-auth.json` (the OAuth logins of MCP servers) and the chosen model
+  (`~/.local/state/opencode/model.json`). The conversations (`opencode.db`) stay out, as those of Claude Code do.
+  Test: `tests/test_backup.py`
 * **Music turned down while nothing was read; the phone slow while it read.** `daemon.log` now names every change of the
   audio focus once: what asked for it (the player or Claude Code's recorders, with their pids), Android's answer, the
   release, and when Termux:API does not answer, so the next time the cause shows. A pid in `speak.pid` that was gone

@@ -127,7 +127,7 @@ teléfono, con la tecla **S-TAB** que el instalador añade a la fila de teclas e
 `rootbridge backup` guarda los ajustes y accesos de Termux y del invitado en `/sdcard/backup/termux`: `a.tgz` (ajustes),
 `k.enc` (accesos, las configuraciones de rootbridge y los ajustes de git, Claude Code y Codex, cifrados con tu contraseña), `h` (sumas de verificación) y `m` (un
 sello hecho con tu contraseña); la copia anterior queda en `previous/`. Qué se guarda está en una lista base
-(rootbridge, git, claves SSH del invitado, Claude Code con sus plugins, Codex, tu voz para Articulino); tus propias líneas van en `~/.config/termux-rootbridge/backup.list` (viaja cifrada dentro de la copia: una restauración en una
+(rootbridge, git, claves SSH del invitado, Claude Code con sus plugins, Codex, OpenCode con su configuración, skills e inicios de sesión, tu voz para Articulino); tus propias líneas van en `~/.config/termux-rootbridge/backup.list` (viaja cifrada dentro de la copia: una restauración en una
 instalación nueva la lee primero, así vuelve todo lo que nombra)
 (`settings|secret termux|guest RUTA`, `exclude termux|guest RUTA`). `rootbridge restore` comprueba las sumas y el sello
 con tu contraseña (otras apps pueden escribir en el almacenamiento compartido; una copia sin sello solo tras escribir

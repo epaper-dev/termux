@@ -133,7 +133,7 @@ the installer adds to the Termux extra keys row, see below).
 `rootbridge backup` saves the settings and logins of Termux and the guest into `/sdcard/backup/termux`: `a.tgz`
 (settings), `k.enc` (logins, the rootbridge configs and the settings of git, Claude Code and Codex, encrypted with your password), `h` (checksums) and
 `m` (a seal made with your password); the previous backup stays in `previous/`. What is saved is a base list (rootbridge,
-git, SSH keys of the guest, Claude Code with its plugins, Codex, your voice for Articulino); your own lines go into `~/.config/termux-rootbridge/backup.list` (it travels, encrypted, inside the backup: a restore on a
+git, SSH keys of the guest, Claude Code with its plugins, Codex, OpenCode with its config, skills and logins, your voice for Articulino); your own lines go into `~/.config/termux-rootbridge/backup.list` (it travels, encrypted, inside the backup: a restore on a
 new installation reads it first, so everything it names comes back) (`settings|secret
 termux|guest PATH`, `exclude termux|guest PATH`). `rootbridge restore` checks the checksums and the seal with your password
 (other apps can write to the shared storage; a missing, empty or unreadable seal is refused, an older backup without
