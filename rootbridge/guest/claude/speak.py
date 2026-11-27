@@ -645,6 +645,10 @@ def piper_worker(voice):
     """Runs with the Python of Piper: loads the voice once, then for each line of stdin its audio (raw, 16 bit, mono) on
     stdout, after its length (FRAME). Piper's own --output-raw writes the audio of all lines as one stream."""
     from piper import PiperVoice   # only in the venv of Piper
+    try:
+        os.nice(10)   # as speak-server.py: it computes ahead of what is played, Claude Code and Termux come first
+    except OSError:
+        pass
     model = PiperVoice.load(voice)
     out = sys.stdout.buffer
     for line in sys.stdin.buffer:

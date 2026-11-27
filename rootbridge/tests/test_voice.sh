@@ -506,6 +506,17 @@ focus 1 >/dev/null
 check "Fokus: speak-focus über einem Link: Ziel unberührt, eigene Datei" "wertvoll nein $PLAYER granted" \
     "$(cat "$T/wertvoll4") $([ -L "$BRIDGE_DIR/speak-focus" ] && echo ja || echo nein) $(head -n 1 "$BRIDGE_DIR/speak-focus")"
 kill "$PLAYER" 2>/dev/null; rm -f "$BRIDGE_DIR/speak.pid" "$BRIDGE_DIR/speak-stopped" "$BRIDGE_DIR/speak-focus"
+# daemon.log names each change of the focus once, with what asked for it; a pid that is gone writes nothing
+player "python3 -I /usr/local/lib/termux-rootbridge/speak.py --run"
+echo "$PLAYER" > "$BRIDGE_DIR/speak.pid"; echo none > "$T/af.status"; echo granted > "$T/af.request"; echo released > "$T/af.release"
+( RB_PROC_DIR=/proc RB_ASK_CMD="$T/fake-api" TMPDIR="$T/ftmp"; . "$LIB"
+  rb_speak_focus; echo held > "$T/af.status"; rb_speak_focus; rb_speak_focus; kill "$PLAYER"; sleep 0.3
+  rb_speak_focus; rb_speak_focus ) 2> "$T/focus.err"
+check "Fokus-Protokoll: angefordert mit Vorleser, einmal"  1 "$(grep -c "Audiofokus: für Vorleser $PLAYER: granted$" "$T/focus.err")"
+check "Fokus-Protokoll: freigegeben, einmal; sonst nichts" "1 2" "$(grep -c 'Audiofokus: freigegeben$' "$T/focus.err") $(wc -l < "$T/focus.err" | tr -d ' ')"
+echo 999999 > "$BRIDGE_DIR/speak.pid"
+check "speak.pid mit einem beendeten Prozess: keine Fehlerzeile" "" "$( ( RB_PROC_DIR=/proc; . "$LIB"; rb_speak_player ) 2>&1 )"
+rm -f "$BRIDGE_DIR/speak.pid" "$BRIDGE_DIR/speak-focus" "$T/ftmp/rootbridge-audio-focus"
 
 # the audio focus while Claude Code records for /voice (its recorder `rec ... --buffer 1024 -t raw`): music quieter as well
 bash -c 'exec -a rec python3 -c "import time; time.sleep(30)" --buffer 1024 -t raw' & REC=$!

@@ -316,6 +316,13 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   C code. Tests: `tests/test_setup.sh`, `tests/test_voice.sh`.
 
 ### Fixed
+* **Music turned down while nothing was read; the phone slow while it read.** `daemon.log` now names every change of the
+  audio focus once: what asked for it (the player or Claude Code's recorders, with their pids), Android's answer, the
+  release, and when Termux:API does not answer, so the next time the cause shows. A pid in `speak.pid` that was gone
+  wrote an error line every round (686 in a row on the A9): `< file 2>/dev/null` reports a failed redirection before
+  stderr is redirected; the two are swapped. Articulino and the Piper worker compute at a lower priority (nice 10): they
+  run ahead of what is played and slowed down Claude Code and Termux while reading; `play` keeps the normal priority.
+  Tests: `tests/test_voice.sh`, `tests/test_speak.py`
 * **`install.sh --sidekey` starts the side key reader right away.** Before, it was only installed and started by the next
   `rootbridge start` / `attach`; with a session already running the side key did nothing. The installer now ends a reader of an
   earlier install, waits until it is gone (it holds the lock; a new one without it would leave silently), starts the new one and
