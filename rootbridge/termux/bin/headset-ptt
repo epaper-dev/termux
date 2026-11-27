@@ -17,6 +17,7 @@ again when the reader ends: it ends with the stdin from headset-ptt.
 Log: ~/.cache/headset-ptt.log      Stop it:  pkill -f headset-ptt
 Test hooks: HEADSET_CMD, HEADSET_PTT, HEADSET_LONG, HEADSET_ONCE, HEADSET_CACHE (see keyreader.py).
 """
+import errno
 import fcntl
 import os
 import select
@@ -36,6 +37,9 @@ PASSED = (114, 115, KEY_MEDIA, 582)
 # UI_DEV_SETUP = _IOW('U', 3, struct uinput_setup), 92 bytes; UI_DEV_CREATE = _IO('U', 1)
 EVIOCGRAB, UI_SET_EVBIT, UI_SET_KEYBIT, UI_DEV_SETUP, UI_DEV_CREATE = 0x40044590, 0x40045564, 0x40045565, 0x405c5503, 0x5501
 BUS_VIRTUAL = 0x06
+# Kernels before 4.5 (the Boox Max Lumi has 4.4) lack UI_DEV_SETUP (EINVAL): there struct uinput_user_dev is written
+# instead: name, input_id, ff_effects_max, four arrays of 64 axis values (all zero)
+USER_DEV = struct.Struct("<80sHHHHI1024x")
 SYN = keyreader.EVENT.pack(0, 0, 0, 0, 0)
 
 
@@ -83,7 +87,12 @@ def grab(dev, passed=PASSED):
         fcntl.ioctl(out, UI_SET_EVBIT, keyreader.EV_KEY)
         for key in passed:
             fcntl.ioctl(out, UI_SET_KEYBIT, key)
-        fcntl.ioctl(out, UI_DEV_SETUP, struct.pack("<HHHH80sI", BUS_VIRTUAL, 0, 0, 0, b"rootbridge headset", 0))
+        try:
+            fcntl.ioctl(out, UI_DEV_SETUP, struct.pack("<HHHH80sI", BUS_VIRTUAL, 0, 0, 0, b"rootbridge headset", 0))
+        except OSError as e:
+            if e.errno != errno.EINVAL:
+                raise
+            os.write(out, USER_DEV.pack(b"rootbridge headset", BUS_VIRTUAL, 0, 0, 0, 0))
         fcntl.ioctl(out, UI_DEV_CREATE)
         fcntl.ioctl(fd, EVIOCGRAB, 1)
     except OSError as e:

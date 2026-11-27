@@ -1703,3 +1703,10 @@ fi
 if [ "$DO_COLORS" = 1 ]; then
     say "Farben: der E-Paper-Termux bringt das helle und das dunkle Schema selbst mit und folgt dem Telefon (eigene Dateien: ~/.termux/colors-light.properties, colors-dark.properties, colors.properties). Claude Code nutzt das Theme '$CLAUDE_THEME' (Auto epaper: ANSI-Farben des Termux-Schemas, wechselt mit dem Telefon live zwischen hell und dunkel)."
 fi
+# last, so that it is not lost among the other notes: no root request can be shown while Termux:API is frozen
+if [ -n "$DEV_SRC" ] && [ "$(cfg_get APP_FREEZE "$DEV_SRC")" = boox ]; then
+    say ""
+    say "WICHTIG, von Hand ($DEV_LABEL): Die Boox friert Apps ein. In der App-Übersicht unter App-Management -> App-Freeze"
+    say "die Schalter für Termux und Termux:API (auch Termux:Boot und Termux:Widget, falls benutzt) auf OFF stellen."
+    say "Sonst erscheint die Root-Rückfrage nicht. Nach einer Neuinstallation einer dieser Apps erneut prüfen."
+fi

@@ -36,9 +36,11 @@ DEVICE_KEYS = {
     "LABEL": r"[A-Za-z0-9 ._()+-]{1,64}",
     "NAME": r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}",
     "SIDEKEY_DEVICE": _INPUT_DEVICE, "SIDEKEY_DEVICE_NAME": _INPUT_NAME, "SIDEKEY_CODE": _CODE,
+    "SIDEKEY_WAKE": r"yes|no",
     "HEADSET_DEVICE": _INPUT_DEVICE, "HEADSET_DEVICE_NAME": _INPUT_NAME, "HEADSET_CODE": _CODE,
     "HOMEKEY_METHOD": r"assistant|none",
     "LONG_PRESS": r"[0-9](\.[0-9]{1,2})?",
+    "APP_FREEZE": r"boox|none",
 }
 
 
