@@ -123,12 +123,26 @@ teléfono, con la tecla **S-TAB** que el instalador añade a la fila de teclas e
 `rootbridge backup` guarda los ajustes y accesos de Termux y del invitado en `/sdcard/backup/termux`: `a.tgz` (ajustes),
 `k.enc` (accesos, las configuraciones de rootbridge y los ajustes de git, Claude Code y Codex, cifrados con tu contraseña), `h` (sumas de verificación) y `m` (un
 sello hecho con tu contraseña); la copia anterior queda en `previous/`. Qué se guarda está en una lista base
-(rootbridge, git, claves SSH del invitado, Claude Code con sus plugins, Codex); tus propias líneas van en `~/.config/termux-rootbridge/backup.list` (viaja cifrada dentro de la copia: una restauración en una
+(rootbridge, git, claves SSH del invitado, Claude Code con sus plugins, Codex, tu voz para Articulino); tus propias líneas van en `~/.config/termux-rootbridge/backup.list` (viaja cifrada dentro de la copia: una restauración en una
 instalación nueva la lee primero, así vuelve todo lo que nombra)
 (`settings|secret termux|guest RUTA`, `exclude termux|guest RUTA`). `rootbridge restore` comprueba las sumas y el sello
 con tu contraseña (otras apps pueden escribir en el almacenamiento compartido; una copia sin sello solo tras escribir
 "ja"; un sello ausente, vacío o ilegible se rechaza; una copia antigua sin sello solo con `--legacy`), muestra qué va dónde, pregunta y luego copia, nunca a través de un enlace; no se ejecuta nada de la carpeta. En una instalación nueva con copia, el instalador pregunta junto
 con las demás preguntas si debe restaurarla al final.
+
+**Qué vuelve** lo eliges tú: `rootbridge restore` numera lo que restauraría, pregunta si se lleva la configuración del
+dispositivo (archivo del dispositivo, fila de teclas de Termux y, en la configuración, el dispositivo, sus teclas, el
+phantom process killer y el nombre en Remote Control; en otro dispositivo di que no: vuelven los accesos y el dispositivo
+conserva la suya) y qué números se quedan fuera. `--no-device` deja fuera la configuración del dispositivo sin preguntar.
+
+**Ubuntu o Debian como invitado** (`--distro ubuntu|debian`): en un dispositivo sin invitado el instalador pregunta una
+vez (Enter: Ubuntu) y guarda `DISTRO` cuando el invitado ya está; el widget y el alias llevan su nombre (`ubuntu` y
+`debian` abren ambos la shell del invitado). Con un invitado instalado, `--distro` cambia: las sesiones terminan, el
+invitado anterior se queda (se vuelve con `--distro` y su nombre, se elimina con `proot-distro remove NOMBRE`) y en una
+terminal el instalador ofrece llevarse sus ajustes y accesos (una copia en `/sdcard/backup/termux-NOMBRE`, restaurada en
+el nuevo invitado, con la selección de arriba) y la carpeta de trabajo (copiada si en el nuevo invitado está vacía) con las conversaciones de Claude Code (las que
+faltan en el nuevo invitado, con la misma ruta de la carpeta de trabajo). En
+un invitado sin uutils (Debian) los paquetes de coreutils no se retienen en las actualizaciones.
 
 **Preguntas al principio.** El instalador hace todas sus preguntas al empezar, antes de instalar nada; después sigue
 sin preguntar. En una shell interactiva de Termux cada pregunta aparece una sola vez: la respuesta queda en la

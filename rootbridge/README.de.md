@@ -127,7 +127,7 @@ zu Beginn `termux-setup-storage` auf (Android fragt); `openssl` (Paket `openssl-
 `rootbridge backup` sichert die Einstellungen und Zugangsdaten von Termux und dem Gast nach `/sdcard/backup/termux`:
 `a.tgz` (Einstellungen), `k.enc` (Zugangsdaten, die Konfigurationen von rootbridge und die Einstellungen von Git, Claude Code und Codex, mit deinem Passwort
 verschlüsselt), `h` (Prüfsummen) und `m` (ein Siegel mit deinem Passwort); die vorige Sicherung bleibt in `previous/`. Was gesichert wird,
-steht in einer Grundliste (rootbridge, Git, SSH-Schlüssel des Gasts, Claude Code mit seinen Plugins, Codex); eigene Zeilen kommen in
+steht in einer Grundliste (rootbridge, Git, SSH-Schlüssel des Gasts, Claude Code mit seinen Plugins, Codex, deine Stimme für Articulino); eigene Zeilen kommen in
 `~/.config/termux-rootbridge/backup.list` (sie reist verschlüsselt in der Sicherung mit: eine Wiederherstellung auf einer neuen
 Installation liest sie zuerst ein, damit alles zurückkommt, was sie nennt) (`settings|secret termux|guest PFAD`, `exclude termux|guest PFAD`).
 `rootbridge restore` prüft die Prüfsummen und das Siegel mit deinem Passwort (andere Apps können in den Telefonspeicher
@@ -135,6 +135,20 @@ schreiben; ein fehlendes, leeres oder unlesbares Siegel wird abgewiesen, eine ä
 `--legacy` und einem getippten „ja“; `exclude`-Zeilen gelten auch beim Zurückspielen), zeigt, was wohin kommt, fragt nach und spielt dann
 zurück, nie durch einen Link hindurch; aus dem Ordner wird nichts ausgeführt. Bei einer neuen Installation mit Sicherung fragt der Installer mit den anderen Fragen, ob er sie am Ende
 wiederherstellen soll.
+
+**Was zurückkommt,** wählst du selbst: `rootbridge restore` nummeriert, was es zurückspielen würde, fragt, ob die
+Gerätekonfiguration mitkommt (Gerätedatei, Termux-Tastenleiste und in der Konfig das Gerät, seine Tasten, der Phantom
+Process Killer und der Name in Remote Control; auf einem anderen Gerät Nein sagen: dann kommen die Zugangsdaten, das
+Gerät behält seine eigene), und welche Nummern wegbleiben. `--no-device` lässt die Gerätekonfiguration ohne Frage weg.
+
+**Ubuntu oder Debian als Gast** (`--distro ubuntu|debian`): Auf einem Gerät ohne Gast fragt der Installer einmal (Enter:
+Ubuntu) und speichert `DISTRO`, sobald der Gast da ist; Widget und Alias heißen wie der Gast (`ubuntu` und `debian`
+öffnen beide die Gast-Shell). Mit installiertem Gast wechselt `--distro`: Die Sitzungen enden, der alte Gast bleibt
+(zurück mit `--distro` und seinem Namen, entfernen mit `proot-distro remove NAME`), und auf einem Terminal bietet der
+Installer an, seine Einstellungen und Zugangsdaten mitzunehmen (eine Sicherung nach `/sdcard/backup/termux-NAME`, im
+neuen Gast zurückgespielt, mit der Auswahl oben) und den Arbeitsordner (kopiert, wenn er im neuen Gast leer ist) mit den Unterhaltungen von Claude Code (die dem neuen
+Gast fehlen, bei gleichem Pfad des Arbeitsordners). In
+einem Gast ohne uutils (Debian) werden die coreutils-Pakete nicht von Upgrades zurückgehalten.
 
 **Fragen am Anfang.** Alle Fragen stellt der Installer gleich zu Beginn, bevor er etwas installiert; danach läuft er
 ohne Rückfrage durch. Jede Frage kommt in einer interaktiven Termux-Shell nur einmal, die Antwort steht danach in der

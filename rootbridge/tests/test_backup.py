@@ -2,6 +2,7 @@
 
 A fake Termux home and guest root in a temp dir; BKPW is the password, RB_GUEST_ROOT the guest.
 """
+import contextlib
 import io
 import os
 import shutil
@@ -185,6 +186,37 @@ class TestBackup(unittest.TestCase):
             names = tar.getnames()
         self.assertNotIn("g/root/.claude/token", names)
         self.assertNotIn("g/root/.claude/settings.json", names)   # a secret line names it
+
+    def test_a_proot_hard_link_is_backed_up_as_its_file(self):
+        # proot keeps a hard link as link -> /.l2s/.l2s.NAME0001 -> /.l2s/.l2s.NAME (paths outside the guest); a link
+        # to a .l2s-like name elsewhere, or one whose second hop leads out of /.l2s, is still not followed
+        l2s = os.path.join(self.guest, ".l2s")
+        self.write(self.guest, ".l2s/.l2s.pack", "pack data")
+        os.symlink(os.path.join(l2s, ".l2s.pack"), os.path.join(l2s, ".l2s.pack0001"))
+        self.write(self.d, "elsewhere/.l2s/.l2s.x0001", "termux secret")
+        os.symlink(os.path.join(self.d, "elsewhere/.l2s/.l2s.x0001"), os.path.join(l2s, ".l2s.esc0001"))
+        os.makedirs(os.path.join(self.guest, "root/notes"))
+        os.symlink(os.path.join(l2s, ".l2s.pack0001"), os.path.join(self.guest, "root/notes/p.pack"))
+        os.symlink(os.path.join(self.d, "elsewhere/.l2s/.l2s.x0001"), os.path.join(self.guest, "root/notes/out"))
+        os.symlink(os.path.join(l2s, ".l2s.esc0001"), os.path.join(self.guest, "root/notes/esc"))
+        # in the plain settings it stays out (the file behind it may also be a secret's)
+        self.write(self.home, ".config/termux-rootbridge/backup.list", "settings guest root/notes\n")
+        self.backup()
+        with tarfile.open(os.path.join(self.out, "a.tgz")) as tar:
+            self.assertFalse([n for n in tar.getnames() if n.startswith("g/root/notes/")])
+        # in the encrypted secrets it is its file; the other links stay out
+        shutil.rmtree(self.out)
+        self.write(self.home, ".config/termux-rootbridge/backup.list", "secret guest root/notes\n")
+        self.backup()
+        home, guest = self.fresh()
+        r = self.run_tool(["restore", self.out, "--yes"], home, guest)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        path = os.path.join(guest, "root/notes/p.pack")
+        self.assertFalse(os.path.islink(path))
+        with open(path) as fh:
+            self.assertEqual(fh.read(), "pack data")
+        self.assertFalse(os.path.lexists(os.path.join(guest, "root/notes/out")))
+        self.assertFalse(os.path.lexists(os.path.join(guest, "root/notes/esc")))
 
     def test_a_link_out_of_the_root_is_not_followed(self):
         self.write(self.d, "private/id", "termux secret")
@@ -848,6 +880,25 @@ class TestBackup(unittest.TestCase):
             self.assertEqual(fh.read(), "secret")
         self.assertFalse([n for n in os.listdir(os.path.join(guest, "root/.codex")) if "rootbridge-" in n])
 
+    def test_restore_over_a_proot_hard_link_where_python_has_no_os_link(self):
+        # the target is proot's link for a hard link: kept aside as the same link (never opened), then replaced
+        self.backup()
+        home, guest = self.fresh()
+        self.write(guest, ".l2s/.l2s.auth", "old login")
+        os.makedirs(os.path.join(guest, "root/.codex"))
+        os.symlink(os.path.join(guest, ".l2s/.l2s.auth"), os.path.join(guest, "root/.codex/auth.json"))
+        env = dict(os.environ, HOME=home, ROOTBRIDGE_CONFIG=os.path.join(home, ".config/termux-rootbridge/config"),
+                   RB_GUEST_ROOT=guest, BKPW="test")
+        code = ("import os, runpy, sys; hasattr(os, 'link') and delattr(os, 'link'); sys.argv = [%r, 'restore', %r, '--yes']; "
+                "runpy.run_path(%r, run_name='__main__')" % (TOOL, self.out, TOOL))
+        r = subprocess.run([sys.executable, "-I", "-c", code], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        path = os.path.join(guest, "root/.codex/auth.json")
+        self.assertFalse(os.path.islink(path))
+        with open(path) as fh:
+            self.assertEqual(fh.read(), "secret")
+        self.assertFalse([n for n in os.listdir(os.path.join(guest, "root/.codex")) if "rootbridge-" in n])
+
     def test_two_backups_at_once_are_refused(self):
         import fcntl
         priv = os.path.join(self.home, ".config/termux-rootbridge")
@@ -914,6 +965,86 @@ class TestBackup(unittest.TestCase):
         self.assertIn("root/.claude/settings.json ->", r.stdout)
         self.assertFalse(os.path.exists(os.path.join(guest, "root/.claude")))
 
+    def device_backup(self):
+        """A backup of an A9 (device file, keys, name), restored onto a fresh home that is another device."""
+        self.write(self.home, ".config/termux-rootbridge/config",
+                   "DISTRO=ubuntu\nDEVICE=hisense-hlte556n\nSIDEKEY=on\nREMOTE_NAME=a9\nLANGUAGE=en\n")
+        self.write(self.guest, "etc/termux-rootbridge.conf", 'CLAUDE_ARGS="--remote-control a9 --continue"\n')
+        self.backup()
+        home, guest = self.fresh()
+        self.write(home, ".config/termux-rootbridge/config", "DISTRO=ubuntu\nDEVICE=none\nREMOTE_NAME=boox\n")
+        return home, guest
+
+    def config_of(self, home):
+        with open(os.path.join(home, ".config/termux-rootbridge/config")) as fh:
+            return fh.read().split()
+
+    def test_restore_without_the_device_configuration(self):
+        home, guest = self.device_backup()
+        r = self.run_tool(["restore", self.out], home, guest, stdin="n\n\nj\n")   # device: n, numbers: none, restore: j
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Gerätekonfiguration der Sicherung übernehmen", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(home, ".config/termux-rootbridge/device.conf")))
+        self.assertFalse(os.path.exists(os.path.join(home, ".termux/termux.properties")))
+        config = self.config_of(home)
+        self.assertIn("LANGUAGE=en", config)                       # the rest of the config comes back
+        self.assertIn("REMOTE_NAME=boox", config)                  # the keys of this device stay
+        self.assertIn("DEVICE=none", config)
+        self.assertNotIn("SIDEKEY=on", config)
+        self.assertTrue(os.path.isfile(os.path.join(guest, "root/.codex/auth.json")))   # the logins come back
+        with open(os.path.join(guest, "etc/termux-rootbridge.conf")) as fh:   # the name Claude uses is this device's
+            self.assertIn('CLAUDE_ARGS="--remote-control boox --continue"', fh.read())
+
+    def test_restore_with_the_device_configuration(self):
+        home, guest = self.device_backup()
+        r = self.run_tool(["restore", self.out], home, guest, stdin="\n\nj\n")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(home, ".config/termux-rootbridge/device.conf")))
+        self.assertIn("REMOTE_NAME=a9", self.config_of(home))
+
+    def test_no_device_option(self):
+        home, guest = self.device_backup()
+        r = self.run_tool(["restore", self.out, "--yes", "--no-device"], home, guest)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(home, ".config/termux-rootbridge/device.conf")))
+        self.assertIn("REMOTE_NAME=boox", self.config_of(home))
+
+    def test_the_uutils_hold_stays_out_of_a_guest_without_uutils(self):
+        self.write(self.guest, "etc/termux-rootbridge.conf",
+                   "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils\nWORKDIR=/root/work\n")
+        self.backup()
+        for uutils, kept in ((False, False), (True, True)):
+            home, guest = self.fresh()
+            if uutils:
+                os.makedirs(os.path.join(guest, "usr/lib/cargo/bin/coreutils"))
+            r = self.run_tool(["restore", self.out, "--yes"], home, guest)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(guest, "etc/termux-rootbridge.conf")) as fh:
+                text = fh.read()
+            self.assertEqual("APT_HOLD=rust-coreutils" in text, kept, text)
+            self.assertIn("WORKDIR=/root/work", text)
+            shutil.rmtree(guest)
+            shutil.rmtree(home)
+
+    def test_restore_leaves_out_numbers(self):
+        self.backup()
+        home, guest = self.fresh()
+        listing = self.run_tool(["restore", self.out], home, guest, stdin="").stdout   # aborts at the question
+        number = [line.split()[0] for line in listing.splitlines() if " root/.codex/auth.json ->" in line][0]
+        r = self.run_tool(["restore", self.out], home, guest, stdin="\n%s\nj\n" % number)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("bleibt in der Sicherung: root/.codex/auth.json", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(guest, "root/.codex/auth.json")))
+        self.assertTrue(os.path.isfile(os.path.join(guest, "root/.claude/settings.json")))
+
+    def test_a_number_not_in_the_list_restores_nothing(self):
+        self.backup()
+        home, guest = self.fresh()
+        r = self.run_tool(["restore", self.out], home, guest, stdin="\n99\nj\n")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("keine Nummer aus der Liste: 99", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(guest, "root/.claude")))
+
     def test_without_a_guest_first_termux(self):
         self.backup()
         home = self.make_home("home3")
@@ -948,6 +1079,42 @@ class TestBackup(unittest.TestCase):
         r = self.run_tool(["restore", self.out, "--yes"], home, guest, BKPW="falsch")
         self.assertEqual(r.returncode, 1)
         self.assertIn("Passwort falsch", r.stderr)
+
+
+class TestPassword(unittest.TestCase):
+    """The password prompt: an empty answer (an Enter typed ahead during the install) asks again, three empty ones stop."""
+
+    def setUp(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("rbbackup_pw", TOOL)
+        self.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mod)
+        self.env = os.environ.pop("BKPW", None)
+
+    def tearDown(self):
+        if self.env is not None:
+            os.environ["BKPW"] = self.env
+
+    def answers(self, *given):
+        it = iter(given)
+        self.mod.ask_password = lambda prompt: next(it)
+
+    def test_empty_answer_asks_again(self):
+        self.answers("", "geheim")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.mod.password(False), "geheim")
+
+    def test_three_empty_answers_stop(self):
+        self.answers("", "", "")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self.mod.password(False)
+
+    def test_twice_must_match(self):
+        self.answers("geheim", "anders")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self.mod.password(True)
 
 
 if __name__ == "__main__":

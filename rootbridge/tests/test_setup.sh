@@ -97,6 +97,7 @@ case "${1:-}" in
                 bubblewrap) printf '#!/bin/bash\nexit 0\n' > "$STUB_BIN/bwrap" ;;
                 shellcheck) printf '#!/bin/bash\nexit 0\n' > "$STUB_BIN/shellcheck" ;;
                 openssh-client) printf '#!/bin/bash\nexit 0\n' > "$STUB_BIN/ssh" ;;
+                gh) printf '#!/bin/bash\nexit 0\n' > "$STUB_BIN/gh" ;;
                 nodejs) printf '#!/bin/bash\n[ "${1:-}" = --version ] && echo "${STUB_NODE_VERSION:-v22.22.1}"\nexit 0\n' > "$STUB_BIN/node" ;;
             esac
         done ;;
@@ -160,8 +161,8 @@ SHIM="$T/shim"; mkdir -p "$SHIM"
     n ~ /^(tmux|proot-distro|termux-open-url|termux-dialog|python3|setsid|curl|claude|codex|git|bwrap|node|nodejs|apt-get|pkg|shellcheck)$/ { next }
     !(n in seen) { seen[n] = 1; print }' | tr '\n' '\0' | xargs -0 ln -s -t "$SHIM" 2>/dev/null
 [ -e "$SHIM/bash" ] && [ -e "$SHIM/sed" ] || { echo "ABBRUCH: Shim-PATH unvollständig" >&2; exit 1; }
-# ssh is "there" on every fake device (whatever the machine has), except where a test hides it (HIDE=ssh)
-rm -f "$SHIM/ssh"; printf '#!/bin/bash\nexit 0\n' > "$SHIM/ssh"; chmod +x "$SHIM/ssh"
+# ssh and gh are "there" on every fake device (whatever the machine has), except where a test hides one (HIDE=ssh)
+for c in ssh gh; do rm -f "$SHIM/$c"; printf '#!/bin/bash\nexit 0\n' > "$SHIM/$c"; chmod +x "$SHIM/$c"; done
 
 # newenv <name> [command ...]: a fresh fake device. Commands named as arguments are available right away.
 # HIDE="stat timeout" in the environment of the call takes those commands out of this device's PATH.
@@ -231,7 +232,7 @@ check "A2 zweiter Lauf: keine Paket-Einrichtung gemeldet"       0 "$(count "$E/o
 # the guest holds everything (python3, curl, certificates, claude): setup-guest.sh is not even started
 G="$E/prefix/var/lib/proot-distro/containers/ubuntu/rootfs"
 mkdir -p "$G/usr/bin" "$G/etc/ssl/certs" "$G/root/.local/bin"
-printf '#!/bin/bash\n' > "$G/usr/bin/python3"; printf '#!/bin/bash\n' > "$G/usr/bin/curl"; printf '#!/bin/bash\n' > "$G/usr/bin/shellcheck"; printf '#!/bin/bash\n' > "$G/usr/bin/ssh"; echo cert > "$G/etc/ssl/certs/ca-certificates.crt"
+printf '#!/bin/bash\n' > "$G/usr/bin/python3"; printf '#!/bin/bash\n' > "$G/usr/bin/curl"; printf '#!/bin/bash\n' > "$G/usr/bin/shellcheck"; printf '#!/bin/bash\n' > "$G/usr/bin/ssh"; printf '#!/bin/bash\n' > "$G/usr/bin/gh"; echo cert > "$G/etc/ssl/certs/ca-certificates.crt"
 printf '#!/bin/bash\n' > "$G/root/.local/bin/claude"; chmod +x "$G/root/.local/bin/claude"
 for b in git node bwrap; do printf '#!/bin/bash\n' > "$G/usr/bin/$b"; done
 ln -sf /root/.codex/packages/standalone/current/bin/codex "$G/root/.local/bin/codex"   # target only inside the guest
@@ -256,6 +257,11 @@ rm -f "$G/usr/bin/ssh"
 ROOTBRIDGE_GUEST_HOME=/root rinstall
 check "A2f nur ssh fehlt im Gast: setup-guest.sh läuft"         1 "$(count "$LOG" '^staged setup-guest.sh$')"
 printf '#!/bin/bash\n' > "$G/usr/bin/ssh"
+rm -f "$G/usr/bin/gh"
+: > "$LOG"
+ROOTBRIDGE_GUEST_HOME=/root rinstall
+check "A2g nur gh fehlt im Gast: setup-guest.sh läuft"          1 "$(count "$LOG" '^staged setup-guest.sh$')"
+printf '#!/bin/bash\n' > "$G/usr/bin/gh"
 rm -f "$G/root/.local/bin/claude"
 : > "$LOG"
 rinstall
@@ -376,6 +382,12 @@ gsetup
 check "B1b nur ssh fehlt: läuft durch"                          0 "$?"
 check "B1b nur ssh fehlt: apt-get installiert openssh-client"   "apt-get install -y --no-install-recommends openssh-client [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
 check "B1b danach ist ssh im Gast"                              ja "$([ -x "$E/bin/ssh" ] && echo ja || echo nein)"
+
+HIDE=gh newenv b1c python3 curl shellcheck
+mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
+gsetup
+check "B1c nur gh fehlt: apt-get installiert gh"                "apt-get install -y --no-install-recommends gh [DEBIAN_FRONTEND=noninteractive]" "$(grep '^apt-get install' "$LOG")"
+check "B1c danach ist gh im Gast"                               ja "$([ -x "$E/bin/gh" ] && echo ja || echo nein)"
 
 newenv b3 python3 shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"

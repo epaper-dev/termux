@@ -2,7 +2,8 @@
 """rootbridge-backup - back up and restore the settings and secrets of the installation (rootbridge backup | restore).
 
   rootbridge-backup.py backup  [DIR]          settings and secrets of Termux and the guest into DIR
-  rootbridge-backup.py restore [DIR] [--yes]  back from DIR: checks it, shows what goes where, asks, then copies
+  rootbridge-backup.py restore [DIR] [--yes] [--no-device]  back from DIR: checks it, shows what goes where, asks what
+                                              of it, then copies (--no-device: without the device configuration)
   rootbridge-backup.py restore [DIR] --legacy a backup of the earlier backup script (it has no seal)
   (DIR: default /sdcard/backup/termux)
 
@@ -17,7 +18,10 @@ DIR lies in Android's shared storage, where other apps can write, so restore run
   who knows the password can have made the backup. A seal that is missing, empty or unreadable is refused; a backup of the
   earlier backup script (it has none) is restored only with --legacy and after you typed "ja".
 - Lines "exclude" of the lists hold for restore too: what they name does not come back.
-- It shows what goes where and asks (--yes: without asking; the tests).
+- It shows what goes where, numbered, and asks what of it comes back: the device configuration (the device file, the
+  Termux keys row, and in the config the device, its keys, the phantom process killer and the Remote Control name: on
+  another device you want the logins, not these), and single numbers to leave out. --yes: without asking (the tests);
+  --no-device: without the device configuration.
 - It unpacks with tarfile's "data" filter (no absolute paths, no "..", no links that point out, no device files) into a
   private temporary folder and copies into the Termux home and the guest only, never through a link on the way there.
 A backup also leaves its checksums in backup.sha256 next to the config, where only Termux reads: restore names it when the
@@ -41,6 +45,7 @@ import os
 import re
 import shutil
 import subprocess
+import termios
 import sys
 import tarfile
 import fnmatch
@@ -330,7 +335,8 @@ def open_dir(root, parts, create=False):
 def pack(entries, kind, roots):
     """A tar.gz (bytes) of the paths of this kind (t/ Termux home, g/ guest). Left out: what is excluded, for the
     settings everything a secret line names, and every link (named, not followed: a running guest cannot point us at a
-    Termux file). Every file is opened through descriptors with O_NOFOLLOW from its root down."""
+    Termux file), except in the secrets proot's links for hard links into the guest's own /.l2s, which stand for their
+    file. Every file is opened through descriptors with O_NOFOLLOW from its root down."""
     prefixes = {"termux": "t", "guest": "g"}
     # Decided for each path when it is reached, by the lines' patterns, not from a list made at the start: a file that
     # appears while we run (a login) is still kept out of the settings if a secret line names it.
@@ -344,6 +350,45 @@ def pack(entries, kind, roots):
                  if not parts[-1].endswith("*") for suffix in (".bak*", ".new*")]
 
     real_config = os.path.realpath(CONFIG)
+
+    def l2s_open(dfd, name, side):
+        """proot keeps a hard link (git packs, pip, plugin caches) as a link to <guest>/.l2s/.l2s.NAME000N, itself a link
+        to the file .l2s.NAME, written with the Termux path of the guest: that file is the content. Every hop must be a
+        direct entry of the guest's own .l2s folder, read through it without following a link; None for every other
+        link (and for a broken one)."""
+        # only into the encrypted archive: the file behind it may also be a secret path's (a hard link of a login)
+        if side != "guest" or kind == "settings":
+            return None
+        l2s = os.path.join(os.path.abspath(roots["guest"]), ".l2s")
+        try:
+            lfd = os.open(l2s, NOFOLLOW_DIR)
+        except OSError:
+            return None
+        try:
+            target = os.readlink(name, dir_fd=dfd)
+            for _hop in range(2):
+                if not os.path.isabs(target):   # proot writes absolute paths; a relative link is a project's own
+                    return None
+                target = os.path.normpath(target)
+                entry = os.path.basename(target)
+                if os.path.dirname(target) != l2s or not entry.startswith(".l2s."):
+                    return None
+                st = os.stat(entry, dir_fd=lfd, follow_symlinks=False)
+                if os.path.stat.S_ISLNK(st.st_mode):
+                    target = os.readlink(entry, dir_fd=lfd)
+                    continue
+                if not os.path.stat.S_ISREG(st.st_mode):
+                    return None
+                fd = os.open(entry, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=lfd)
+                if os.path.stat.S_ISREG(os.fstat(fd).st_mode):
+                    return fd
+                os.close(fd)
+                return None
+            return None
+        except FileNotFoundError:
+            return None
+        finally:
+            os.close(lfd)
 
     def keep(path, side, active=False):
         names = os.path.relpath(path, roots[side]).split(os.sep)
@@ -371,6 +416,8 @@ def pack(entries, kind, roots):
                 fd = os.open(name, NOFOLLOW_DIR, dir_fd=dfd)
             elif os.path.stat.S_ISREG(st.st_mode):
                 fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd)
+            elif os.path.stat.S_ISLNK(st.st_mode) and (fd := l2s_open(dfd, name, side)) is not None:
+                pass
             else:
                 say("  übersprungen (Link oder Sonderdatei): %s" % path)
                 return
@@ -445,13 +492,27 @@ def pack(entries, kind, roots):
     return buf.getvalue()
 
 
+def ask_password(prompt):
+    # a key pressed while the installer was busy (Enter during a long download) waits in the terminal: not the answer
+    try:
+        with open("/dev/tty") as tty:
+            termios.tcflush(tty, termios.TCIFLUSH)
+    except (OSError, termios.error):
+        pass
+    return getpass.getpass(prompt)
+
+
 def password(twice):
     if os.environ.get("BKPW"):
         return os.environ["BKPW"]
-    first = getpass.getpass("Passwort der Sicherung: ")
-    if not first:
+    for _ in range(3):
+        first = ask_password("Passwort der Sicherung: ")
+        if first:
+            break
+        say("  leer; bitte das Passwort eingeben")
+    else:
         die("ohne Passwort keine Sicherung")
-    if twice and getpass.getpass("Noch einmal: ") != first:
+    if twice and ask_password("Noch einmal: ") != first:
         die("die beiden Passwörter sind verschieden")
     return first
 
@@ -744,17 +805,93 @@ def extract(data, entries, tmp, kinds=("settings", "secret")):
     return [i.name for i in chosen if not i.isdir()]
 
 
-def summary(names, roots):
-    """What goes where: each file, a deeper one by its folder at the third level (g/root/.claude/projects), once each."""
+def summary(names, roots, items):
+    """What goes where: each file, a deeper one by its folder at the third level (g/root/.claude/projects), once each,
+    numbered after those already in items (a list of (side, short) it extends: what can be left out by its number)."""
     shown = []
     for name in names:
         side, _, rest = name.partition("/")
         parts = rest.split("/")
         short = "/".join(parts[:3]) if len(parts) > 3 else rest
-        line = "  %s -> %s" % (short, os.path.join(roots["termux" if side == "t" else "guest"] or "(Gast fehlt)", short))
-        if rest and line not in shown:
-            shown.append(line)
+        if rest and (side, short) not in items:
+            items.append((side, short))
+            shown.append("  %2d  %s -> %s" % (len(items), short, os.path.join(
+                roots["termux" if side == "t" else "guest"] or "(Gast fehlt)", short)))
     return shown
+
+
+# the device configuration: the files of the device and, in the Termux config, the keys that belong to the device
+DEVICE_ITEMS = (("t", ".config/termux-rootbridge/device.conf"), ("t", ".termux/termux.properties"))
+DEVICE_KEYS = ("DEVICE", "SIDEKEY", "HOMEKEY", "HEADSET", "PHANTOM_KILLER", "REMOTE_NAME")
+
+
+def choose(items, yes, no_device):
+    """What of items stays out of the restore: (the items left out, True when the device configuration stays out)."""
+    without_device = no_device
+    if not yes and not no_device and any(i in DEVICE_ITEMS or i == ("t", CONFIG_ARC) for i in items):
+        try:
+            answer = input("Gerätekonfiguration der Sicherung übernehmen (Tasten, Gerätedatei, Termux-Tastenleiste, "
+                           "Name in Remote Control)? Für ein anderes Gerät: n [J/n] ").strip().lower()
+        except EOFError:
+            answer = ""
+        without_device = answer in ("n", "nein", "no")
+    left_out = [i for i in items if without_device and i in DEVICE_ITEMS]
+    if not yes:
+        try:
+            answer = input("Einzelne Punkte weglassen? Ihre Nummern, durch Leerzeichen getrennt (Enter: keinen) ")
+        except EOFError:
+            answer = ""
+        for word in answer.replace(",", " ").split():
+            if not word.isdigit() or not 1 <= int(word) <= len(items):
+                die("keine Nummer aus der Liste: %s; nichts wiederhergestellt" % word)
+            if items[int(word) - 1] not in left_out:
+                left_out.append(items[int(word) - 1])
+    for side, short in left_out:
+        say("  bleibt in der Sicherung: %s" % short)
+    if without_device:
+        say("  Gerätekonfiguration bleibt in der Sicherung; die Konfig behält %s dieses Geräts" % ", ".join(DEVICE_KEYS))
+    return left_out, without_device
+
+
+def keep_remote_name(path):
+    """In the staged guest config: the Remote Control name in CLAUDE_ARGS becomes the one of this device (REMOTE_NAME of
+    the Termux config, else the installer's default android), as the device configuration of the backup stays out."""
+    line = config_value("REMOTE_NAME") or ""
+    name = line.partition("=")[2].strip().strip("\"'")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
+        name = "android"
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    new = [re.sub(r"(--remote-control[ =])[A-Za-z0-9._-]+", lambda m: m.group(1) + name, l)
+           if l.startswith("CLAUDE_ARGS=") else l for l in lines]
+    if new != lines:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(new) + "\n")
+
+
+UU_DIR = "usr/lib/cargo/bin/coreutils"   # uutils in the guest (Ubuntu 26.04)
+UU_HOLD = "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"   # the default an earlier installer wrote
+
+
+def drop_uutils_hold(path):
+    """In the staged guest config of a guest without uutils (Debian): the default hold of the uutils packages goes (a backup
+    of Ubuntu would hold Debian's coreutils back from its security updates); a list of your own stays."""
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    if UU_HOLD in lines:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(l for l in lines if l != UU_HOLD) + "\n")
+
+
+def leave_out(trees, left_out):
+    """Remove what stays out from the unpacked trees, before anything is copied."""
+    for tree in trees:
+        for side, short in left_out:
+            path = os.path.join(tree, side, short)
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            elif os.path.lexists(path):
+                os.unlink(path)
 
 
 def confirm(question, yes, word="j"):
@@ -851,7 +988,7 @@ def apply_ops(ops):
         for op in ops:
             def swap(dfd, name):
                 try:
-                    os.stat(name, dir_fd=dfd, follow_symlinks=False)
+                    was_link = os.path.stat.S_ISLNK(os.stat(name, dir_fd=dfd, follow_symlinks=False).st_mode)
                     had = True
                 except FileNotFoundError:
                     had = False
@@ -865,6 +1002,11 @@ def apply_ops(ops):
                     try:
                         os.link(name, name + alt, src_dir_fd=dfd, dst_dir_fd=dfd, follow_symlinks=False)
                     except (OSError, AttributeError, NotImplementedError):   # no hard links here (Python on Android has no os.link): a copy
+                        if was_link:   # a link (proot's for a hard link) is kept as the same link, never opened
+                            os.symlink(os.readlink(name, dir_fd=dfd), name + alt, dir_fd=dfd)
+                            done.append((op, had))
+                            os.replace(name + neu, name, src_dir_fd=dfd, dst_dir_fd=dfd)
+                            return
                         with open(os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd), "rb") as inp:
                             orig_mode = os.fstat(inp.fileno()).st_mode & 0o7777   # a rollback must not strip x bits
                             with os.fdopen(os.open(name + alt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -915,21 +1057,27 @@ def apply_ops(ops):
                 pass
 
 
-def copy_all(trees, roots, distro=None):
+def copy_all(trees, roots, distro=None, keep_keys=()):
     """t/ of each unpacked tree into the Termux home, g/ into the guest (when there is one): every target is checked
-    first, then all files are replaced together."""
+    first, then all files are replaced together. keep_keys: lines of the config that stay as this installation has them."""
     ops = []
     for tmp in trees:
         relocate_config(tmp, roots["termux"])
         staged = os.path.join(tmp, "t", os.path.relpath(os.path.abspath(CONFIG), os.path.abspath(roots["termux"])))
         if os.path.isfile(staged) and not os.path.islink(staged):   # only when the config is part of this restore
             pin_line(staged, "DISTRO", distro)
+            for key in keep_keys:
+                pin_line(staged, key, config_value(key))
         guest_conf = os.path.join(tmp, "g", "etc", "termux-rootbridge.conf")
         if roots["guest"] and os.path.isfile(guest_conf) and not os.path.islink(guest_conf):
             # the bridge folder is where THIS Termux keeps it: the guest finds the daemon there (none yet: the guest
             # installer writes it)
             pin_line(guest_conf, "BRIDGE_DIR",
                      config_value("BRIDGE_DIR", os.path.join(roots["guest"], "etc", "termux-rootbridge.conf")))
+            if "REMOTE_NAME" in keep_keys:   # without the device configuration: the name Claude uses is this device's
+                keep_remote_name(guest_conf)
+            if not os.path.isdir(os.path.join(roots["guest"], UU_DIR)):
+                drop_uutils_hold(guest_conf)
         for side, key in (("t", "termux"), ("g", "guest")):
             src = os.path.join(tmp, side)
             if os.path.isdir(src) and roots[key]:
@@ -953,7 +1101,7 @@ def read_backup(folder):
     return data
 
 
-def restore(folder, yes, legacy=False):
+def restore(folder, yes, legacy=False, no_device=False):
     lock = take_lock()   # noqa: F841 (held until the end)
     data = read_backup(folder)
     expected = {}
@@ -1017,6 +1165,7 @@ def restore(folder, yes, legacy=False):
     distro = config_value("DISTRO")
     with tempfile.TemporaryDirectory(dir=stage, prefix=".stage-") as plain, \
             tempfile.TemporaryDirectory(dir=stage, prefix=".stage-") as secret:
+        items = []   # what comes back, numbered: (side, short)
         if data["m"] is None:
             # a backup without a seal: its a.tgz (plain text, no password in it) proves nothing, so nothing from it
             # comes back (SSH keys, hooks); k.enc was opened with your password and counts
@@ -1025,12 +1174,14 @@ def restore(folder, yes, legacy=False):
         else:
             say("Einstellungen, die zurückkommen:")
             # a.tgz comes from our own backup (sealed) and holds settings only: a secret line cannot reach it
-            for line in summary(extract(data["a.tgz"], entries, plain, ("settings",)), roots):
+            for line in summary(extract(data["a.tgz"], entries, plain, ("settings",)), roots, items):
                 say(line)
         say("Geheimnisse, die zurückkommen%s:" % ("" if roots["guest"] else " (die des Gasts erst, wenn er da ist)"))
         restored_secrets = extract(secrets, entries, secret)
-        for line in summary(restored_secrets, roots):
+        for line in summary(restored_secrets, roots, items):
             say(line)
+        left_out, without_device = choose(items, yes, no_device)
+        leave_out((plain, secret), left_out)
         if not confirm("Wiederherstellen?", yes):
             die("abgebrochen")
         merged = merged_own_list(saved) if saved else None
@@ -1042,7 +1193,8 @@ def restore(folder, yes, legacy=False):
             with open(staged_list, "w", encoding="utf-8") as fh:
                 fh.write(merged)
             say("Die eigene Liste wird mitgespeichert: %s" % OWN_LIST)
-        copy_all((plain, secret), roots, distro)   # all or nothing; without a guest only the Termux part
+        # all or nothing; without a guest only the Termux part
+        copy_all((plain, secret), roots, distro, DEVICE_KEYS if without_device else ())
 
     if not roots["guest"]:
         say("Der Termux-Teil ist wiederhergestellt. Der Gast fehlt noch: erst bash install.sh, dann nochmal "
@@ -1052,15 +1204,15 @@ def restore(folder, yes, legacy=False):
 
 
 def main(argv):
-    yes, legacy = "--yes" in argv, "--legacy" in argv
-    argv = [a for a in argv if a not in ("--yes", "--legacy")]
+    yes, legacy, no_device = "--yes" in argv, "--legacy" in argv, "--no-device" in argv
+    argv = [a for a in argv if a not in ("--yes", "--legacy", "--no-device")]
     if not argv or argv[0] not in ("backup", "restore") or len(argv) > 2:
-        die("rootbridge backup [ORDNER] | rootbridge restore [ORDNER] [--legacy] [--yes]")
+        die("rootbridge backup [ORDNER] | rootbridge restore [ORDNER] [--legacy] [--yes] [--no-device]")
     folder = argv[1] if len(argv) == 2 else DEFAULT_DIR
     if argv[0] == "backup":
         backup(folder)
     else:
-        restore(folder, yes, legacy)
+        restore(folder, yes, legacy, no_device)
     return 0
 
 

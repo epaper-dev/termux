@@ -60,6 +60,8 @@ jobs:
         run: bash tests/test_device.sh
       - name: Performance check (cores, clock, memory, space, verdicts; made-up /proc and /sys)
         run: bash tests/test_perf.sh
+      - name: Ubuntu or Debian as the guest, the switch with backup, restore and work folder (stub proot-distro / rootbridge)
+        run: bash tests/test_distro.sh
       - name: ShellCheck
         run: |
           sudo apt-get install -y shellcheck

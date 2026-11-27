@@ -130,13 +130,27 @@ the installer adds to the Termux extra keys row, see below).
 `rootbridge backup` saves the settings and logins of Termux and the guest into `/sdcard/backup/termux`: `a.tgz`
 (settings), `k.enc` (logins, the rootbridge configs and the settings of git, Claude Code and Codex, encrypted with your password), `h` (checksums) and
 `m` (a seal made with your password); the previous backup stays in `previous/`. What is saved is a base list (rootbridge,
-git, SSH keys of the guest, Claude Code with its plugins, Codex); your own lines go into `~/.config/termux-rootbridge/backup.list` (it travels, encrypted, inside the backup: a restore on a
+git, SSH keys of the guest, Claude Code with its plugins, Codex, your voice for Articulino); your own lines go into `~/.config/termux-rootbridge/backup.list` (it travels, encrypted, inside the backup: a restore on a
 new installation reads it first, so everything it names comes back) (`settings|secret
 termux|guest PATH`, `exclude termux|guest PATH`). `rootbridge restore` checks the checksums and the seal with your password
 (other apps can write to the shared storage; a missing, empty or unreadable seal is refused, an older backup without
 one only with `--legacy` and after you typed "ja"; `exclude` lines hold for restore too), shows what goes where,
 asks, then copies, never through a link; nothing from the folder runs. On a new installation with a backup the installer asks with the other questions whether to restore it at
 the end.
+
+**What comes back** is yours to choose: `rootbridge restore` numbers what it would restore, asks whether to take the
+device configuration (device file, Termux keys row, and in the config the device, its keys, the phantom process killer
+and the Remote Control name; on another device say no: you get the logins, the device keeps its own), and which numbers
+to leave out. `--no-device` leaves the device configuration out without asking.
+
+**Ubuntu or Debian as the guest** (`--distro ubuntu|debian`): on a device without a guest the installer asks once
+(Enter: Ubuntu) and stores `DISTRO` once the guest is there; the widget and the alias are named after it (`ubuntu` and
+`debian` both open the guest shell). With an installed guest `--distro` switches: the sessions stop, the old guest stays
+(back with `--distro` and its name, remove it with `proot-distro remove NAME`), and on a terminal the installer offers to
+take its settings and logins along (a backup of it into `/sdcard/backup/termux-NAME`, restored into the new guest, which
+asks what of it) and the work folder (copied into the new guest when that one is empty) with the conversations of Claude Code (the ones
+the new guest lacks, when both use the same work folder path). In a guest without uutils
+(Debian) the coreutils packages are not held back from upgrades.
 
 **Questions first.** The installer asks all its questions at the start, before it installs anything; then it runs
 through without asking. In an interactive Termux shell each question comes only once: the answer is stored in the Termux

@@ -9,7 +9,8 @@
 #                                  N hours (1-999); daily: same as 24h; always: at every start; off: do nothing
 #   APT_TIMEOUT=600                 seconds allowed for `apt-get upgrade` (60-3600)
 #   APT_HOLD="rust-coreutils ..."  installed packages that are held back from the upgrade
-#                                  (default: the uutils/GNU coreutils packages; empty = none)
+#                                  (default: the uutils/GNU coreutils packages in a guest with uutils, none
+#                                  in one without, Debian; empty = none)
 # Log: /var/log/termux-rootbridge-apt.log        Last success: /var/lib/termux-rootbridge/apt-last-success
 #
 # Why the safeguards (proot-distro, Ubuntu 26.04): coreutils is rust-coreutils (uutils), a multicall
@@ -28,7 +29,10 @@
 STATE_DIR="${ROOTBRIDGE_APT_STATE_DIR:-/var/lib/termux-rootbridge}"
 STAMP="$STATE_DIR/apt-last-success"
 LOG="${ROOTBRIDGE_APT_LOG:-/var/log/termux-rootbridge-apt.log}"
-DEFAULT_HOLD="rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"
+# held by default only in a guest with uutils: in one with GNU coreutils alone (Debian) the hold would keep coreutils from
+# its security updates. ROOTBRIDGE_APT_UU_DIR: the tests.
+DEFAULT_HOLD=""
+[ ! -d "${ROOTBRIDGE_APT_UU_DIR:-/usr/lib/cargo/bin/coreutils}" ] || DEFAULT_HOLD="rust-coreutils gnu-coreutils coreutils-from-uutils coreutils"
 
 mode="$(conf_get APT_UPGRADE || echo 6h)"
 # interval = minimum distance in seconds between two successful runs (0 = no limit)

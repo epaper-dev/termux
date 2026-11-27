@@ -5,7 +5,7 @@
 #      the installation (Codex reviews through git, and so does the pre-commit hook), plus bubblewrap for its sandbox; nodejs when both tools are
 #      (the Codex plugin of Claude Code is a node program, Node.js 18.18 or newer); sox for /voice
 #      when Claude Code and voice are both part of it (Claude Code records through `rec`); shellcheck for the
-#      agents' shell scripts (the CI of this repository checks them with it)
+#      agents' shell scripts (the CI of this repository checks them with it); openssh-client and gh (GitHub CLI)
 #   2. Claude Code with the official installer (only when there is no claude yet)
 #   3. Codex with the official standalone installer (only when there is no codex yet)
 #   4. Piper for the speech output (with Claude Code and voice): pip package piper-tts in a venv (PIPER_DIR) and the
@@ -82,6 +82,7 @@ guest_has curl    || pkgs="$pkgs curl"
 [ -s "$CA_BUNDLE" ] || pkgs="$pkgs ca-certificates"
 guest_has shellcheck || pkgs="$pkgs shellcheck"
 guest_has ssh || pkgs="$pkgs openssh-client"   # git over SSH, and the keys that rootbridge restore brings back
+guest_has gh || pkgs="$pkgs gh"   # GitHub CLI (pull requests, CI runs), its login comes back with rootbridge restore
 if [ "$CODEX_ON" = yes ]; then
     guest_has git || pkgs="$pkgs git"
     command -v bwrap >/dev/null 2>&1 || pkgs="$pkgs bubblewrap"
@@ -93,8 +94,9 @@ if [ "$CLAUDE_ON" = yes ] && { [ "$VOICE_ON" = yes ] || [ "$SPEAK_ON" = yes ]; }
     guest_has rec || pkgs="$pkgs sox libsox-fmt-pulse"   # rec records for /voice, play reads aloud
 fi
 if [ "$CLAUDE_ON" = yes ] && [ "$SPEAK_ON" = yes ]; then
-    # Piper goes into a venv; Ubuntu's python3 makes one only with python3-venv (ensurepip)
-    if [ ! -x "$PIPER_DIR/bin/piper" ] && ! python3 -I -c 'import ensurepip' >/dev/null 2>&1; then
+    # Piper goes into a venv; the python3 of Ubuntu and Debian makes one only with python3-venv. Tried for real: Debian's
+    # python3 has the ensurepip module, but without the package its venv fails ("ensurepip is not available")
+    if [ ! -x "$PIPER_DIR/bin/piper" ] && ! python3 -m venv "$TMPDIR_SETUP/venv-probe" >/dev/null 2>&1; then
         pkgs="$pkgs python3-venv"
     fi
 fi
@@ -195,10 +197,12 @@ if [ "$CLAUDE_ON" = yes ] && [ "$SPEAK_ON" = yes ]; then
         # an interrupted download never looks like a model
         say "  lade Articulino ($ARTICULINO_REPO, int8, etwa 230 MB)"
         stage="$ARTICULINO_DIR/.download"
+        # plain HTTPS downloads, not the Xet client of huggingface_hub: on the A9 it failed under proot ("CAS Client
+        # Error: error sending request") where Piper's download from the same hub went through
         if { [ -x "$ARTICULINO_DIR/bin/python3" ] || python3 -m venv "$ARTICULINO_DIR"; } \
             && "$ARTICULINO_DIR/bin/pip" install -q huggingface_hub \
             && rm -rf "$stage" \
-            && HF_HUB_DISABLE_PROGRESS_BARS=1 "$ARTICULINO_DIR/bin/python3" -I -c 'import sys
+            && HF_HUB_DISABLE_PROGRESS_BARS=1 HF_HUB_DISABLE_XET=1 "$ARTICULINO_DIR/bin/python3" -I -c 'import sys
 from huggingface_hub import snapshot_download
 snapshot_download(sys.argv[1], revision=sys.argv[2], local_dir=sys.argv[3], allow_patterns=[
     "config.json", "pyproject.toml", "README.md", "LICENSE", "NOTICE", "SHA256SUMS", "int8/*", "articulino_onnx/**"])' \

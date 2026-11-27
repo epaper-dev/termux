@@ -549,18 +549,23 @@ if [ -d "$ROOT$UU_DIR" ]; then
     [ "$n" = 0 ] || say "  uutils: $n Kopien durch Links auf GNU coreutils ersetzt (je etwa 10 MB frei)"
 fi
 
-# configuration (keep user edits, add missing keys)
+# configuration (keep user edits, add missing keys). APT_HOLD is not written: rootbridge-apt holds the coreutils packages
+# by default only in a guest with uutils (Ubuntu 26.04), and a value in the config is yours.
 mkdir -p "$ROOT$(dirname "$CONF")"
 touch "$ROOT$CONF"
 for kv in "BRIDGE_DIR=$BRIDGE_DIR" "WORKDIR=/root/work" \
           "AUTH_OPEN=auto" "AUTH_REPLACE_OUTPUT=0" \
           "APT_UPGRADE=6h" "APT_TIMEOUT=600" "CLAUDE_UPDATE=6h" "CODEX_UPDATE=6h" "NOFILE_LIMIT=2048" \
-          "APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils" \
           "TOOL_CLAUDE=$(onoff "$CLAUDE_ON")" \
           "TOOL_CODEX=$(onoff "$CODEX_ON")"; do
     key="${kv%%=*}"
     grep -q "^$key=" "$ROOT$CONF" || printf '%s\n' "$kv" >> "$ROOT$CONF"
 done
+# the hold an earlier installer wrote, exactly its default list: it goes, so that rootbridge-apt decides by this guest
+# (a backup of Ubuntu restored into Debian would hold Debian's coreutils back); a list of your own stays
+if grep -qx 'APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils' "$ROOT$CONF"; then
+    sed -i '/^APT_HOLD=rust-coreutils gnu-coreutils coreutils-from-uutils coreutils$/d' "$ROOT$CONF"
+fi
 # Lower the former default 1800 back to 600: a longer limit did not help when dpkg hangs under proot.
 # Other timeout values remain as configured.
 if grep -qx 'APT_TIMEOUT=1800' "$ROOT$CONF"; then

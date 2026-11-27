@@ -11,7 +11,7 @@
 #                   [--guidelines | --no-guidelines]
 #                   [--voice | --no-voice] [--speak | --no-speak] [--sidekey | --no-sidekey] [--home-key | --no-home-key]
 #                   [--headset | --no-headset] [--phantom-killer-off | --phantom-killer-on] [--language de|en]
-#                   [--device ID|none]
+#                   [--device ID|none] [--distro ubuntu|debian]
 #
 # Questions: all of them come first, before anything is installed; then the installation runs through. On a terminal each
 # one is asked once (Claude Code, Codex, the language, reading aloud, dictation, the device name for Claude Remote Control,
@@ -93,6 +93,11 @@
 #   device it runs on (<manufacturer>-<model> from the vendor partition) and asks once whether to use it; stored as DEVICE,
 #   installed as device.conf next to the Termux config. The questions about the keys stay; a key the file does not
 #   describe is not asked for. Its NAME is the suggestion for the Remote Control name (else the id read from the device).
+# --distro ubuntu|debian: the guest (proot-distro). Asked once on a terminal when there is no guest yet (default Ubuntu),
+#   stored as DISTRO once the guest is installed. Another one than the installed guest is a switch: the old guest stays
+#   (back with --distro and its name; remove it with proot-distro remove NAME), and on a terminal the installer offers to
+#   take its settings and logins along (rootbridge backup into /sdcard/backup/termux-NAME, then rootbridge restore, which
+#   asks what of it) and the work folder (copied when the new one is empty).
 # Performance: before the questions the installer measures cores, clock, memory and free space (`rootbridge perf` shows it
 #   again); what does not suit the device is suggested as no (reading aloud).
 #
@@ -154,6 +159,7 @@ USE_BYPASS=yes; USE_BYPASS_SET=0   # Codex without its own sandbox
 USE_GUIDE=yes; USE_GUIDE_SET=0     # code quality guidelines in CLAUDE.md / AGENTS.md
 USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=0   # switch Android's phantom process killer off (root)
 DEVICE=""; DEVICE_SET=0            # the device file in devices/ (its id) or none
+DISTRO=""; DISTRO_SET=0            # the guest: ubuntu | debian
 NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 DEVICE_RE='^[a-z0-9][a-z0-9._-]{0,63}$'
 APT_RE='^(always|off|daily|[1-9][0-9]{0,2}h)$'
@@ -208,6 +214,10 @@ while [ $# -gt 0 ]; do
         --phantom-killer-off) USE_PHANTOM_OFF=yes; USE_PHANTOM_OFF_SET=1 ;;
         --phantom-killer-on) USE_PHANTOM_OFF=no; USE_PHANTOM_OFF_SET=1 ;;
         --no-headset) USE_HEADSET=no; USE_HEADSET_SET=1 ;;
+        --distro)
+            [ $# -ge 2 ] || { echo "--distro braucht ubuntu oder debian" >&2; exit 2; }
+            case "$2" in ubuntu|debian) ;; *) echo "--distro: ungültiger Wert '$2' (erlaubt: ubuntu, debian)" >&2; exit 2 ;; esac
+            DISTRO="$2"; DISTRO_SET=1; shift ;;
         --device)
             [ $# -ge 2 ] || { echo "--device braucht die Kennung einer Gerätedatei (devices/) oder none" >&2; exit 2; }
             DEVICE="$2"; DEVICE_SET=1; shift ;;
@@ -262,8 +272,8 @@ die() { echo "install.sh: $*" >&2; exit 1; }
 
 [ -d "$PREFIX/bin" ] || die "Das sieht nicht nach Termux aus (PREFIX=$PREFIX). Dieses Skript in einer Termux-Shell starten."
 if [ -z "${ROOTBRIDGE_ALLOW_GUEST:-}" ] && [ "$(id -u)" -eq 0 ] \
-        && [ -f /etc/os-release ] && grep -qi ubuntu /etc/os-release 2>/dev/null; then
-    die "Du bist im Ubuntu-Gast. Bitte in einer normalen Termux-Shell ausführen (nicht in proot-distro)."
+        && [ -f /etc/os-release ] && grep -qiE '^ID="?(ubuntu|debian)"?$' /etc/os-release 2>/dev/null; then
+    die "Du bist im Gast. Bitte in einer normalen Termux-Shell ausführen (nicht in proot-distro)."
 fi
 
 backup() {
@@ -344,7 +354,7 @@ chmod 700 "$BRIDGE_DIR"
 if [ ! -e "$CFG" ]; then
     cat > "$CFG" <<'EOF'
 # termux-rootbridge - read as data (no shell code is executed)
-DISTRO=ubuntu
+# DISTRO=ubuntu         # the guest: ubuntu | debian; stored by install.sh once the guest is there (install.sh --distro)
 WORKDIR=/root/work
 SESSION=ubuntu
 # ASK_TIMEOUT=120       # seconds the Android dialog for a root request waits for your answer (no answer = refused)
@@ -472,6 +482,54 @@ fi
 dev_key() { [ -z "$DEV_SRC" ] || grep -Eq "^$1_(DEVICE|DEVICE_NAME)=" "$DEV_SRC"; }
 # dev_home: a long press on Home starts Android's assistant on this device (without a device file: as before, yes)
 dev_home() { [ -z "$DEV_SRC" ] || [ "$(cfg_get HOMEKEY_METHOD "$DEV_SRC")" = assistant ]; }
+# find_guest_root <distro>: the root directory of the guest as seen from Termux; fails if it is not installed
+find_guest_root() {
+    local c
+    for c in "$PREFIX/var/lib/proot-distro/containers/$1/rootfs" "$PREFIX/var/lib/proot-distro/installed-rootfs/$1"; do
+        if [ -d "$c" ]; then printf '%s' "$c"; return 0; fi
+    done
+    return 1
+}
+
+# The guest: an option wins, else the config, else asked once on a terminal when there is no guest yet (Ubuntu or Debian).
+# Another one than the installed guest is a switch: the old one stays; its settings and logins can come along (a backup of
+# it, restored into the new one, which asks what of it) and so can the work folder. DISTRO is stored once the guest is there.
+OLD_DISTRO="$(cfg_get DISTRO)"; OLD_DISTRO="${OLD_DISTRO:-ubuntu}"
+if [ "$DISTRO_SET" = 1 ] && [ "$DO_GUEST" != 1 ]; then
+    say "  --distro $DISTRO gilt nur mit dem Gast (ohne --no-guest); der Gast bleibt $OLD_DISTRO"
+    DISTRO="$OLD_DISTRO"
+elif [ "$DISTRO_SET" != 1 ]; then
+    DISTRO="$OLD_DISTRO"
+    # not stored yet (a run that failed while setting the guest up): the one guest that is installed
+    if [ -z "$(cfg_get DISTRO)" ] && find_guest_root debian >/dev/null && ! find_guest_root ubuntu >/dev/null; then
+        DISTRO=debian; OLD_DISTRO=debian
+    fi
+    if [ -z "$(cfg_get DISTRO)" ] && [ "$DO_GUEST" = 1 ] && ! find_guest_root ubuntu >/dev/null \
+            && ! find_guest_root debian >/dev/null && { [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; }; then
+        printf '%s ' "Gastsystem: Ubuntu oder Debian? [U/d]"
+        if IFS= read -r answer; then
+            case "$answer" in d|D|debian|Debian) DISTRO=debian ;; esac
+        else
+            echo
+        fi
+    fi
+fi
+GUEST_ALIAS="$DISTRO"; GUEST_WIDGET=Ubuntu   # the shell of the guest: its alias and its widget
+if [ "$DISTRO" = debian ]; then GUEST_WIDGET=Debian; fi
+case "$DISTRO" in ubuntu|debian) ;; *) GUEST_ALIAS=ubuntu ;; esac   # another guest of the config: as before
+SWITCH_FROM=""; SWITCH_BACKUP=no; SWITCH_WORK=no; OLD_GROOT=""   # a switch of the guest, and what comes along
+if [ "$DO_GUEST" = 1 ] && [ "$DISTRO" != "$OLD_DISTRO" ] && OLD_GROOT="$(find_guest_root "$OLD_DISTRO")"; then
+    SWITCH_FROM="$OLD_DISTRO"
+    say "  Gast wechselt: $OLD_DISTRO -> $DISTRO (der $OLD_DISTRO-Gast bleibt; zurück mit --distro $OLD_DISTRO)"
+    if [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; then
+        printf '%s ' "Einstellungen und Zugangsdaten aus dem $OLD_DISTRO-Gast mitnehmen (Sicherung und Wiederherstellung, fragt ein Passwort und was davon)? [J/n]"
+        if IFS= read -r answer; then case "$answer" in n|N|nein|Nein|NEIN|no) ;; *) SWITCH_BACKUP=yes ;; esac; else echo; fi
+        printf '%s ' "Arbeitsordner und Claude-Unterhaltungen aus dem $OLD_DISTRO-Gast mitnehmen (der Ordner, wenn er im neuen Gast leer ist)? [J/n]"
+        if IFS= read -r answer; then case "$answer" in n|N|nein|Nein|NEIN|no) ;; *) SWITCH_WORK=yes ;; esac; else echo; fi
+    else
+        say "  ohne Terminal: nichts mitgenommen (Sicherung: rootbridge backup, dann im neuen Gast rootbridge restore)"
+    fi
+fi
 if [ "$APT_MODE_SET" = 1 ]; then
     # same idea as REMOTE_NAME: the choice survives a reinstall of the guest
     cfg_set APT_UPGRADE "$APT_MODE" "apt-Modus gespeichert: $APT_MODE"
@@ -667,10 +725,12 @@ fi
 # write there (rootbridge restore reads it as data). Not stored: a later run has the guest.
 BACKUP_DIR="${RB_BACKUP_DIR:-/sdcard/backup/termux}"
 DO_RESTORE=no
-d="$(cfg_get DISTRO)"; d="${d:-ubuntu}"
-if [ -f "$BACKUP_DIR/a.tgz" ] && [ "$DO_GUEST" = 1 ] \
-        && ! [ -d "$PREFIX/var/lib/proot-distro/containers/$d/rootfs/root" ] \
-        && ! [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root" ]; then
+RESTORE_DIR="$BACKUP_DIR"   # a switch of the guest restores the backup made of the old one
+if [ "$SWITCH_BACKUP" = yes ]; then
+    RESTORE_DIR="$BACKUP_DIR-$SWITCH_FROM"; DO_RESTORE=yes
+elif [ -f "$BACKUP_DIR/a.tgz" ] && [ "$DO_GUEST" = 1 ] \
+        && ! [ -d "$PREFIX/var/lib/proot-distro/containers/$DISTRO/rootfs/root" ] \
+        && ! [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO/root" ]; then
     if [ -t 0 ] || [ "${ROOTBRIDGE_FORCE_INTERACTIVE:-}" = 1 ]; then
         printf '%s ' "Sicherung gefunden ($BACKUP_DIR): am Ende Einstellungen und Zugangsdaten wiederherstellen (fragt ihr Passwort)? [J/n]"
         if IFS= read -r answer; then
@@ -828,6 +888,7 @@ extra_keys
 TMP_RC="$(mktemp)"
 cat > "$TMP_RC" <<'EOF'
 alias ubuntu='rootbridge shell'
+alias debian='rootbridge shell'
 alias claude='rootbridge attach claude'
 alias codex='rootbridge attach codex'
 if [[ $- == *i* ]] && [ -z "${TMUX:-}" ]; then
@@ -851,13 +912,49 @@ if [ "$SPEAK_ON" = yes ] && [ -z "$(cfg_get SPEAK_SHORT)" ]; then
         say "  Vorlesen: Kurzfassung ließ sich nicht einschalten (rootbridge voice speak first)"
     fi
 fi
+# put_widget <shortcut> <name>: our widget script, with the default icon. One default icon for all widgets: installed if there
+# is none, and in place of an icon that is exactly a default icon of an earlier version (termux/shortcuts/icons/legacy). An
+# icon the user chose stays.
+SC="$HOME/.shortcuts"
+put_widget() {
+    local icon="$SC/icons/$2.png" replace=0 old
+    inst "$REPO/termux/shortcuts/$1" "$SC/$2"
+    if [ ! -e "$icon" ]; then
+        replace=1
+    else
+        for old in "$REPO"/termux/shortcuts/icons/legacy/*.png; do
+            cmp -s "$old" "$icon" 2>/dev/null && replace=1
+        done
+    fi
+    if [ "$replace" = 1 ] && ! cmp -s "$REPO/termux/shortcuts/icons/widget.png" "$icon" 2>/dev/null; then
+        cp "$REPO/termux/shortcuts/icons/widget.png" "$icon"
+        say "  Icon: $icon"
+    fi
+}
+# guest_widget <distro>: the widget of the guest shell, named after the guest ("Ubuntu" or "Debian"). Our widget of the other
+# guest goes, its icon comes along (only ours: a widget of that name of your own stays, and so does its icon).
+guest_widget() {
+    local other=Debian
+    GUEST_WIDGET=Ubuntu
+    if [ "$1" = debian ]; then GUEST_WIDGET=Debian; other=Ubuntu; fi
+    if [ -f "$SC/$other" ] && grep -q 'rootbridge' "$SC/$other" 2>/dev/null; then
+        if [ -e "$SC/icons/$other.png" ] && [ ! -e "$SC/icons/$GUEST_WIDGET.png" ]; then
+            mv "$SC/icons/$other.png" "$SC/icons/$GUEST_WIDGET.png"
+            say "  Icon übernommen: $other.png -> $GUEST_WIDGET.png"
+        fi
+        mv "$SC/$other" "$BRIDGE_DIR/backups/$other.old-$STAMP"
+        say "  Widget entfernt: $other (der Gast ist $1; Kopie in $BRIDGE_DIR/backups)"
+    fi
+    put_widget ubuntu "$GUEST_WIDGET"
+}
 if [ "$DO_WIDGETS" = 1 ]; then
-    SC="$HOME/.shortcuts"
     mkdir -p "$SC/icons" "$BRIDGE_DIR/backups"
     # Earlier versions called the widgets "Claude Code" / "Ubuntu Shell", then "Claude >_" / "Ubuntu >_":
     # carry the user's icon over to the new name (before a default icon is installed), and move our old
     # scripts and their *.bak-* files out of the widget list.
-    for pair in "Claude >_:Claude" "Claude Code:Claude" "Ubuntu >_:Ubuntu" "Ubuntu Shell:Ubuntu"; do
+    # the guest widget follows the guest that is stored: after a switch only once the new guest is set up (step 5)
+    w_guest=Ubuntu; [ "${SWITCH_FROM:-$DISTRO}" != debian ] || w_guest=Debian
+    for pair in "Claude >_:Claude" "Claude Code:Claude" "Ubuntu >_:$w_guest" "Ubuntu Shell:$w_guest"; do
         old="${pair%%:*}"; new="${pair#*:}"
         if [ -e "$SC/icons/$old.png" ] && [ ! -e "$SC/icons/$new.png" ]; then
             mv "$SC/icons/$old.png" "$SC/icons/$new.png"
@@ -886,28 +983,9 @@ if [ "$DO_WIDGETS" = 1 ]; then
         mv "$SC/Claude Neu" "$BRIDGE_DIR/backups/Claude Neu.old-$STAMP"
         say "  Widget entfernt: Claude Neu (gibt es nicht mehr; Kopie in $BRIDGE_DIR/backups)"
     fi
-    WIDGET_LIST=("ubuntu:Ubuntu")
-    [ "$USE_CODEX" = yes ] && WIDGET_LIST+=("codex:Codex")
-    [ "$USE_CLAUDE" = yes ] && WIDGET_LIST+=("claude:Claude")
-    for pair in "${WIDGET_LIST[@]}"; do
-        src="${pair%%:*}"; name="${pair#*:}"
-        inst "$REPO/termux/shortcuts/$src" "$SC/$name"
-        # One default icon for both widgets: installed if there is none, and in place of an icon that is exactly a default
-        # icon of an earlier version (termux/shortcuts/icons/legacy). An icon the user chose stays.
-        icon="$SC/icons/$name.png"
-        replace=0
-        if [ ! -e "$icon" ]; then
-            replace=1
-        else
-            for old in "$REPO"/termux/shortcuts/icons/legacy/*.png; do
-                cmp -s "$old" "$icon" 2>/dev/null && replace=1
-            done
-        fi
-        if [ "$replace" = 1 ] && ! cmp -s "$REPO/termux/shortcuts/icons/widget.png" "$icon" 2>/dev/null; then
-            cp "$REPO/termux/shortcuts/icons/widget.png" "$icon"
-            say "  Icon: $icon"
-        fi
-    done
+    guest_widget "${SWITCH_FROM:-$DISTRO}"
+    [ "$USE_CODEX" = yes ] && put_widget codex Codex
+    [ "$USE_CLAUDE" = yes ] && put_widget claude Claude
     # reading aloud: two widgets in tasks/, which Termux:Widget runs in the background (no terminal opens)
     for pair in "speak:Vorlesen" "speak-stop:Stopp"; do
         src="${pair%%:*}"; name="${pair#*:}"
@@ -1175,18 +1253,18 @@ else
     say "  übersprungen"
 fi
 
-# find_guest_root <distro>: the root directory of the guest as seen from Termux; fails if it is not installed
-find_guest_root() {
-    local c
-    for c in "$PREFIX/var/lib/proot-distro/containers/$1/rootfs" "$PREFIX/var/lib/proot-distro/installed-rootfs/$1"; do
-        if [ -d "$c" ]; then printf '%s' "$c"; return 0; fi
-    done
-    return 1
-}
-
-say "== 5/5 Gast ($(cfg_get DISTRO))"
+say "== 5/5 Gast ($DISTRO)"
 if [ "$DO_GUEST" = 1 ]; then
-    DISTRO="$(cfg_get DISTRO)"; DISTRO="${DISTRO:-ubuntu}"
+    if [ -n "$SWITCH_FROM" ]; then
+        # the sessions run in the old guest; the daemon starts again at the end
+        "$PREFIX/bin/rootbridge" stop >/dev/null 2>&1 || true
+        if [ "$SWITCH_BACKUP" = yes ]; then
+            say "== Sicherung des $SWITCH_FROM-Gasts ($RESTORE_DIR)"
+            # DISTRO is still the old guest's: the backup takes its files
+            ROOTBRIDGE_CONFIG="$CFG" "$PREFIX/bin/rootbridge" backup "$RESTORE_DIR" \
+                || die "Die Sicherung des $SWITCH_FROM-Gasts ist fehlgeschlagen; nichts umgestellt. Erneut: bash install.sh --distro $DISTRO"
+        fi
+    fi
     GROOT="$(find_guest_root "$DISTRO" || true)"
     if [ -z "$GROOT" ] && [ "$DO_SETUP" = 1 ]; then
         say "  Gast '$DISTRO' fehlt: proot-distro install $DISTRO (Download, das dauert)"
@@ -1205,6 +1283,7 @@ if [ "$DO_GUEST" = 1 ]; then
         { [ -e "$GROOT/usr/bin/python3" ] && [ -e "$GROOT/usr/bin/curl" ] && [ -s "$GROOT/etc/ssl/certs/ca-certificates.crt" ]; } || return 1
         [ -e "$GROOT/usr/bin/shellcheck" ] || return 1      # the agents check their shell scripts with it
         [ -e "$GROOT/usr/bin/ssh" ] || return 1             # git over SSH with the keys of the backup
+        [ -e "$GROOT/usr/bin/gh" ] || return 1              # GitHub CLI, its login comes with the backup
         if [ "$USE_CLAUDE" = yes ]; then
             { [ -x "$GROOT$h/.local/bin/claude" ] || [ -x "$GROOT/usr/local/bin/claude" ] || [ -x "$GROOT/usr/bin/claude" ]; } || return 1
         fi
@@ -1271,8 +1350,14 @@ if [ "$DO_GUEST" = 1 ]; then
     }
     # the backup, when it was chosen above (it asks the password of its secrets itself): after the guest is set up and
     # before install-guest.sh, which then lays this run's choices over what came back (guest config, CODEX_ARGS, settings)
+    # a switch back into a guest that has its own work folder: it stays (the restore brings the other guest's config)
+    DEST_WORKDIR=""
+    if [ -n "$SWITCH_FROM" ] && [ -f "$GROOT/etc/termux-rootbridge.conf" ]; then
+        DEST_WORKDIR="$(cfg_get WORKDIR "$GROOT/etc/termux-rootbridge.conf")"
+        [[ "$DEST_WORKDIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || DEST_WORKDIR=""
+    fi
     if [ "$DO_RESTORE" = yes ]; then
-        say "== Sicherung wiederherstellen ($BACKUP_DIR)"
+        say "== Sicherung wiederherstellen ($RESTORE_DIR)"
         # the backup brings its Termux config back; what this run installed by (tools, voice, language, ...) stays: every
         # key set now wins over the restored one, the backup only adds the keys missing here
         # snapshots in the private staging folder, which no backup takes (beside the config a settings rule could)
@@ -1285,8 +1370,18 @@ if [ "$DO_GUEST" = 1 ]; then
         fi
         THIS_RUN="$STAGE_DIR/config.this-run.$$"
         cp "$CFG" "$THIS_RUN"
-        ROOTBRIDGE_CONFIG="$CFG" "$PREFIX/bin/rootbridge" restore "$BACKUP_DIR" \
-            || say "Hinweis: die Wiederherstellung ist nicht durchgelaufen. Später:  rootbridge restore $BACKUP_DIR  (eine ältere Sicherung ohne Siegel: mit --legacy)"
+        # into this run's guest (DISTRO is stored only at the end of this step, after a switch it still names the old one)
+        if ! RB_GUEST_ROOT="$GROOT" ROOTBRIDGE_CONFIG="$CFG" "$PREFIX/bin/rootbridge" restore "$RESTORE_DIR"; then
+            # a switch goes on only with what was to come along: the launchers stay on the old guest
+            [ -z "$SWITCH_FROM" ] || die "Die Wiederherstellung in den $DISTRO-Gast ist nicht durchgelaufen; der Gast bleibt $SWITCH_FROM. Erneut: bash install.sh --distro $DISTRO"
+            say "Hinweis: die Wiederherstellung ist nicht durchgelaufen. Später:  rootbridge restore $RESTORE_DIR  (eine ältere Sicherung ohne Siegel: mit --legacy)"
+        fi
+        gc="$GROOT/etc/termux-rootbridge.conf"
+        if [ -n "$DEST_WORKDIR" ] && [ -f "$gc" ] && [ "$(cfg_get WORKDIR "$gc")" != "$DEST_WORKDIR" ]; then
+            tmp="$gc.new.$$"
+            { grep -v '^WORKDIR=' "$gc"; printf 'WORKDIR=%s\n' "$DEST_WORKDIR"; } > "$tmp" && mv -f "$tmp" "$gc"
+            say "  Arbeitsordner des $DISTRO-Gasts bleibt: $DEST_WORKDIR"
+        fi
         if ! cmp -s "$CFG" "$THIS_RUN"; then
             # this run's file, plus the keys only the backup had; every line is data: no sed program is built from it, and
             # only plain values are taken over (the config is read as shell)
@@ -1339,6 +1434,79 @@ if [ "$DO_GUEST" = 1 ]; then
     fi
     proot-distro login "$DISTRO" -- bash /var/tmp/termux-rootbridge-install/install-guest.sh "${GUEST_ARGS[@]}"
     rm -rf "$STAGE"
+    # the work folder of the old guest, into an empty one of the new guest (nothing there is overwritten)
+    # (each one as its guest config has it: WORKDIR in /etc/termux-rootbridge.conf, default /root/work)
+    if [ "$SWITCH_WORK" = yes ]; then
+        guest_workdir() { local v=""; [ ! -f "$1/etc/termux-rootbridge.conf" ] || v="$(cfg_get WORKDIR "$1/etc/termux-rootbridge.conf")"; printf '%s' "${v:-/root/work}"; }
+        # no_link <root> <path>: no part of the path below the guest root is a link (one the guest set could lead out of
+        # it, into the private files of Termux); cp -a itself copies the links inside the folder as links
+        no_link() { local p="$1" part; for part in ${2//\// }; do p="$p/$part"; [ ! -L "$p" ] || return 1; done; }
+        # proot keeps a hard link (git packs, pip) as a link to /.l2s/.l2s.NAME000N, itself a link to the file
+        # /.l2s/.l2s.NAME, written with the Termux path of the old guest: copied as they are, the new guest cannot read
+        # them. l2s_file <link>: that file, when every hop is an absolute path straight into the old guest's /.l2s (a
+        # relative link of a project is never one, nothing the guest set can lead elsewhere; the old guest is stopped);
+        # own_files <dir>: each such link becomes a copy of its file (cp -T: never into a folder the link points to)
+        l2s_file() {
+            local dir="$OLD_GROOT/.l2s" t
+            [ -d "$dir" ] && [ ! -L "$dir" ] || return 1
+            t="$(readlink "$1")"
+            for _ in 1 2; do   # two hops: the link, then the file
+                [ "${t%/*}" = "$dir" ] && [[ "${t##*/}" == .l2s.* ]] || return 1
+                if [ -L "$t" ]; then t="$(readlink "$t")"
+                elif [ -f "$t" ]; then printf '%s' "$t"; return 0
+                else return 1; fi
+            done
+            return 1
+        }
+        own_files() {
+            local link file
+            while IFS= read -r -d '' link; do
+                if file="$(l2s_file "$link")"; then cp -pT --remove-destination "$file" "$link" || return 1; fi
+            done < <(find "$1" -type l -print0)
+        }
+        w="$(guest_workdir "$OLD_GROOT")"; nw="$(guest_workdir "$GROOT")"
+        if ! [[ "$w$nw" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "/$w/$nw/" == *"/../"* ]]; then
+            say "  Arbeitsordner: WORKDIR=$w bzw. $nw ist kein einfacher Pfad, nicht kopiert"
+        elif ! no_link "$OLD_GROOT" "$w" || ! no_link "$GROOT" "$nw"; then
+            say "  Arbeitsordner: auf dem Weg zu $w bzw. $nw liegt ein Link, nicht kopiert (von Hand: $OLD_GROOT$w)"
+        elif [ ! -d "$OLD_GROOT$w" ]; then
+            say "  Arbeitsordner: $w gibt es im $SWITCH_FROM-Gast nicht"
+        elif [ -n "$(ls -A "$GROOT$nw" 2>/dev/null)" ]; then
+            say "  Arbeitsordner: $nw im $DISTRO-Gast ist nicht leer, nicht kopiert (von Hand: $OLD_GROOT$w)"
+        elif mkdir -p "$GROOT$nw" && cp -a "$OLD_GROOT$w/." "$GROOT$nw/" && own_files "$GROOT$nw"; then
+            say "  Arbeitsordner: $w aus dem $SWITCH_FROM-Gast nach $nw kopiert"
+        else
+            say "  Hinweis: der Arbeitsordner ließ sich nicht ganz kopieren (von Hand: $OLD_GROOT$w)"
+        fi
+        # Claude Code's conversations (/resume, claude --continue): those the new guest does not have yet, nothing there
+        # is overwritten. Only under the same work folder path (the folders and the transcripts name it), and without the
+        # private notes (PROJECT/memory): those come with the restore, as chosen there.
+        copy_talks() {
+            tar -C "$1" --anchored --exclude='./*/memory' -cf - . | tar -C "$2" --skip-old-files -xf - \
+                && [ "${PIPESTATUS[0]}" = 0 ]
+        }
+        c=/root/.claude/projects
+        if [ ! -d "$OLD_GROOT$c" ]; then
+            :
+        elif [ "$w" != "$nw" ]; then
+            say "  Unterhaltungen: der Arbeitsordner ist im $DISTRO-Gast $nw statt $w, nicht kopiert (Claude Code fände sie dort nicht)"
+        elif ! no_link "$OLD_GROOT" "$c" || ! no_link "$GROOT" "$c" \
+                || [ -n "$(find "$GROOT$c" -type l -exec test -d {} \; -print -quit 2>/dev/null)" ]; then
+            # (a link to a folder inside the new guest's conversations: tar would write through it)
+            say "  Unterhaltungen: auf dem Weg zu $c liegt ein Link, nicht kopiert (von Hand: $OLD_GROOT$c)"
+        elif mkdir -p "$GROOT$c" && copy_talks "$OLD_GROOT$c" "$GROOT$c" && own_files "$GROOT$c"; then
+            say "  Unterhaltungen von Claude Code aus dem $SWITCH_FROM-Gast übernommen"
+        else
+            say "  Hinweis: die Unterhaltungen ließen sich nicht ganz kopieren (von Hand: $OLD_GROOT$c)"
+        fi
+    fi
+    # the guest is set up (and what came along is there): from now on the launchers, backup and restore use it; a run that
+    # failed before this point leaves them on the old guest, and the next one switches again
+    if [ "$(cfg_get DISTRO)" != "$DISTRO" ]; then cfg_set DISTRO "$DISTRO" "Gast: $DISTRO"; fi
+    if [ -n "$SWITCH_FROM" ] && [ "$DO_WIDGETS" = 1 ]; then guest_widget "$DISTRO"; fi   # the widget follows the guest now
+    if [ -n "$SWITCH_FROM" ]; then
+        say "  Der $SWITCH_FROM-Gast bleibt (zurück: bash install.sh --distro $SWITCH_FROM; entfernen: proot-distro remove $SWITCH_FROM)"
+    fi
 else
     say "  übersprungen (--no-guest)"
 fi
@@ -1371,7 +1539,7 @@ say
 say "Fertig. Weiter:"
 say "  rootbridge status        # Zustand prüfen"
 say "  source ~/.bashrc         # Kurzbefehle in dieser Termux-Shell laden (oder ein neues Fenster öffnen)"
-say "  ubuntu                   # Ubuntu-Shell öffnen (auch Widget 'Ubuntu')"
+say "  $GUEST_ALIAS                   # $GUEST_WIDGET-Shell öffnen (auch Widget '$GUEST_WIDGET')"
 if [ "$USE_CLAUDE" = yes ]; then
     say "  claude                   # Claude-Code-Sitzung öffnen (legt sie an; auch Widget 'Claude')"
     say "  claude -n                # neue Claude-Unterhaltung in einem eigenen Fenster starten"
