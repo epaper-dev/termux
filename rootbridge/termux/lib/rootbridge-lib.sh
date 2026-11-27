@@ -274,7 +274,7 @@ rb_speak_hold() {
     local pid
     if rb_speak_mark speak-hold; then
         pid="$(rb_speak_player)" || return 0
-        tr '\0' ' ' < "$RB_PROC_DIR/$pid/cmdline" 2>/dev/null | grep -qE 'speak\.py --run [0-9]{20} [0-9-]+ pauses ' && return 0
+        tr '\0' ' ' 2>/dev/null < "$RB_PROC_DIR/$pid/cmdline" | grep -qE 'speak\.py --run [0-9]{20} [0-9-]+ pauses ' && return 0
     fi
     rb_speak_stop
 }
@@ -371,7 +371,8 @@ rb_speak_player() {
     [ -f "$f" ] && [ ! -L "$f" ] || return 1
     pid="$(timeout 1 head -c 16 "$f" 2>/dev/null | tr -d '[:space:]')"
     [[ "$pid" =~ ^[0-9]{1,9}$ ]] || return 1
-    tr '\0' ' ' < "$RB_PROC_DIR/$pid/cmdline" 2>/dev/null | grep -q 'speak\.py --run' || return 1
+    # 2> before <: a pid that is gone fails at the redirection, which `< file 2>/dev/null` would still report (every round)
+    tr '\0' ' ' 2>/dev/null < "$RB_PROC_DIR/$pid/cmdline" | grep -q 'speak\.py --run' || return 1
     printf '%s\n' "$pid"
 }
 
@@ -447,6 +448,8 @@ rb_proc_start() {
 # after one that was killed releases it too (rb_speak_focus_resume).
 # When Termux:API does not answer (the stock one never answers AudioFocus), the daemon asks less and less often (after
 # 2, 4, ... up to 128 rounds) and tells the player "off" meanwhile; once it answers again, every round.
+# Each change goes to daemon.log once (rb_focus_log): what asked for the focus (the player or the recorders, with their
+# pids) and Android's answer, the release, and when Termux:API does not answer.
 RB_SPEAK_FOCUS=""        # "" or held
 RB_SPEAK_FOCUS_PID=""    # the player that speak-focus answers
 RB_FOCUS_HELD="${TMPDIR:-/tmp}/rootbridge-audio-focus"
@@ -460,17 +463,24 @@ rb_focus_state() {   # rb_focus_state <""|held>
 rb_speak_focus_resume() {
     [ ! -e "$RB_FOCUS_HELD" ] || RB_SPEAK_FOCUS=held
 }
+rb_focus_last=""         # the last line about the focus in daemon.log
+rb_focus_log() {   # rb_focus_log <text>: a line in daemon.log (stderr of the daemon), not again while it stays the same
+    [ "$1" != "$rb_focus_last" ] || return 0
+    rb_focus_last="$1"
+    echo "$(date '+%F %T') Audiofokus: $1" >&2
+}
 rb_focus_missed() {
     rb_focus_miss=$((rb_focus_miss + 1))
     rb_focus_skip=$((1 << (rb_focus_miss < 7 ? rb_focus_miss : 7)))
 }
 rb_speak_focus() {
-    local pid answer
+    local pid answer why
     [ "$rb_focus_skip" -eq 0 ] || rb_focus_skip=$((rb_focus_skip - 1))
     REC_PIDS=()
     [ "$VOICE" != on ] || rb_find_recorders "$RB_PROC_DIR"
     rb_fresh_recorders
     if pid="$(rb_speak_player)" || [ "${#REC_PIDS[@]}" -gt 0 ]; then
+        why="Vorleser $pid"; [ -n "$pid" ] || why="Aufnahme ${REC_PIDS[*]}"
         if [ "$rb_focus_skip" -gt 0 ]; then answer=off
         else
             answer="$(rb_audio_focus status)"
@@ -486,14 +496,18 @@ rb_speak_focus() {
             esac
             [ "$answer" = off ] || rb_focus_miss=0
         fi
+        case "$answer" in
+            off) rb_focus_log "für $why: Termux:API antwortet nicht auf AudioFocus (die Musik bleibt laut)" ;;
+            *) rb_focus_log "für $why: $answer" ;;
+        esac
         if [ -n "$pid" ] && [ "$pid" != "$RB_SPEAK_FOCUS_PID" ]; then
             rb_speak_focus_tell "$pid $answer" && RB_SPEAK_FOCUS_PID="$pid"
         fi
     elif [ "$RB_SPEAK_FOCUS" = held ] && [ "$rb_focus_skip" -eq 0 ]; then
         case "$(rb_audio_focus release)" in
-            released) rb_focus_state ""; rb_focus_miss=0 ;;
-            failed) rb_focus_miss=0 ;;          # Android keeps it: asked again next round
-            *) rb_focus_missed ;;
+            released) rb_focus_state ""; rb_focus_miss=0; rb_focus_log "freigegeben" ;;
+            failed) rb_focus_miss=0; rb_focus_log "Freigabe abgelehnt, die nächste Runde fragt wieder" ;;   # Android keeps it
+            *) rb_focus_missed; rb_focus_log "keine Antwort auf die Freigabe, sie wird wiederholt (die Musik kann leise bleiben)" ;;
         esac
     fi
 }

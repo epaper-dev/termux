@@ -247,6 +247,13 @@ class TestServer(unittest.TestCase):
         os.utime(self.voice, (time.time() + 5, time.time() + 5))   # a new mtime also on a coarse clock
         self.assertEqual(self.say("Zwei"), "B:Zwei|")
 
+    def test_computes_at_a_lower_priority(self):
+        # it runs ahead of what is played; at the normal priority it slowed down Claude Code and Termux while it read
+        self.assertEqual(self.say("Eins"), "A:Eins|")
+        with open("/proc/%d/stat" % self.proc.pid) as fh:
+            nice = int(fh.read().rsplit(")", 1)[1].split()[16])
+        self.assertEqual(nice, min(19, os.nice(0) + 10))
+
     def test_ends_when_idle_and_takes_its_socket(self):
         self.assertEqual(self.say("Eins"), "A:Eins|")
         self.assertEqual(self.proc.wait(timeout=10), 0)

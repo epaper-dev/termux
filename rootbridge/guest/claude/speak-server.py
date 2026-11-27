@@ -24,10 +24,17 @@ from articulino_onnx import TTS
 
 IDLE_SECONDS = float(os.environ.get("RB_SPEAK_SERVER_IDLE", 1800))
 THREADS = 4   # more are not faster on the A9
+# lower priority while it computes: it runs ahead of what is played, and at the normal one its threads slow down Claude
+# Code and Termux while it reads (play keeps the normal priority)
+NICE = 10
 SEED = 1      # the same text sounds the same every time
 
 
 def serve(path, model, voice, lock_fd=None):
+    try:
+        os.nice(NICE)
+    except OSError:
+        pass
     tts = TTS.from_pretrained(model, precision="int8", threads=THREADS)
     voice_mtime = os.stat(voice).st_mtime
     tts.set_voice(voice)
