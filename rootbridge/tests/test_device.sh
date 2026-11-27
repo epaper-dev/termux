@@ -123,7 +123,7 @@ pid, master = pty.fork()
 if pid == 0:
     env = dict(os.environ, HOME=home, PREFIX=prefix, PATH=path, ROOTBRIDGE_ALLOW_GUEST="1", BRIDGE_DIR=home + "/.rootbridge")
     os.execvpe("bash", ["bash", installer, "--no-guest", "--no-setup", "--no-deps-check", "--no-migrate", "--no-boot",
-               "--no-extra-keys", "--no-colors", "--no-widgets", "--claude", "--no-codex", "--phantom-killer-on",
+               "--no-extra-keys", "--no-colors", "--no-widgets", "--claude", "--no-codex", "--no-opencode", "--phantom-killer-on",
                "--language", "de", "--no-voice", "--speak", *options], env)
 os.write(master, answers.encode())
 output, deadline = bytearray(), time.monotonic() + 60
