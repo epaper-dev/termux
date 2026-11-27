@@ -11,9 +11,9 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   `--opencode-update`), the code quality block in `~/.config/opencode/AGENTS.md`, its login in the backup and its lines in
   `rootbridge status`. `--reviewers codex|opencode|codex,opencode` (`REVIEWERS`; asked once when all three tools are there)
   chooses who reviews every `git commit` of Claude Code: with both, the two run at the same time and each must say `ALLOW`;
-  without Codex, OpenCode reviews. OpenCode reviews through `opencode run` with an agent of its own that may only read and
-  run `git diff/show/log/status` (redirects and `--output`, `--ext-diff`, `--no-index` denied), without the config and
-  plugins of the repository under review. The Codex plugin is declared only with Codex, the review hook with any reviewer
+  without Codex, OpenCode reviews. OpenCode reviews through `opencode run` with an agent of its own that has no shell and
+  may only read files of the repository and the temporary folder with the diffs from the hook, without the config and plugins of the
+  repository under review. An approval counts only for the same choice of reviewers. The Codex plugin is declared only with Codex, the review hook with any reviewer
   (`managed-settings.review.template.json`). `rootbridge review-off` / `review-on` name the switch for any reviewer
   (`codex-off` / `codex-on` stay). Tests: `tests/test_opencode.sh`, `tests/test_codex_precommit.py`, `tests/test_setup.sh`
 * **The guest gets the GitHub CLI** (`gh`, from apt like `openssh-client`; its login already came back with the backup),
