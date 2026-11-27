@@ -42,7 +42,7 @@ dinst() {
         ROOTBRIDGE_FORCE_INTERACTIVE=1 RB_BACKUP_DIR="$T/nobackup" STUB_PROPS="$T/props" \
         RB_SYS_DIR="$T/sys" RB_PROC_DIR="$T/proc" RB_PERF_SCORE=140 \
         bash "${INSTALLER:-$INSTALL}" --no-guest --no-setup --no-deps-check --no-migrate --no-boot --no-extra-keys --no-colors \
-        --no-widgets --claude --no-codex --phantom-killer-on --language de --voice --remote-name x "$@" > "$T/install.log" 2>&1
+        --no-widgets --claude --no-codex --no-opencode --phantom-killer-on --language de --voice --remote-name x "$@" > "$T/install.log" 2>&1
     IRC=$?
 }
 cget() { sed -n "s/^$1=//p" "$H/.config/termux-rootbridge/config" | tail -n 1; }
