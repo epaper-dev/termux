@@ -91,6 +91,29 @@ class TestBackup(unittest.TestCase):
         with tarfile.open(os.path.join(self.out, "a.tgz")) as tar:
             self.assertNotIn("g/root/.codex/auth.json", tar.getnames())
 
+    def test_opencode_comes_back_whole_without_its_plugin_packages(self):
+        files = {"root/.config/opencode/opencode.jsonc": '{"provider": {"x": {"options": {"apiKey": "OC-KEY"}}}}',
+                 "root/.config/opencode/AGENTS.md": "rules", "root/.config/opencode/cli.json": "{}",
+                 "root/.config/opencode/skills/s/SKILL.md": "skill", "root/.config/opencode/agents/a.md": "agent",
+                 "root/.config/opencode/commands/c.md": "command", "root/.config/opencode/plugins/p/index.ts": "plugin",
+                 "root/.local/share/opencode/auth.json": "OC-LOGIN", "root/.local/share/opencode/mcp-auth.json": "OC-MCP",
+                 "root/.local/state/opencode/model.json": "{}"}
+        left_out = ("root/.config/opencode/node_modules/x/index.js", "root/.config/opencode/package.json",
+                    "root/.config/opencode/package-lock.json", "root/.config/opencode/bun.lock")
+        for rel, text in list(files.items()) + [(rel, "generated") for rel in left_out]:
+            self.write(self.guest, rel, text)
+        self.backup()
+        with tarfile.open(os.path.join(self.out, "a.tgz")) as tar:     # keys and logins only in k.enc
+            self.assertFalse([n for n in tar.getnames() if "opencode" in n and "state" not in n])
+        home, guest = self.fresh()
+        r = self.run_tool(["restore", self.out, "--yes"], home, guest)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for rel, text in files.items():
+            with open(os.path.join(guest, rel)) as fh:
+                self.assertEqual(fh.read(), text, rel)
+        for rel in left_out:
+            self.assertFalse(os.path.exists(os.path.join(guest, rel)), rel)
+
     def test_ssh_keys_of_the_guest_are_secrets_and_keep_their_rights(self):
         for name, mode in (("root/.ssh/id_test", 0o600), ("root/.ssh/id_test.pub", 0o644), ("root/.ssh/config", 0o600)):
             self.write(self.guest, name, "KEY-MARKER " + name)
