@@ -5,7 +5,7 @@
 #      the installation (Codex reviews through git, and so does the pre-commit hook), plus bubblewrap for its sandbox; nodejs when both tools are
 #      (the Codex plugin of Claude Code is a node program, Node.js 18.18 or newer); sox for /voice
 #      when Claude Code and voice are both part of it (Claude Code records through `rec`); shellcheck for the
-#      agents' shell scripts (the CI of this repository checks them with it)
+#      agents' shell scripts (the CI of this repository checks them with it); openssh-client and gh (GitHub CLI)
 #   2. Claude Code with the official installer (only when there is no claude yet)
 #   3. Codex with the official standalone installer (only when there is no codex yet)
 #   4. Piper for the speech output (with Claude Code and voice): pip package piper-tts in a venv (PIPER_DIR) and the
@@ -82,6 +82,7 @@ guest_has curl    || pkgs="$pkgs curl"
 [ -s "$CA_BUNDLE" ] || pkgs="$pkgs ca-certificates"
 guest_has shellcheck || pkgs="$pkgs shellcheck"
 guest_has ssh || pkgs="$pkgs openssh-client"   # git over SSH, and the keys that rootbridge restore brings back
+guest_has gh || pkgs="$pkgs gh"   # GitHub CLI (pull requests, CI runs), its login comes back with rootbridge restore
 if [ "$CODEX_ON" = yes ]; then
     guest_has git || pkgs="$pkgs git"
     command -v bwrap >/dev/null 2>&1 || pkgs="$pkgs bubblewrap"

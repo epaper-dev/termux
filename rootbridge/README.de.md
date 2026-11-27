@@ -127,7 +127,7 @@ zu Beginn `termux-setup-storage` auf (Android fragt); `openssl` (Paket `openssl-
 `rootbridge backup` sichert die Einstellungen und Zugangsdaten von Termux und dem Gast nach `/sdcard/backup/termux`:
 `a.tgz` (Einstellungen), `k.enc` (Zugangsdaten, die Konfigurationen von rootbridge und die Einstellungen von Git, Claude Code und Codex, mit deinem Passwort
 verschlüsselt), `h` (Prüfsummen) und `m` (ein Siegel mit deinem Passwort); die vorige Sicherung bleibt in `previous/`. Was gesichert wird,
-steht in einer Grundliste (rootbridge, Git, SSH-Schlüssel des Gasts, Claude Code mit seinen Plugins, Codex); eigene Zeilen kommen in
+steht in einer Grundliste (rootbridge, Git, SSH-Schlüssel des Gasts, Claude Code mit seinen Plugins, Codex, deine Stimme für Articulino); eigene Zeilen kommen in
 `~/.config/termux-rootbridge/backup.list` (sie reist verschlüsselt in der Sicherung mit: eine Wiederherstellung auf einer neuen
 Installation liest sie zuerst ein, damit alles zurückkommt, was sie nennt) (`settings|secret termux|guest PFAD`, `exclude termux|guest PFAD`).
 `rootbridge restore` prüft die Prüfsummen und das Siegel mit deinem Passwort (andere Apps können in den Telefonspeicher

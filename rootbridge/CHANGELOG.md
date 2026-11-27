@@ -5,6 +5,9 @@
 Claude reads its answers aloud; the microphone goes off after a push-to-talk stop; Termux without clang.
 
 ### Added
+* **The guest gets the GitHub CLI** (`gh`, from apt like `openssh-client`; its login already came back with the backup),
+  and **the backup keeps your voice for Articulino** (`~/.local/share/rootbridge`, encrypted, with a "nie" to recording
+  it): a new guest no longer asks for it again.
 * **Ubuntu or Debian as the guest, also as a switch.** `--distro ubuntu|debian`; on a device without a guest the installer
   asks once (Enter: Ubuntu) and stores `DISTRO` once the guest is there (a new config no longer writes `DISTRO=ubuntu`).
   The widget of the guest shell is named after it, and `debian` opens it like `ubuntu`. With an installed guest

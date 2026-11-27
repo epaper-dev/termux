@@ -46,3 +46,4 @@ secret   guest  root/.claude.json
 secret   guest  root/.codex/auth.json
 secret   guest  root/.bashrc               # holds GITHUB_PERSONAL_ACCESS_TOKEN
 secret   guest  root/.android             # adb keys
+secret   guest  root/.local/share/rootbridge   # your voice for Articulino (voice.wav) or your "nie" to recording it
