@@ -329,9 +329,10 @@ guarda la selección actual para los lanzadores. Para restaurar una instalación
 `--no-opencode` lo quita de nuevo). Tiene una ventana de Termux y una sesión de tmux propias, `ubuntu-opencode` (widget
 **OpenCode**, `opencode`, `rootbridge attach opencode`).
 
-* **Instalación.** `setup-guest.sh` ejecuta el instalador oficial (`opencode.ai/install`, con `--no-modify-path`) en
-  `~/.opencode/bin`; el bloque de `~/.bashrc` del invitado pone el `PATH`. Inicio de sesión: `/connect` en la ventana de OpenCode.
-* **Actualizaciones.** `rootbridge-update` ejecuta `opencode upgrade` al iniciar una sesión, como mucho cada 6 h
+* **Instalación.** `setup-guest.sh` ejecuta el instalador oficial de OpenCode 2 (`opencode.ai/v2/install`, con
+  `--no-modify-path`) en `~/.opencode/bin`, también en lugar de un OpenCode 1; el bloque de `~/.bashrc` del invitado pone el `PATH`. Inicio de sesión: `/connect` en la ventana de OpenCode.
+* **Actualizaciones.** `rootbridge-update` compara al iniciar una sesión, como mucho cada 6 h, la versión instalada con la más
+  nueva y vuelve a ejecutar el instalador si hay una nueva (`opencode upgrade` no actualiza nada en OpenCode 2)
   (`OPENCODE_UPDATE`, `--opencode-update M`, `--no-opencode-update`); la comprobación propia de OpenCode está desactivada.
 * **Pautas.** Con `--guidelines` el bloque de calidad de código también va a `~/.config/opencode/AGENTS.md`.
 * **Quién revisa los commits.** `--reviewers codex|opencode|codex,opencode` (se guarda como `REVIEWERS`) elige quién revisa

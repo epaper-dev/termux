@@ -326,9 +326,10 @@ a new window.
 out again). It gets a Termux window and tmux session of its own, `ubuntu-opencode` (widget **OpenCode**, `opencode`,
 `rootbridge attach opencode`).
 
-* **Install.** `setup-guest.sh` runs the official installer (`opencode.ai/install`, with `--no-modify-path`) into
-  `~/.opencode/bin`; the guest's `~/.bashrc` block sets the `PATH`. Log in with `/connect` in the OpenCode window.
-* **Updates.** `rootbridge-update` runs `opencode upgrade` when a session starts, at most every 6 h (`OPENCODE_UPDATE`,
+* **Install.** `setup-guest.sh` runs the official installer of OpenCode 2 (`opencode.ai/v2/install`, with
+  `--no-modify-path`) into `~/.opencode/bin`, also in place of an OpenCode 1; the guest's `~/.bashrc` block sets the `PATH`. Log in with `/connect` in the OpenCode window.
+* **Updates.** `rootbridge-update` compares the installed with the newest version when a session starts, at most every
+  6 h, and runs the installer again for a new one (`opencode upgrade` updates nothing in OpenCode 2) (`OPENCODE_UPDATE`,
   `--opencode-update M`, `--no-opencode-update`); OpenCode's own update check is off.
 * **Guidelines.** With `--guidelines` the code quality block also goes into `~/.config/opencode/AGENTS.md`.
 * **Who reviews the commits.** `--reviewers codex|opencode|codex,opencode` (stored as `REVIEWERS`) chooses who reviews every

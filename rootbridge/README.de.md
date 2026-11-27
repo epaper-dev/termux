@@ -358,9 +358,10 @@ fest. Zum sofortigen Wiederherstellen einer bisherigen Installation: `bash insta
 `TOOL_OPENCODE`, `--no-opencode` nimmt es wieder heraus). Es bekommt ein eigenes Termux-Fenster mit eigener tmux-Sitzung
 `ubuntu-opencode` (Widget **OpenCode**, `opencode`, `rootbridge attach opencode`).
 
-* **Installation.** `setup-guest.sh` lädt den offiziellen Installer (`opencode.ai/install`, mit `--no-modify-path`) nach
-  `~/.opencode/bin`; der `~/.bashrc`-Block des Gasts setzt den `PATH`. Anmelden: `/connect` im OpenCode-Fenster.
-* **Updates.** `rootbridge-update` ruft beim Start jeder Sitzung `opencode upgrade` auf, höchstens alle 6 h
+* **Installation.** `setup-guest.sh` lädt den offiziellen Installer von OpenCode 2 (`opencode.ai/v2/install`, mit
+  `--no-modify-path`) nach `~/.opencode/bin`, auch anstelle eines OpenCode 1; der `~/.bashrc`-Block des Gasts setzt den `PATH`. Anmelden: `/connect` im OpenCode-Fenster.
+* **Updates.** `rootbridge-update` vergleicht beim Start einer Sitzung, höchstens alle 6 h, die installierte mit der
+  neuesten Version und lässt bei einer neuen den Installer erneut laufen (`opencode upgrade` aktualisiert in OpenCode 2 nichts)
   (`OPENCODE_UPDATE`, `--opencode-update M`, `--no-opencode-update`); OpenCodes eigene Update-Prüfung ist aus.
 * **Richtlinien.** Mit `--guidelines` kommt der Block zur Codequalität auch nach `~/.config/opencode/AGENTS.md`.
 * **Wer prüft die Commits.** `--reviewers codex|opencode|codex,opencode` (gespeichert als `REVIEWERS`) wählt, wer jeden

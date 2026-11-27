@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # rootbridge-update - brings the AI tools of the guest up to date: Claude Code (`claude update`), Codex
-# (`codex update`), OpenCode (`opencode upgrade`). Started by rootbridge-claude, rootbridge-codex and
+# (`codex update`), OpenCode (its official installer, when a newer version is out). Started by rootbridge-claude, rootbridge-codex and
 # rootbridge-opencode at the start of a session, after rootbridge-apt, so starting any one updates ALL of them
 # (they review each other: they should be current at the same time). Can also be run by hand.
 # It never blocks the start: every problem is reported and the exit code is always 0.
@@ -10,7 +10,7 @@
 #                                           on, OpenCode off; a tool that is off, or whose program is missing, is skipped)
 #   CLAUDE_UPDATE=6h|<N>h|daily|always|off  `claude update`
 #   CODEX_UPDATE=6h|<N>h|daily|always|off   `codex update`
-#   OPENCODE_UPDATE=6h|<N>h|daily|always|off   `opencode upgrade`
+#   OPENCODE_UPDATE=6h|<N>h|daily|always|off   the update of OpenCode (the installer of OpenCode 2 when a newer one is out)
 #                                  6h (default): at most once per 6 h after a success; <N>h: the same with N
 #                                  hours (1-999); daily = 24h; always: at every start; off: never
 # Last success of each step: /var/lib/termux-rootbridge/{claude,codex,opencode}-update-last-success
@@ -78,18 +78,35 @@ update_codex() {
     return 0
 }
 
-# opencode upgrade (it runs the official installer again, which leaves the shell files alone while its folder is in
-# PATH). Never stops the start.
+# OpenCode: the official installer of OpenCode 2 again, when the newest version (opencode.ai/update) is another than the
+# installed one; that also replaces an OpenCode 1. `opencode upgrade` of OpenCode 2 updates nothing in a curl
+# installation, it only says how. Never stops the start.
 update_opencode() {
-    local stamp
+    local stamp latest installed tmp
     stamp="$(state_dir)/opencode-update-last-success"
-    update_due "opencode upgrade" OPENCODE_UPDATE "$stamp" || return 0
-    echo "== opencode upgrade"
-    if ( exec timeout 300 "$opencode_bin" upgrade ); then
+    update_due "opencode update" OPENCODE_UPDATE "$stamp" || return 0
+    echo "== opencode update"
+    latest="$(curl -fsSL --max-time 20 "${OPENCODE_LATEST_URL:-https://opencode.ai/update/api/latest/cli/npm}" 2>/dev/null \
+        | sed -n 's/.*"version":"\([0-9][^"]*\)".*/\1/p' | head -n 1)"
+    installed="$("$opencode_bin" --version 2>/dev/null | tail -n 1)"; installed="${installed##* }"; installed="${installed#v}"
+    if [ -z "$latest" ]; then
+        echo "Update fehlgeschlagen (keine Versionsangabe von opencode.ai) - starte die vorhandene Version."
+        return 0
+    fi
+    if [ "$installed" = "$latest" ]; then
+        echo "opencode $installed ist aktuell."
+        stamp_success "$stamp"
+        return 0
+    fi
+    tmp="$(mktemp)" || return 0
+    if curl -fsSL --max-time 60 "${OPENCODE_INSTALL_URL:-https://opencode.ai/v2/install}" -o "$tmp" \
+            && ( exec timeout 300 bash "$tmp" --no-modify-path < /dev/null ); then
+        echo "opencode: ${installed:-?} -> $latest"
         stamp_success "$stamp"
     else
         echo "Update fehlgeschlagen oder abgebrochen - starte die vorhandene Version."
     fi
+    rm -f "$tmp"
     return 0
 }
 

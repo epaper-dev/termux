@@ -60,7 +60,7 @@
 #   tells Codex when you said no.
 # --opencode / --no-opencode: OpenCode as a third tool, off by default (widget "OpenCode", `opencode`, its own session).
 #   Asked once on a terminal and stored (TOOL_OPENCODE); the login is /connect in the OpenCode window. --opencode-update
-#   sets how often `opencode upgrade` runs at the start of a session (6h default; stored as OPENCODE_UPDATE).
+#   sets how often the update of OpenCode 2 runs at the start of a session (6h default; stored as OPENCODE_UPDATE).
 # --reviewers codex|opencode|codex,opencode: who reviews every `git commit` of Claude Code (with both, each one must say
 #   ALLOW). Asked once when Claude Code, Codex and OpenCode are all installed, stored as REVIEWERS; default codex. Only
 #   tools of the installation review: without Codex it is OpenCode. Emergency switch: `rootbridge review-off`.
@@ -404,7 +404,7 @@ AUTOSTART_DELAY=3
 # TOOL_CLAUDE=on        # on | off: Claude Code is part of this installation; set with install.sh --claude / --no-claude
 # TOOL_CODEX=on         # on | off: Codex is part of this installation; set with install.sh --codex / --no-codex
 # TOOL_OPENCODE=off     # on | off: OpenCode is part of this installation; set with install.sh --opencode / --no-opencode
-# OPENCODE_UPDATE=6h    # opencode upgrade at session start: same values; set with install.sh --opencode-update / --no-opencode-update
+# OPENCODE_UPDATE=6h    # OpenCode update at session start: same values; set with install.sh --opencode-update / --no-opencode-update
 # REVIEWERS=codex       # codex | opencode | codex,opencode: who reviews the commits of Claude Code; install.sh --reviewers
 # EFFORT_AUTO=off       # off | effort-router: the effort of each request chosen automatically; install.sh --effort-auto
 # GUIDELINES=on         # on | off: code quality block in the guest's CLAUDE.md / AGENTS.md; set with install.sh --guidelines / --no-guidelines

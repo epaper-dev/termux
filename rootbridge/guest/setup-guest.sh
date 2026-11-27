@@ -9,7 +9,8 @@
 #      agents' shell scripts (the CI of this repository checks them with it); openssh-client and gh (GitHub CLI)
 #   2. Claude Code with the official installer (only when there is no claude yet)
 #   3. Codex with the official standalone installer (only when there is no codex yet)
-#   3b. OpenCode with its official installer into ~/.opencode/bin (only with --opencode yes and when there is none yet)
+#   3b. OpenCode 2 with its official installer into ~/.opencode/bin (only with --opencode yes and when there is none yet,
+#       or an OpenCode 1, which the installer of OpenCode 2 replaces)
 #   4. Piper for the speech output (with Claude Code and voice): pip package piper-tts in a venv (PIPER_DIR) and the
 #      German voice de_DE-kerstin-medium (only what is missing; python3-venv from apt when venv cannot be made)
 #   5. Articulino for the speech output in your own voice (with Piper): a venv (ARTICULINO_DIR) with its runtime package
@@ -27,7 +28,7 @@
 #
 #   CLAUDE_INSTALL_URL        installer script of Claude Code (default https://claude.ai/install.sh)
 #   CODEX_INSTALL_URL         installer script of Codex (default https://chatgpt.com/codex/install.sh)
-#   OPENCODE_INSTALL_URL      installer script of OpenCode (default https://opencode.ai/install)
+#   OPENCODE_INSTALL_URL      installer script of OpenCode (default https://opencode.ai/v2/install)
 #   ROOTBRIDGE_GUEST_HOME     home of the guest user (default /root, like install-guest.sh)
 #   ROOTBRIDGE_CA_BUNDLE      certificate bundle to look for (default /etc/ssl/certs/ca-certificates.crt)
 #   PIPER_DIR                 venv of Piper (default /opt/piper; the voices in its voices/)
@@ -39,7 +40,7 @@ HOME_DIR="${ROOTBRIDGE_GUEST_HOME:-/root}"
 CA_BUNDLE="${ROOTBRIDGE_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 INSTALL_URL="${CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CODEX_URL="${CODEX_INSTALL_URL:-https://chatgpt.com/codex/install.sh}"
-OPENCODE_URL="${OPENCODE_INSTALL_URL:-https://opencode.ai/install}"
+OPENCODE_URL="${OPENCODE_INSTALL_URL:-https://opencode.ai/v2/install}"
 PIPER_DIR="${PIPER_DIR:-/opt/piper}"
 PIPER_VOICE_NAME=de_DE-kerstin-medium   # speak.py reads this voice (German; --language en: en_US-lessac-medium)
 ARTICULINO_DIR="${ARTICULINO_DIR:-/opt/articulino}"
@@ -77,6 +78,8 @@ claude_present() { [ -x "$HOME_DIR/.local/bin/claude" ] || command -v claude >/d
 # the codex in ~/.local/bin is a link with an absolute target (the standalone package under ~/.codex)
 codex_present() { [ -x "$HOME_DIR/.local/bin/codex" ] || [ -L "$HOME_DIR/.local/bin/codex" ] || command -v codex >/dev/null 2>&1; }
 opencode_present() { [ -x "$HOME_DIR/.opencode/bin/opencode" ]; }
+# opencode_major: the major version of the installed opencode ("1 2.4.2" style output: the last word counts)
+opencode_major() { local v; v="$("$HOME_DIR/.opencode/bin/opencode" --version 2>/dev/null | tail -n 1)" || true; v="${v##* }"; v="${v#v}"; printf '%s' "${v%%.*}"; }
 
 # ------------------------------------------------------------------ 1. packages
 say "== Gast: Voraussetzungen"
@@ -169,9 +172,10 @@ fi
 # ------------------------------------------------------------------ 3b. OpenCode
 if [ "$OPENCODE_ON" = yes ]; then
     say "== Gast: OpenCode"
-    if opencode_present; then
+    if opencode_present && [ "$(opencode_major)" != 1 ]; then
         say "  opencode ist schon installiert"
     else
+        opencode_present && say "  OpenCode 1 gefunden: der Installer von OpenCode 2 ersetzt es (Einstellungen und Anmeldung bleiben)"
         tmp="$TMPDIR_SETUP/opencode-install.sh"
         say "  lade den Installer: $OPENCODE_URL"
         curl -fsSL "$OPENCODE_URL" -o "$tmp" \

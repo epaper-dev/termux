@@ -124,17 +124,31 @@ OPENCODE_AGENT = "rootbridge-review"
 # Der Agent des OpenCode-Reviews: lesen ja, schreiben nein, keine Shell, nichts außerhalb seines Ordners. Sein Ordner ist
 # ein Schnappschuss (snapshot), nicht das Repository: OpenCode prüft "außerhalb" am Pfad, bevor es Links auflöst, und hängt
 # AGENTS.md, CLAUDE.md und CONTEXT.md aus den Ordnern einer gelesenen Datei als Anweisungen an (v1.19.6: tool/read.ts,
-# tool/external-directory.ts, session/instruction.ts).
-OPENCODE_CONFIG = json.dumps({"agent": {OPENCODE_AGENT: {
-    "mode": "primary",
-    "description": "Pre-commit review of termux-rootbridge (read-only)",
-    "permission": {
-        "*": "deny", "read": "allow", "grep": "allow", "glob": "allow", "list": "allow", "lsp": "allow",
-        "edit": "deny", "task": "deny", "webfetch": "deny", "websearch": "deny", "bash": "deny",
-        "external_directory": "deny",
-    },
-}}})
-INSTRUCTION_FILES = {"AGENTS.md", "CLAUDE.md", "CONTEXT.md"}
+# tool/external-directory.ts, session/instruction.ts). OpenCode 1 und 2 lesen die Rechte in eigener Form; in OpenCode 2 gilt
+# die letzte passende Regel, und external_directory wäre ohne Regel erlaubt.
+OPENCODE_DESCRIPTION = "Pre-commit review of termux-rootbridge (read-only)"
+OPENCODE_CONFIG = {
+    1: json.dumps({"agent": {OPENCODE_AGENT: {
+        "mode": "primary",
+        "description": OPENCODE_DESCRIPTION,
+        "permission": {
+            "*": "deny", "read": "allow", "grep": "allow", "glob": "allow", "list": "allow", "lsp": "allow",
+            "edit": "deny", "task": "deny", "webfetch": "deny", "websearch": "deny", "bash": "deny",
+            "external_directory": "deny",
+        },
+    }}}),
+    2: json.dumps({"agents": {OPENCODE_AGENT: {
+        "mode": "primary",
+        "description": OPENCODE_DESCRIPTION,
+        "permissions": [{"action": "*", "resource": "*", "effect": "deny"}]
+        + [{"action": a, "resource": "*", "effect": "allow"} for a in ("read", "grep", "glob")]
+        + [{"action": "external_directory", "resource": "*", "effect": "deny"}],
+    }}}),
+}
+# what stays out of the snapshot: instruction files and the config and plugins of OpenCode and Claude Code (OpenCode 2 has
+# no OPENCODE_PURE)
+INSTRUCTION_FILES = {"AGENTS.md", "CLAUDE.md", "CONTEXT.md", "opencode.json", "opencode.jsonc"}
+CONFIG_FOLDERS = {".opencode", ".claude"}
 MAX_SNAPSHOT_FILE = 1024 * 1024   # a larger file is reviewed through the diff only
 
 
@@ -763,7 +777,7 @@ def snapshot(root, names, directory):
     gives and no instruction file of OpenCode. The number copied."""
     copied = 0
     for rel in dict.fromkeys(names):
-        if os.path.basename(rel) in INSTRUCTION_FILES:
+        if os.path.basename(rel) in INSTRUCTION_FILES or CONFIG_FOLDERS.intersection(rel.split("/")[:-1]):
             continue
         data = read_regular(root, rel)
         if data is None:
@@ -862,6 +876,17 @@ def review_codex(prompt, root, deadline, diffs, untracked):
         return result.stdout.strip(), None
 
 
+def opencode_major(binary):
+    """The major version of OpenCode (1 or 2) from `opencode --version`, None when it cannot be told."""
+    try:
+        out = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=30,
+                             stdin=subprocess.DEVNULL).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    match = re.search(r"(\d+)\.\d+", out.strip().split("\n")[-1] if out.strip() else "")
+    return int(match.group(1)) if match else None
+
+
 def review_opencode(prompt, root, deadline, diffs, untracked):
     """OpenCode with the agent OPENCODE_AGENT in a snapshot of the change (the diffs and the changed files, see snapshot).
     The answer is the last text of its JSON events (text it writes before a tool call comes earlier): (answer, None) or
@@ -869,6 +894,9 @@ def review_opencode(prompt, root, deadline, diffs, untracked):
     binary = shutil.which("opencode") or os.path.expanduser("~/.opencode/bin/opencode")
     if not os.access(binary, os.X_OK):
         return None, ("OpenCode nicht gefunden (~/.opencode/bin/opencode).", "")
+    major = opencode_major(binary)
+    if major not in OPENCODE_CONFIG:
+        return None, ("OpenCode: die Version ließ sich nicht erkennen (opencode --version).", "")
     try:
         names = list(untracked)
         for args in (["diff", "--cached", "--name-only", "-z"], ["diff", "--name-only", "-z"]):
@@ -882,13 +910,18 @@ def review_opencode(prompt, root, deadline, diffs, untracked):
             prompt = with_diff_files(prompt, diffs, os.path.join(work, "diffs"))
             copied = snapshot(root, names, os.path.join(work, "files"))
             prompt += (f"\n\nThe changed files as they are now ({copied}) are under {work}/files, at their paths in the "
-                       "repository; files that are links, larger than 1 MB or instructions for agents (AGENTS.md, "
-                       "CLAUDE.md, CONTEXT.md) are left out, review those through the diffs. You cannot read anything "
+                       "repository; files that are links, larger than 1 MB, instructions or config for agents "
+                       "(AGENTS.md, CLAUDE.md, CONTEXT.md, opencode.json, .opencode/, .claude/) are left out, review those "
+                       "through the diffs. You cannot read anything "
                        f"outside {work}.")
-            env = dict(os.environ, OPENCODE_CONFIG_CONTENT=OPENCODE_CONFIG,
+            # PWD: OpenCode 2 takes its directory from it before the working directory
+            env = dict(os.environ, OPENCODE_CONFIG_CONTENT=OPENCODE_CONFIG[major], PWD=work,
                        OPENCODE_DISABLE_PROJECT_CONFIG="1", OPENCODE_PURE="1", OPENCODE_DISABLE_AUTOUPDATE="1",
                        OPENCODE_DISABLE_CLAUDE_CODE="1")
-            args = [binary, "run", "--format", "json", "--agent", OPENCODE_AGENT, "--dir", work]
+            if major == 1:
+                args = [binary, "run", "--format", "json", "--agent", OPENCODE_AGENT, "--dir", work]
+            else:   # a private server: the shared background service would use its own config, not ours
+                args = [binary, "run", "--standalone", "--format", "json", "--agent", OPENCODE_AGENT]
             if OPENCODE_MODEL:
                 args += ["--model", OPENCODE_MODEL]
             result, error = attempts("OpenCode", args + [prompt], work, deadline, env)
@@ -896,16 +929,17 @@ def review_opencode(prompt, root, deadline, diffs, untracked):
         return None, ("OpenCode: der Schnappschuss für die Prüfung ließ sich nicht anlegen.", str(exc))
     if error:
         return None, error
-    texts = []
+    parts = {}   # OpenCode 2 sends a text in pieces with the same part id, OpenCode 1 once when it is done
     for line in result.stdout.splitlines():
         try:
             event = json.loads(line)
         except ValueError:
             continue
-        if isinstance(event, dict) and event.get("type") == "text":
-            text = str((event.get("part") or {}).get("text") or "").strip()
-            if text:
-                texts.append(text)
+        if isinstance(event, dict) and event.get("type") == "text" and isinstance(event.get("part"), dict):
+            part = event["part"]
+            key = part.get("id") or len(parts)
+            parts[key] = parts.get(key, "") + str(part.get("text") or "")
+    texts = [text.strip() for text in parts.values() if text.strip()]
     return (texts[-1] if texts else ""), None
 
 

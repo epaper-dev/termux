@@ -107,9 +107,22 @@ for c in bash sed date head tail flock mkdir dirname cat tr sleep env rm; do
     r="$(command -v "$c")" && ln -sf "$r" "$UB/$c"
 done
 printf '#!/bin/bash\nshift\nexec "$@"\n' > "$UB/timeout"
-for t in claude codex opencode; do
+for t in claude codex; do
     printf '#!/bin/bash\necho "%s $*" >> "$STUB_LOG"\nexit 0\n' "$t" > "$UB/$t"
 done
+printf '#!/bin/bash\n[ "$1" = --version ] && { echo "${STUB_OC_VERSION:-2.4.2}"; exit 0; }\necho "opencode $*" >> "$STUB_LOG"\n' > "$UB/opencode"
+cat > "$UB/curl" <<'EOF'
+#!/bin/bash
+# the newest version of OpenCode ($STUB_OC_LATEST), or the installer of OpenCode 2 (it logs its arguments)
+echo "curl $*" >> "$STUB_LOG"
+out=""; url=""
+while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; case "$1" in http*) url="$1" ;; esac; shift; done
+case "$url" in
+    */update/api/*) printf '{"channel":"latest","version":"%s"}\n' "${STUB_OC_LATEST:-2.4.2}" ;;
+    */v2/install) printf 'echo "installer $*" >> "$STUB_LOG"\n' > "$out" ;;
+esac
+EOF
+ln -sf "$(command -v mktemp)" "$UB/mktemp"
 chmod +x "$UB"/*
 USTATE="$T/ustate"; UCONF="$T/u.conf"; ULOG="$T/u.log"
 mkdir -p "$T/update-home"
@@ -117,14 +130,21 @@ urun() {   # urun <config lines...>: one run of the real rootbridge-update with 
     rm -rf "$USTATE"; : > "$ULOG"; printf '%s\n' "$@" > "$UCONF"
     env -i HOME="$T/update-home" PATH="$UB" ROOTBRIDGE_UPDATE_KEEP_PATH=1 ROOTBRIDGE_CONF="$UCONF" ROOTBRIDGE_GUEST_LIB="$ROOTBRIDGE_GUEST_LIB" ROOTBRIDGE_STATE_DIR="$USTATE" \
         ROOTBRIDGE_CLAUDE_BIN="$UB/claude" ROOTBRIDGE_CODEX_BIN="$UB/codex" ROOTBRIDGE_OPENCODE_BIN="$UB/opencode" STUB_LOG="$ULOG" \
+        ${STUB_OC_LATEST:+STUB_OC_LATEST="$STUB_OC_LATEST"} ${STUB_OC_VERSION:+STUB_OC_VERSION="$STUB_OC_VERSION"} \
         "$(command -v bash)" "$UPDATE" > "$T/u.out" 2>&1
     URC=$?
 }
 urun ""
 check "update ohne TOOL_OPENCODE: kein opencode upgrade"   "0 0" "$URC $(count "$ULOG" '^opencode')"
 urun "TOOL_OPENCODE=on"
-check "update mit OpenCode: opencode upgrade läuft"        1 "$(count "$ULOG" '^opencode upgrade$')"
-check "update mit OpenCode: Zeitstempel"                   ja "$(has "$USTATE/opencode-update-last-success")"
+check "update, OpenCode aktuell: kein Installer"           "0 1" "$(count "$ULOG" '^installer') $(count "$T/u.out" 'opencode 2.4.2 ist aktuell')"
+check "update, OpenCode aktuell: Zeitstempel"              ja "$(has "$USTATE/opencode-update-last-success")"
+check "update: nie opencode upgrade (in OpenCode 2 ohne Wirkung)" 0 "$(count "$ULOG" '^opencode upgrade')"
+STUB_OC_LATEST=2.5.0 urun "TOOL_OPENCODE=on"
+check "update, neue Version: Installer von OpenCode 2"     1 "$(count "$ULOG" '^installer --no-modify-path$')"
+check "update, neue Version: Meldung und Zeitstempel"      "1 ja" "$(count "$T/u.out" 'opencode: 2.4.2 -> 2.5.0') $(has "$USTATE/opencode-update-last-success")"
+STUB_OC_VERSION=1.19.6 urun "TOOL_OPENCODE=on"
+check "update, OpenCode 1: der Installer ersetzt es"       1 "$(count "$ULOG" '^installer --no-modify-path$')"
 urun "TOOL_OPENCODE=on" "OPENCODE_UPDATE=off"
 check "update OPENCODE_UPDATE=off: kein Upgrade"           0 "$(count "$ULOG" '^opencode')"
 

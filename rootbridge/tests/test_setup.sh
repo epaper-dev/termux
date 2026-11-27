@@ -559,7 +559,7 @@ newenv d16 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 gx bash "$SETUP_GUEST" --claude no --codex no --opencode yes
 check "D16 nur OpenCode: läuft durch"                           0 "$?"
-check "D16 OpenCode-Installer: die offizielle URL"              1 "$(count "$LOG" '^curl -fsSL https://opencode.ai/install -o ')"
+check "D16 OpenCode-Installer: die offizielle URL von OpenCode 2" 1 "$(count "$LOG" '^curl -fsSL https://opencode.ai/v2/install -o ')"
 check "D16 OpenCode-Installer: Gast-HOME, ohne Profil-Änderung" "opencode-installer: ran with HOME=$E/ghome args=--no-modify-path" "$(grep '^opencode-installer: ' "$LOG")"
 check "D16 opencode liegt in ~/.opencode/bin"                   ja "$([ -x "$E/ghome/.opencode/bin/opencode" ] && echo ja || echo nein)"
 check "D16 git ja, bubblewrap nein"                             "1 0" "$(grep '^apt-get install' "$LOG" | grep -c ' git') $(grep '^apt-get install' "$LOG" | grep -c bubblewrap)"
@@ -568,6 +568,11 @@ gx bash "$SETUP_GUEST" --claude no --codex no --opencode yes
 check "D16 zweiter Lauf: 'schon installiert', kein Download"    "1 0" "$(count "$E/out.log" '^  opencode ist schon installiert') $(count "$LOG" '^curl')"
 gx bash "$SETUP_GUEST" --opencode maybe
 check "D16 --opencode maybe: Abbruch"                           1 "$?"
+# an OpenCode 1 is replaced by the installer of OpenCode 2
+printf '#!/bin/bash\n[ "$1" = --version ] && echo 1.19.6\n' > "$E/ghome/.opencode/bin/opencode"
+: > "$LOG"
+gx bash "$SETUP_GUEST" --claude no --codex no --opencode yes
+check "D16 OpenCode 1: der Installer von OpenCode 2 läuft"      "1 1" "$(count "$E/out.log" 'OpenCode 1 gefunden') $(count "$LOG" '^opencode-installer: ran')"
 newenv d17 python3 curl shellcheck
 mkdir -p "$E/ca"; echo cert > "$E/ca/ca-certificates.crt"
 gx bash "$SETUP_GUEST" --claude no
