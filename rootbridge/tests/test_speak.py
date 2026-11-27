@@ -1136,6 +1136,22 @@ class TestPlayer(unittest.TestCase):
         time.sleep(0.5)
         self.assertIsNone(self.out_file("piper.in"), "derselbe Zwischenstand zweimal gelesen")
 
+    def test_progress_reads_a_note_that_claude_code_keeps_as_narration(self):
+        # Claude Code keeps some notes between tool calls as a thinking block with text, its signature names it narration;
+        # real thinking has no text there and is never read
+        narration = "CAQSiQgKEQgUGAI4AUIJbmFycmF0aW9uEgxhsa5JGa0j1VqCqckaDIFpWvhaTz3oYCMN5CIwjfcXCauj"
+        thinking = "CAQSyBIKEAgUGAI4AUIIdGhpbmtpbmcSDDD0NebWhcQGsJ503xoMnJ/su8W/CC+obNR7IjC14yjPnkiO"
+        data = self.transcript(("u1", "user", "Mach mal"),
+                               ("a1", "assistant", [{"type": "thinking", "thinking": "", "signature": thinking}]),
+                               ("a2", "assistant", [{"type": "thinking", "thinking": "Ich sehe nach.",
+                                                     "signature": narration}]),
+                               ("a3", "assistant", [{"type": "tool_use", "name": "Bash", "input": {}}]))
+        self.run_speak(["--progress"], data)
+        self.assertTrue(self.wait_for(lambda: self.out_file("piper.in") is not None))
+        self.assertEqual(self.out_file("piper.in"), "Ich sehe nach.")
+        self.assertFalse(speak.narration({"type": "thinking", "thinking": "Geheimes Denken", "signature": thinking}))
+        self.assertFalse(speak.narration({"type": "thinking", "thinking": "Text", "signature": "kein base64!"}))
+
     def test_parallel_progress_hooks_read_the_note_once(self):
         piper = self.piper_stub("piper-count", 'echo x >> "$OUT/piper.count"')
         data = self.transcript(("a1", "assistant", [{"type": "text", "text": "Einmal."}]))

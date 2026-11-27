@@ -316,6 +316,10 @@ Claude reads its answers aloud; the microphone goes off after a push-to-talk sto
   C code. Tests: `tests/test_setup.sh`, `tests/test_voice.sh`.
 
 ### Fixed
+* **Notes between tool calls that Claude Code keeps as narration are read aloud.** Some of the short notes Claude writes
+  before a tool call stand in the transcript as a thinking block with text whose signature names it narration, not as
+  text; the progress hook read only text and skipped them (64 of them in one session on the A9). It reads them now;
+  real thinking has no text in the transcript and stays unread. Test: `tests/test_speak.py`
 * **Music turned down while nothing was read; the phone slow while it read.** `daemon.log` now names every change of the
   audio focus once: what asked for it (the player or Claude Code's recorders, with their pids), Android's answer, the
   release, and when Termux:API does not answer, so the next time the cause shows. A pid in `speak.pid` that was gone
