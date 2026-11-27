@@ -13,8 +13,9 @@ Ablauf:
      Liste). Wurde genau dieser Stand von genau diesen Prüfern schon mit ALLOW geprüft, geht der Commit durch.
   3. Sonst Review auf dem Working Tree durch die Prüfer aus REVIEWERS (Konfig des Gasts, install.sh --reviewers;
      Standard codex), bei zweien gleichzeitig: Codex über das Plugin codex-companion, OpenCode über `opencode run`
-     mit einem eigenen Agenten ohne Shell, der nur im Repository und im Ordner mit den Diffs des Hooks lesen darf
-     (ohne die Konfig und die Plugins des geprüften Projekts). Jeder Prüfer antwortet in der ersten Zeile mit ALLOW
+     mit einem eigenen Agenten ohne Shell in einem Schnappschuss: die Diffs und die geänderten Dateien, nur reguläre
+     Dateien ohne Link im Pfad und ohne AGENTS.md/CLAUDE.md/CONTEXT.md (OpenCode hinge sie als Anweisungen an); außerhalb
+     darf er nichts lesen (ohne die Konfig und die Plugins des geprüften Projekts). Jeder Prüfer antwortet in der ersten Zeile mit ALLOW
      oder BLOCK; blockieren soll es nur bei Sicherheit
      (Lücke, Secret), Datenschutz (Daten oder Zugangsdaten nach außen) und Stabilität (Absturz, Hänger, Datenverlust,
      kaputte Funktion, verschluckter Fehler); alles andere, auch echte Randfälle, kommt als Hinweis hinter ALLOW. ALLOW
@@ -49,6 +50,7 @@ import os
 import re
 import selectors
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -119,19 +121,21 @@ OPENCODE_MODEL = os.environ.get("CODEX_PRECOMMIT_OPENCODE_MODEL", "").strip()
 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", OPENCODE_MODEL):
     OPENCODE_MODEL = ""
 OPENCODE_AGENT = "rootbridge-review"
-# Der Agent des OpenCode-Reviews: lesen im Repository ja, schreiben nein, keine Shell. Auch erlaubte git-Befehle läsen
-# Dateien außerhalb des Repositorys (`git diff /pfad /dev/null`), deshalb legt der Hook die Diffs in einen eigenen Ordner,
-# den einzigen außerhalb, den der Agent lesen darf (die letzte passende Regel gilt).
-def opencode_config(diff_dir):
-    return json.dumps({"agent": {OPENCODE_AGENT: {
-        "mode": "primary",
-        "description": "Pre-commit review of termux-rootbridge (read-only)",
-        "permission": {
-            "*": "deny", "read": "allow", "grep": "allow", "glob": "allow", "list": "allow", "lsp": "allow",
-            "edit": "deny", "task": "deny", "webfetch": "deny", "websearch": "deny", "bash": "deny",
-            "external_directory": {"*": "deny", diff_dir + "/*": "allow"},
-        },
-    }}})
+# Der Agent des OpenCode-Reviews: lesen ja, schreiben nein, keine Shell, nichts außerhalb seines Ordners. Sein Ordner ist
+# ein Schnappschuss (snapshot), nicht das Repository: OpenCode prüft "außerhalb" am Pfad, bevor es Links auflöst, und hängt
+# AGENTS.md, CLAUDE.md und CONTEXT.md aus den Ordnern einer gelesenen Datei als Anweisungen an (v1.19.6: tool/read.ts,
+# tool/external-directory.ts, session/instruction.ts).
+OPENCODE_CONFIG = json.dumps({"agent": {OPENCODE_AGENT: {
+    "mode": "primary",
+    "description": "Pre-commit review of termux-rootbridge (read-only)",
+    "permission": {
+        "*": "deny", "read": "allow", "grep": "allow", "glob": "allow", "list": "allow", "lsp": "allow",
+        "edit": "deny", "task": "deny", "webfetch": "deny", "websearch": "deny", "bash": "deny",
+        "external_directory": "deny",
+    },
+}}})
+INSTRUCTION_FILES = {"AGENTS.md", "CLAUDE.md", "CONTEXT.md"}
+MAX_SNAPSHOT_FILE = 1024 * 1024   # a larger file is reviewed through the diff only
 
 
 STATE_DIR = os.path.expanduser("~/.claude/codex-precommit")
@@ -728,6 +732,50 @@ def with_diff_files(prompt, diffs, directory):
     return prompt
 
 
+def read_regular(root, rel):
+    """The content of root/rel when every folder on the way is a real folder and the file a regular one of at most
+    MAX_SNAPSHOT_FILE bytes (no link anywhere, no device or pipe), else None."""
+    parts = rel.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        return None
+    try:
+        fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError:
+        return None
+    try:
+        for part in parts[:-1]:
+            sub = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = sub
+        with open(os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd), "rb") as fh:
+            info = os.fstat(fh.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_SNAPSHOT_FILE:
+                return None
+            return fh.read(MAX_SNAPSHOT_FILE + 1)[:MAX_SNAPSHOT_FILE]
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+
+
+def snapshot(root, names, directory):
+    """Copies the changed files `names` (paths in the repository) as they are now into `directory`, only what read_regular
+    gives and no instruction file of OpenCode. The number copied."""
+    copied = 0
+    for rel in dict.fromkeys(names):
+        if os.path.basename(rel) in INSTRUCTION_FILES:
+            continue
+        data = read_regular(root, rel)
+        if data is None:
+            continue
+        path = os.path.join(directory, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(data)
+        copied += 1
+    return copied
+
+
 def _file_digest(path, cap=8 * 1024 * 1024):
     """Inhalt (bis cap Bytes), Größe und, bei einem Link, das Ziel einer Datei, die in keinem Diff steht."""
     h = hashlib.sha256()
@@ -798,7 +846,7 @@ def attempts(name, args, root, deadline, env=None):
     return None, (f"{name}: Exit {result.returncode} nach {ATTEMPTS} Versuchen.", result.stderr or result.stdout)
 
 
-def review_codex(prompt, root, deadline, diffs):
+def review_codex(prompt, root, deadline, diffs, untracked):
     """Codex through the plugin codex-companion: (answer, None) or (None, (reason, detail))."""
     companion = find_companion()
     node = shutil.which("node") or ""
@@ -814,25 +862,38 @@ def review_codex(prompt, root, deadline, diffs):
         return result.stdout.strip(), None
 
 
-def review_opencode(prompt, root, deadline, diffs):
-    """OpenCode with the agent OPENCODE_AGENT. The answer is the last text of its JSON events (text it writes before a tool
-    call comes earlier): (answer, None) or (None, (reason, detail))."""
+def review_opencode(prompt, root, deadline, diffs, untracked):
+    """OpenCode with the agent OPENCODE_AGENT in a snapshot of the change (the diffs and the changed files, see snapshot).
+    The answer is the last text of its JSON events (text it writes before a tool call comes earlier): (answer, None) or
+    (None, (reason, detail))."""
     binary = shutil.which("opencode") or os.path.expanduser("~/.opencode/bin/opencode")
     if not os.access(binary, os.X_OK):
         return None, ("OpenCode nicht gefunden (~/.opencode/bin/opencode).", "")
-    args = [binary, "run", "--format", "json", "--agent", OPENCODE_AGENT, "--dir", root]
-    if OPENCODE_MODEL:
-        args += ["--model", OPENCODE_MODEL]
     try:
+        names = list(untracked)
+        for args in (["diff", "--cached", "--name-only", "-z"], ["diff", "--name-only", "-z"]):
+            r = run_bytes(["git"] + args, root)
+            if r.returncode != 0:
+                return None, (f"OpenCode: git {' '.join(args)} ist fehlgeschlagen.", r.stderr.decode("utf-8", "replace"))
+            names += [x for x in r.stdout.decode("utf-8", "surrogateescape").split("\0") if x]
         with tempfile.TemporaryDirectory(prefix="rootbridge-review-") as tmp:
-            diff_dir = os.path.realpath(tmp)
-            env = dict(os.environ, OPENCODE_CONFIG_CONTENT=opencode_config(diff_dir),
+            work = os.path.realpath(tmp)
+            os.makedirs(os.path.join(work, "diffs"))
+            prompt = with_diff_files(prompt, diffs, os.path.join(work, "diffs"))
+            copied = snapshot(root, names, os.path.join(work, "files"))
+            prompt += (f"\n\nThe changed files as they are now ({copied}) are under {work}/files, at their paths in the "
+                       "repository; files that are links, larger than 1 MB or instructions for agents (AGENTS.md, "
+                       "CLAUDE.md, CONTEXT.md) are left out, review those through the diffs. You cannot read anything "
+                       f"outside {work}.")
+            env = dict(os.environ, OPENCODE_CONFIG_CONTENT=OPENCODE_CONFIG,
                        OPENCODE_DISABLE_PROJECT_CONFIG="1", OPENCODE_PURE="1", OPENCODE_DISABLE_AUTOUPDATE="1",
                        OPENCODE_DISABLE_CLAUDE_CODE="1")
-            prompt = with_diff_files(prompt, diffs, diff_dir)
-            result, error = attempts("OpenCode", args + [prompt], root, deadline, env)
+            args = [binary, "run", "--format", "json", "--agent", OPENCODE_AGENT, "--dir", work]
+            if OPENCODE_MODEL:
+                args += ["--model", OPENCODE_MODEL]
+            result, error = attempts("OpenCode", args + [prompt], work, deadline, env)
     except OSError as exc:
-        return None, ("OpenCode: Diffs lassen sich nicht ablegen.", str(exc))
+        return None, ("OpenCode: der Schnappschuss für die Prüfung ließ sich nicht anlegen.", str(exc))
     if error:
         return None, error
     texts = []
@@ -943,7 +1004,7 @@ def main():
     deadline = START + TIMEOUT_S      # das Budget läuft ab Hook-Start, git und Vorbereitung eingeschlossen
     prompt = build_prompt(untracked)
     with ThreadPoolExecutor(max_workers=len(who)) as pool:   # zwei Prüfer gleichzeitig: beide im selben Budget
-        results = list(pool.map(lambda x: BACKENDS[x](prompt, root, deadline, diffs), who))
+        results = list(pool.map(lambda x: BACKENDS[x](prompt, root, deadline, diffs, untracked), who))
 
     outputs = []
     for name, (output, error) in zip(names, results):
